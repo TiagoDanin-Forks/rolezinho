@@ -220,6 +220,21 @@ defmodule RolezinhoWeb.EventLive do
     {:noreply, assign_event(socket, event)}
   end
 
+  def handle_event("clone", _params, socket) do
+    require_admin!(socket)
+
+    case Events.clone(socket.assigns.event) do
+      {:ok, clone} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Rolezinho clonado. Ajuste e salve.")
+         |> push_navigate(to: ~p"/admin/r/#{clone.slug}/edit")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Não deu pra clonar: #{inspect(reason)}")}
+    end
+  end
+
   # ---------- Input tracking ----------
 
   def handle_event("update_new_main_name", %{"name" => name}, socket) do
@@ -256,26 +271,54 @@ defmodule RolezinhoWeb.EventLive do
 
           <h1 class="text-3xl sm:text-4xl font-bold tracking-tight">{@event.title}</h1>
 
-          <.when_where_panel
-            :if={Meta.any?(@meta)}
-            meta={@meta}
-            slug={@event.slug}
-            google_calendar_url={@google_calendar_url}
-          />
+          <%= cond do %>
+            <% Meta.any?(@meta) and @pix -> %>
+              <div class="grid sm:grid-cols-2 gap-4 items-stretch">
+                <.when_where_panel
+                  meta={@meta}
+                  slug={@event.slug}
+                  google_calendar_url={@google_calendar_url}
+                />
+                <.pix_panel pix={@pix} full_width />
+              </div>
 
-          <div class={[
-            "gap-6",
-            if(@pix, do: "grid sm:grid-cols-[minmax(0,1fr)_auto] items-start", else: "")
-          ]}>
-            <div
-              :if={@stripped_header != ""}
-              class="prose prose-sm sm:prose-base max-w-none prose-p:my-2 leading-relaxed"
-            >
-              {raw(render_markdown(@stripped_header))}
-            </div>
+              <div
+                :if={@stripped_header != ""}
+                class="prose prose-sm sm:prose-base max-w-none prose-p:my-2 leading-relaxed"
+              >
+                {raw(render_markdown(@stripped_header))}
+              </div>
+            <% Meta.any?(@meta) -> %>
+              <.when_where_panel
+                meta={@meta}
+                slug={@event.slug}
+                google_calendar_url={@google_calendar_url}
+              />
 
-            <.pix_panel :if={@pix} pix={@pix} />
-          </div>
+              <div
+                :if={@stripped_header != ""}
+                class="prose prose-sm sm:prose-base max-w-none prose-p:my-2 leading-relaxed"
+              >
+                {raw(render_markdown(@stripped_header))}
+              </div>
+            <% @pix -> %>
+              <div class="grid sm:grid-cols-[minmax(0,1fr)_auto] gap-6 items-start">
+                <div
+                  :if={@stripped_header != ""}
+                  class="prose prose-sm sm:prose-base max-w-none prose-p:my-2 leading-relaxed"
+                >
+                  {raw(render_markdown(@stripped_header))}
+                </div>
+                <.pix_panel pix={@pix} />
+              </div>
+            <% true -> %>
+              <div
+                :if={@stripped_header != ""}
+                class="prose prose-sm sm:prose-base max-w-none prose-p:my-2 leading-relaxed"
+              >
+                {raw(render_markdown(@stripped_header))}
+              </div>
+          <% end %>
         </header>
 
         <div class="flex flex-wrap gap-2">
@@ -307,6 +350,15 @@ defmodule RolezinhoWeb.EventLive do
           >
             <.icon name="hero-document-text" class="size-4" /> Texto puro
           </a>
+          <button
+            :if={@current_admin?}
+            type="button"
+            phx-click="clone"
+            class="btn btn-sm btn-outline"
+            title="Duplicar este rolezinho para editar em cima"
+          >
+            <.icon name="hero-document-duplicate" class="size-4" /> Clonar
+          </button>
           <.link
             :if={@current_admin?}
             navigate={~p"/admin/r/#{@event.slug}/edit"}
@@ -684,12 +736,16 @@ defmodule RolezinhoWeb.EventLive do
   # ---------- PIX panel ----------
 
   attr :pix, :map, required: true
+  attr :full_width, :boolean, default: false
 
   defp pix_panel(assigns) do
     assigns = assign(assigns, :svg, Rolezinho.Pix.qr_svg(assigns.pix.key, width: 180))
 
     ~H"""
-    <aside class="shrink-0 sm:w-52 flex flex-col items-center gap-2 rounded-2xl border border-base-300 bg-base-100 p-3">
+    <aside class={[
+      "flex flex-col items-center gap-2 rounded-2xl border border-base-300 bg-base-100 p-3",
+      if(@full_width, do: "w-full h-full justify-center", else: "shrink-0 sm:w-52")
+    ]}>
       <span class="text-xs font-semibold uppercase tracking-wide text-primary">Pix</span>
       <div class="bg-white rounded-lg p-2 w-full flex items-center justify-center">
         {raw(@svg)}

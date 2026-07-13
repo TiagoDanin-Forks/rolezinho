@@ -107,6 +107,61 @@ defmodule Rolezinho.EventsTest do
     end
   end
 
+  describe "clone/1" do
+    setup do
+      {:ok, event} =
+        Events.create(%{
+          "title" => "Vôlei",
+          "slug" => "volei",
+          "local" => "Praia",
+          "date" => "2026-07-15",
+          "time" => "19:00",
+          "description" => "Valor: 15",
+          "main_size" => "3",
+          "wait_size" => "2"
+        })
+
+      {:ok, event} = Events.add_to_main(event, "Alice")
+      {:ok, event} = Events.add_to_wait(event, "Bob")
+
+      %{event: event}
+    end
+
+    test "appends ' Clonado' to the title and '-clonado' to the slug", %{event: event} do
+      assert {:ok, clone} = Events.clone(event)
+      assert clone.title == "Vôlei Clonado"
+      assert clone.slug == "volei-clonado"
+      assert clone.status == :active
+    end
+
+    test "copies header, capacity, main list, wait list, footer", %{event: event} do
+      assert {:ok, clone} = Events.clone(event)
+
+      assert clone.header == event.header
+      assert clone.main_capacity == event.main_capacity
+      assert Enum.map(clone.main_list, & &1.name) == Enum.map(event.main_list, & &1.name)
+      assert clone.wait_enabled == event.wait_enabled
+      assert Enum.map(clone.wait_list, & &1.name) == Enum.map(event.wait_list, & &1.name)
+    end
+
+    test "cloning twice appends a numeric suffix to disambiguate the slug", %{event: event} do
+      assert {:ok, first} = Events.clone(event)
+      assert first.slug == "volei-clonado"
+
+      assert {:ok, second} = Events.clone(event)
+      assert second.slug == "volei-clonado-2"
+
+      assert {:ok, third} = Events.clone(event)
+      assert third.slug == "volei-clonado-3"
+    end
+
+    test "persists the clone on disk", %{event: event} do
+      {:ok, clone} = Events.clone(event)
+      assert File.exists?(Events.file_path(clone.slug, :active))
+      assert Events.find(clone.slug).title == "Vôlei Clonado"
+    end
+  end
+
   describe "status transitions" do
     setup do
       {:ok, event} =

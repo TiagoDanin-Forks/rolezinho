@@ -100,6 +100,29 @@ defmodule RolezinhoWeb.WhenWhereTest do
       refute html =~ "Google Calendar"
     end
 
+    test "lays out widget and QR side-by-side when both exist", %{conn: conn} do
+      _event =
+        create_event(%{
+          "slug" => "side-by-side",
+          "local" => "Praia",
+          "date" => "2026-07-15",
+          "time" => "19:00",
+          "description" => "Pix: 91985609019"
+        })
+
+      {:ok, _view, html} = live(conn, ~p"/r/side-by-side")
+
+      # Both panels are on the same grid row.
+      # We assert the sequence: opening the 2-col grid, widget markup, then QR markup.
+      assert html =~ "grid sm:grid-cols-2"
+      idx_widget = :binary.match(html, "Google Calendar") |> elem(0)
+      idx_svg = :binary.match(html, "<svg") |> elem(0)
+      idx_desc = :binary.match(html, "Pix: 91985609019") |> elem(0)
+      # Widget and QR appear before the description block.
+      assert idx_widget < idx_desc
+      assert idx_svg < idx_desc
+    end
+
     test "shows only the parts that are set", %{conn: conn} do
       # Just a location, no date/time
       event =

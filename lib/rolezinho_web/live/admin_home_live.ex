@@ -17,6 +17,20 @@ defmodule RolezinhoWeb.AdminHomeLive do
   @impl true
   def handle_info(:home_changed, socket), do: {:noreply, load_all(socket)}
 
+  @impl true
+  def handle_event("clone", %{"slug" => slug}, socket) do
+    with event when not is_nil(event) <- Rolezinho.Events.find(slug),
+         {:ok, clone} <- Rolezinho.Events.clone(event) do
+      {:noreply,
+       socket
+       |> put_flash(:info, "Rolezinho clonado. Ajuste e salve.")
+       |> push_navigate(to: ~p"/admin/r/#{clone.slug}/edit")}
+    else
+      _ ->
+        {:noreply, put_flash(socket, :error, "Não deu pra clonar.")}
+    end
+  end
+
   defp load_all(socket) do
     socket
     |> assign(:active_events, Events.list_active())
@@ -72,7 +86,21 @@ defmodule RolezinhoWeb.AdminHomeLive do
           </div>
           <div class="flex items-center gap-2 shrink-0">
             <.link navigate={~p"/r/#{event.slug}"} class="btn btn-sm btn-ghost">Abrir</.link>
-            <.link navigate={~p"/admin/r/#{event.slug}/edit"} class="btn btn-sm btn-outline">Editar</.link>
+            <button
+              type="button"
+              phx-click="clone"
+              phx-value-slug={event.slug}
+              class="btn btn-sm btn-outline"
+              title="Clonar"
+            >
+              <.icon name="hero-document-duplicate" class="size-4" /> Clonar
+            </button>
+            <.link
+              navigate={~p"/admin/r/#{event.slug}/edit"}
+              class="btn btn-sm btn-primary"
+            >
+              Editar
+            </.link>
           </div>
         </li>
       </ul>

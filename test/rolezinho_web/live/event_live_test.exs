@@ -132,6 +132,21 @@ defmodule RolezinhoWeb.EventLiveTest do
       assert reloaded.main_capacity == event.main_capacity + 1
     end
 
+    test "admin can clone an event and lands on the edit form for the clone", %{
+      conn: conn,
+      event: event
+    } do
+      {:ok, view, _html} = live(conn, ~p"/r/#{event.slug}")
+
+      {:error, {:live_redirect, %{to: to}}} =
+        view
+        |> element("button[phx-click=\"clone\"]")
+        |> render_click()
+
+      assert to == "/admin/r/#{event.slug}-clonado/edit"
+      assert Rolezinho.Events.find("#{event.slug}-clonado").title == event.title <> " Clonado"
+    end
+
     test "admin can remove someone and everyone shifts up", %{conn: conn, event: event} do
       {:ok, event} = Events.add_to_main(event, "Bianca")
       {:ok, _event} = Events.add_to_main(event, "Carlos")

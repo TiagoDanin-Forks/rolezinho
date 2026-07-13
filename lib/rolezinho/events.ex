@@ -316,6 +316,55 @@ defmodule Rolezinho.Events do
   end
 
   @doc """
+  Creates an exact copy of the given event. The clone's title has " Clonado"
+  appended and its slug ends in `-clonado` (with a numeric suffix if that is
+  already taken).
+
+  All fields — header, list capacity, attendees, footer — are preserved. The
+  clone is created with status `:active`.
+  """
+  @spec clone(Event.t()) :: {:ok, Event.t()} | {:error, term()}
+  def clone(%Event{} = source) do
+    clone_slug = unique_clone_slug(source.slug)
+
+    clone = %Event{
+      slug: clone_slug,
+      status: :active,
+      title: source.title <> " Clonado",
+      header: source.header,
+      main_capacity: source.main_capacity,
+      main_list: source.main_list,
+      wait_enabled: source.wait_enabled,
+      wait_intro: source.wait_intro,
+      wait_list: source.wait_list,
+      footer: source.footer
+    }
+
+    case write_event(clone) do
+      :ok ->
+        broadcast_home()
+        {:ok, clone}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp unique_clone_slug(source_slug) do
+    base = source_slug <> "-clonado"
+
+    if slug_taken?(base) do
+      Stream.iterate(2, &(&1 + 1))
+      |> Enum.find_value(fn n ->
+        candidate = base <> "-" <> Integer.to_string(n)
+        if slug_taken?(candidate), do: nil, else: candidate
+      end)
+    else
+      base
+    end
+  end
+
+  @doc """
   Updates the structured meta (local/data/horário) on an event. The free-form
   part of the header is preserved. Pass a `%Rolezinho.Event.Meta{}` struct or
   a params map (typically from a form submission).
