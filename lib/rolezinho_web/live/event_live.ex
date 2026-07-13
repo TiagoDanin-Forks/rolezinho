@@ -93,6 +93,13 @@ defmodule RolezinhoWeb.EventLive do
      |> push_navigate(to: ~p"/")}
   end
 
+  def handle_info({:moved, %Event{} = event}, socket) do
+    {:noreply,
+     socket
+     |> put_flash(:info, "Este rolezinho mudou de endereço.")
+     |> push_navigate(to: ~p"/r/#{event.slug}")}
+  end
+
   # ---------- Public actions ----------
 
   @impl true

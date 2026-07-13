@@ -107,6 +107,70 @@ defmodule Rolezinho.EventsTest do
     end
   end
 
+  describe "rename_slug/2" do
+    setup do
+      {:ok, event} =
+        Events.create(%{
+          "title" => "T",
+          "slug" => "antigo",
+          "main_size" => "3",
+          "wait_size" => "0"
+        })
+
+      %{event: event}
+    end
+
+    test "moves the file and updates the struct", %{event: event} do
+      assert {:ok, renamed} = Events.rename_slug(event, "novo")
+      assert renamed.slug == "novo"
+
+      refute File.exists?(Events.file_path("antigo", :active))
+      assert File.exists?(Events.file_path("novo", :active))
+
+      # Reachable by the new slug, not the old one
+      assert Events.find("novo").title == "T"
+      assert Events.find("antigo") == nil
+    end
+
+    test "is a no-op when the slug does not change", %{event: event} do
+      assert {:ok, ^event} = Events.rename_slug(event, event.slug)
+      assert File.exists?(Events.file_path(event.slug, :active))
+    end
+
+    test "normalizes the input (trims whitespace and lowercases)", %{event: event} do
+      assert {:ok, renamed} = Events.rename_slug(event, "  NoVo  ")
+      assert renamed.slug == "novo"
+    end
+
+    test "rejects malformed slugs", %{event: event} do
+      assert {:error, :invalid_slug} = Events.rename_slug(event, "nao valido!")
+      # Original file still exists
+      assert File.exists?(Events.file_path(event.slug, :active))
+    end
+
+    test "rejects a slug taken by another event", %{event: event} do
+      {:ok, _other} =
+        Events.create(%{
+          "title" => "Outro",
+          "slug" => "tomado",
+          "main_size" => "1",
+          "wait_size" => "0"
+        })
+
+      assert {:error, :slug_taken} = Events.rename_slug(event, "tomado")
+    end
+
+    test "keeps the current status directory when renaming", %{event: event} do
+      {:ok, hidden} = Events.set_status(event, :hidden)
+      assert {:ok, renamed} = Events.rename_slug(hidden, "escondido-novo")
+
+      assert renamed.status == :hidden
+      assert File.exists?(Events.file_path("escondido-novo", :hidden))
+      refute File.exists?(Events.file_path("antigo", :hidden))
+      refute File.exists?(Events.file_path("escondido-novo", :active))
+    end
+  end
+
   describe "clone/1" do
     setup do
       {:ok, event} =

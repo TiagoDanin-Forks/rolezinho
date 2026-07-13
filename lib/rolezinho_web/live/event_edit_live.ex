@@ -30,6 +30,7 @@ defmodule RolezinhoWeb.EventEditLive do
     |> assign(:event, event)
     |> assign(:content, Event.render(event))
     |> assign(:main_size_input, to_string(event.main_capacity))
+    |> assign(:slug_input, event.slug)
     |> assign(:meta_form, to_form(Meta.to_form_params(meta), as: :meta))
   end
 
@@ -98,6 +99,38 @@ defmodule RolezinhoWeb.EventEditLive do
      |> push_navigate(to: ~p"/admin")}
   end
 
+  def handle_event("update_slug_input", %{"slug" => slug}, socket) do
+    {:noreply, assign(socket, :slug_input, slug)}
+  end
+
+  def handle_event("rename_slug", %{"slug" => new_slug}, socket) do
+    case Events.rename_slug(socket.assigns.event, new_slug) do
+      {:ok, %Event{slug: same} = event} when same == socket.assigns.event.slug ->
+        {:noreply, assign_event(socket, event)}
+
+      {:ok, event} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Slug atualizado.")
+         |> push_navigate(to: ~p"/admin/r/#{event.slug}/edit")}
+
+      {:error, :invalid_slug} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Slug inválido. Use letras minúsculas, números e traços.")
+         |> assign(:slug_input, new_slug)}
+
+      {:error, :slug_taken} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Esse slug já está em uso.")
+         |> assign(:slug_input, new_slug)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Não deu pra renomear: #{inspect(reason)}")}
+    end
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -111,6 +144,39 @@ defmodule RolezinhoWeb.EventEditLive do
           <.icon name="hero-arrow-left" class="size-4" /> Voltar
         </.link>
       </div>
+
+      <section class="rounded-2xl border border-base-300 bg-base-100 p-5 mb-6">
+        <h2 class="font-semibold mb-3">Slug (URL)</h2>
+        <p class="text-xs text-base-content/60 mb-3">
+          Trocar o slug muda a URL do rolezinho. Links antigos deixam de funcionar.
+        </p>
+
+        <form
+          phx-submit="rename_slug"
+          phx-change="update_slug_input"
+          id="slug-form"
+          class="flex flex-wrap items-end gap-3"
+        >
+          <label class="flex-1 min-w-64">
+            <span class="label text-sm mb-1">Novo slug</span>
+            <div class="join w-full">
+              <span class="btn btn-sm join-item pointer-events-none px-3 font-mono text-xs sm:text-sm">/r/</span>
+              <input
+                type="text"
+                name="slug"
+                id="slug-input"
+                value={@slug_input}
+                class="input input-bordered join-item flex-1 font-mono text-sm"
+                pattern="[a-z0-9](?:[a-z0-9-]{0,60}[a-z0-9])?"
+                required
+              />
+            </div>
+          </label>
+          <button type="submit" class="btn btn-primary" disabled={@slug_input == @event.slug}>
+            Salvar slug
+          </button>
+        </form>
+      </section>
 
       <section class="rounded-2xl border border-base-300 bg-base-100 p-5 mb-6">
         <h2 class="font-semibold mb-3">Quando &amp; onde</h2>

@@ -350,6 +350,68 @@ defmodule Rolezinho.Events do
     end
   end
 
+  @doc """
+  Renames an event's slug by moving its markdown file. Keeps the event's
+  current status directory (`active`/`hidden`/`done`).
+
+  Returns:
+    * `{:ok, updated_event}` on success (also when the slug did not change),
+    * `{:error, :invalid_slug}` when the format is invalid,
+    * `{:error, :slug_taken}` when another event already uses the target slug,
+    * `{:error, reason}` on I/O failures.
+  """
+  @spec rename_slug(Event.t(), String.t()) ::
+          {:ok, Event.t()} | {:error, :invalid_slug | :slug_taken | term()}
+  def rename_slug(%Event{} = event, new_slug) when is_binary(new_slug) do
+    new_slug = new_slug |> String.trim() |> String.downcase()
+
+    cond do
+      new_slug == event.slug ->
+        {:ok, event}
+
+      not Regex.match?(@slug_regex, new_slug) ->
+        {:error, :invalid_slug}
+
+      slug_taken?(new_slug) ->
+        {:error, :slug_taken}
+
+      true ->
+        do_rename_slug(event, new_slug)
+    end
+  end
+
+  defp do_rename_slug(%Event{} = event, new_slug) do
+    old_path = file_path(event.slug, event.status)
+    new_path = file_path(new_slug, event.status)
+
+    File.mkdir_p!(Path.dirname(new_path))
+
+    case File.rename(old_path, new_path) do
+      :ok ->
+        finish_rename(event, new_slug)
+
+      {:error, :exdev} ->
+        # Cross-device fallback (rare, e.g. between mount points).
+        with :ok <- File.cp(old_path, new_path),
+             :ok <- File.rm(old_path) do
+          finish_rename(event, new_slug)
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp finish_rename(%Event{} = event, new_slug) do
+    updated = %{event | slug: new_slug}
+    # Notify any viewer of the old page that the event has moved so they can
+    # navigate away, then announce the new identity on its own topic.
+    PubSub.broadcast(@pubsub, topic(event.slug), {:moved, updated})
+    broadcast(updated)
+    broadcast_home()
+    {:ok, updated}
+  end
+
   defp unique_clone_slug(source_slug) do
     base = source_slug <> "-clonado"
 
