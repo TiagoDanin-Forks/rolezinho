@@ -167,6 +167,71 @@ defmodule Rolezinho.EventTest do
     assert Enum.map(shrunk.main_list, & &1.name) == ["A", "B"]
   end
 
+  describe "to_text/2" do
+    test "prepends the URL and collapses empty slots into a summary" do
+      event = %Event{
+        title: "T",
+        header: "Praia",
+        main_capacity: 5,
+        main_list: [
+          %Attendee{name: "A"},
+          %Attendee{name: "B"},
+          %Attendee{},
+          %Attendee{},
+          %Attendee{}
+        ],
+        wait_enabled: true,
+        wait_intro: "Lista de reserva",
+        wait_list: [%Attendee{name: "W1"}]
+      }
+
+      text = Event.to_text(event, "https://roles.lubien.me/r/x")
+
+      # URL at top, followed by a blank line and then the title
+      assert String.starts_with?(text, "https://roles.lubien.me/r/x\n\nT")
+
+      # Empty slots are collapsed into a single summary line, not shown one-by-one
+      assert text =~ "3 vagas: https://roles.lubien.me/r/x"
+      refute text =~ "3-"
+      refute text =~ "4-"
+      refute text =~ "5-"
+
+      # Wait list always has a call-to-action
+      assert text =~ "Entrar na espera: https://roles.lubien.me/r/x"
+    end
+
+    test "pluralizes vagas correctly and omits the line when full" do
+      event = %Event{
+        title: "T",
+        main_capacity: 3,
+        main_list: [%Attendee{name: "A"}, %Attendee{name: "B"}, %Attendee{}],
+        wait_enabled: false
+      }
+
+      assert Event.to_text(event, "http://u/x") =~ "1 vaga: http://u/x"
+
+      full = %{
+        event
+        | main_list: [%Attendee{name: "A"}, %Attendee{name: "B"}, %Attendee{name: "C"}]
+      }
+
+      refute Event.to_text(full, "http://u/x") =~ ~r/vagas?:/
+    end
+
+    test "works without a URL for backwards compatibility" do
+      event = %Event{
+        title: "T",
+        main_capacity: 2,
+        main_list: [%Attendee{name: "A"}, %Attendee{}],
+        wait_enabled: false
+      }
+
+      text = Event.to_text(event)
+      assert text =~ "1 vaga"
+      refute text =~ "http"
+    end
+  end
+
   test "round-trips through render/parse" do
     event = Event.parse(@sample, slug: "x") |> Event.normalize_main()
     rendered = Event.render(event)

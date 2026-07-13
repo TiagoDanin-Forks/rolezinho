@@ -14,9 +14,11 @@ defmodule RolezinhoWeb.RawController do
         |> text("Rolezinho não encontrado.")
 
       event ->
+        url = RolezinhoWeb.Endpoint.url() <> "/r/" <> event.slug
+
         conn
         |> put_resp_content_type("text/plain; charset=utf-8")
-        |> send_resp(200, Event.to_text(event))
+        |> send_resp(200, Event.to_text(event, url))
     end
   end
 end

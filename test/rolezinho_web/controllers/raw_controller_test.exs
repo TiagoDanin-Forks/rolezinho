@@ -18,8 +18,15 @@ defmodule RolezinhoWeb.RawControllerTest do
     conn = get(conn, "/r/volei.txt")
     assert conn.status == 200
     text = conn.resp_body
+
+    # URL is on the very first line
+    [first_line | _] = String.split(text, "\n")
+    assert first_line =~ "/r/volei"
+    assert first_line =~ "http"
+
     assert text =~ "Vôlei"
     assert text =~ "1- Alice"
+    assert text =~ "2 vagas:"
     refute String.starts_with?(text, "#")
   end
 

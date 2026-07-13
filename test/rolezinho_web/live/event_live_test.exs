@@ -35,6 +35,22 @@ defmodule RolezinhoWeb.EventLiveTest do
       assert html =~ "Praia"
     end
 
+    test "replaces empty main slots with a vagas summary and shows the wait CTA", %{
+      conn: conn,
+      event: event
+    } do
+      {:ok, _} = Rolezinho.Events.add_to_main(event, "Alice")
+
+      {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
+
+      # No "vaga aberta" rows anymore
+      refute html =~ "vaga aberta"
+      # Summary line with the count present
+      assert html =~ ~r/2 vagas/
+      # Wait list always has the entrar-na-espera CTA
+      assert html =~ "Entrar na espera"
+    end
+
     test "anyone can add themselves to the main list", %{conn: conn, event: event} do
       {:ok, view, _html} = live(conn, ~p"/r/#{event.slug}")
 
@@ -138,5 +154,38 @@ defmodule RolezinhoWeb.EventLiveTest do
 
   test "returns to home when the slug does not exist", %{conn: conn} do
     assert {:error, {:live_redirect, %{to: "/"}}} = live(conn, ~p"/r/nao-existe")
+  end
+
+  describe "pix panel" do
+    test "renders a QR code and phone when the description has a Pix key", %{conn: conn} do
+      {:ok, _} =
+        Rolezinho.Events.create(%{
+          "title" => "Com Pix",
+          "slug" => "com-pix",
+          "description" => "End: Praia\nPix: 91985609019",
+          "main_size" => "3",
+          "wait_size" => "0"
+        })
+
+      {:ok, _view, html} = live(conn, ~p"/r/com-pix")
+
+      assert html =~ "<svg"
+      assert html =~ "(91) 98560-9019"
+      assert html =~ "Copiar chave"
+    end
+
+    test "omits the pix panel when no key is detected", %{conn: conn} do
+      {:ok, _} =
+        Rolezinho.Events.create(%{
+          "title" => "Sem Pix",
+          "slug" => "sem-pix",
+          "description" => "Só endereço e horário",
+          "main_size" => "3",
+          "wait_size" => "0"
+        })
+
+      {:ok, _view, html} = live(conn, ~p"/r/sem-pix")
+      refute html =~ "Copiar chave"
+    end
   end
 end

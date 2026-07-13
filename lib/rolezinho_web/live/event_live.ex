@@ -8,6 +8,7 @@ defmodule RolezinhoWeb.EventLive do
   alias Rolezinho.Event
   alias Rolezinho.Event.Attendee
   alias Rolezinho.Events
+  alias Rolezinho.Pix
 
   @impl true
   def mount(%{"slug" => slug}, _session, socket) do
@@ -26,7 +27,7 @@ defmodule RolezinhoWeb.EventLive do
         {:ok,
          socket
          |> assign(:page_title, event.title)
-         |> assign(:event, event)
+         |> assign_event(event)
          |> assign(:new_main_name, "")
          |> assign(:new_wait_name, "")
          |> assign(:editing_main, nil)
@@ -34,11 +35,21 @@ defmodule RolezinhoWeb.EventLive do
     end
   end
 
+  defp assign_event(socket, %Event{} = event) do
+    url = url_for(event)
+
+    socket
+    |> assign(:event, event)
+    |> assign(:event_url, url)
+    |> assign(:shareable_text, Event.to_text(event, url))
+    |> assign(:pix, Pix.detect(event.header))
+  end
+
   # ---------- PubSub ----------
 
   @impl true
   def handle_info({:updated, %Event{} = event}, socket) do
-    {:noreply, assign(socket, :event, event)}
+    {:noreply, assign_event(socket, event)}
   end
 
   def handle_info({:deleted, _event}, socket) do
@@ -56,7 +67,7 @@ defmodule RolezinhoWeb.EventLive do
       {:ok, event} ->
         {:noreply,
          socket
-         |> assign(:event, event)
+         |> assign_event(event)
          |> assign(:new_main_name, "")
          |> put_flash(:info, "Entrou na lista!")}
 
@@ -73,7 +84,7 @@ defmodule RolezinhoWeb.EventLive do
       {:ok, event} ->
         {:noreply,
          socket
-         |> assign(:event, event)
+         |> assign_event(event)
          |> assign(:new_wait_name, "")
          |> put_flash(:info, "Entrou na reserva!")}
 
@@ -90,7 +101,7 @@ defmodule RolezinhoWeb.EventLive do
       {:ok, event} ->
         {:noreply,
          socket
-         |> assign(:event, event)
+         |> assign_event(event)
          |> put_flash(:info, "Promovido pra lista principal!")}
 
       {:error, :main_full} ->
@@ -106,25 +117,25 @@ defmodule RolezinhoWeb.EventLive do
   def handle_event("toggle_paid_main", %{"index" => index}, socket) do
     require_admin!(socket)
     {:ok, event} = Events.toggle_paid_main(socket.assigns.event, String.to_integer(index))
-    {:noreply, assign(socket, :event, event)}
+    {:noreply, assign_event(socket, event)}
   end
 
   def handle_event("toggle_paid_wait", %{"index" => index}, socket) do
     require_admin!(socket)
     {:ok, event} = Events.toggle_paid_wait(socket.assigns.event, String.to_integer(index))
-    {:noreply, assign(socket, :event, event)}
+    {:noreply, assign_event(socket, event)}
   end
 
   def handle_event("remove_main", %{"index" => index}, socket) do
     require_admin!(socket)
     {:ok, event} = Events.remove_main(socket.assigns.event, String.to_integer(index))
-    {:noreply, assign(socket, :event, event)}
+    {:noreply, assign_event(socket, event)}
   end
 
   def handle_event("remove_wait", %{"index" => index}, socket) do
     require_admin!(socket)
     {:ok, event} = Events.remove_wait(socket.assigns.event, String.to_integer(index))
-    {:noreply, assign(socket, :event, event)}
+    {:noreply, assign_event(socket, event)}
   end
 
   def handle_event("start_edit_main", %{"index" => index}, socket) do
@@ -147,7 +158,7 @@ defmodule RolezinhoWeb.EventLive do
 
     {:noreply,
      socket
-     |> assign(:event, event)
+     |> assign_event(event)
      |> assign(:editing_main, nil)}
   end
 
@@ -157,7 +168,7 @@ defmodule RolezinhoWeb.EventLive do
 
     {:noreply,
      socket
-     |> assign(:event, event)
+     |> assign_event(event)
      |> assign(:editing_wait, nil)}
   end
 
@@ -165,14 +176,14 @@ defmodule RolezinhoWeb.EventLive do
     require_admin!(socket)
     new_size = socket.assigns.event.main_capacity + 1
     {:ok, event} = Events.resize_main(socket.assigns.event, new_size)
-    {:noreply, assign(socket, :event, event)}
+    {:noreply, assign_event(socket, event)}
   end
 
   def handle_event("shrink_main", _params, socket) do
     require_admin!(socket)
     new_size = socket.assigns.event.main_capacity - 1
     {:ok, event} = Events.resize_main(socket.assigns.event, max(new_size, 1))
-    {:noreply, assign(socket, :event, event)}
+    {:noreply, assign_event(socket, event)}
   end
 
   # ---------- Input tracking ----------
@@ -211,11 +222,18 @@ defmodule RolezinhoWeb.EventLive do
 
           <h1 class="text-3xl sm:text-4xl font-bold tracking-tight">{@event.title}</h1>
 
-          <div
-            :if={@event.header != ""}
-            class="prose prose-sm sm:prose-base max-w-none prose-p:my-2 leading-relaxed"
-          >
-            {raw(render_markdown(@event.header))}
+          <div class={[
+            "gap-6",
+            if(@pix, do: "grid sm:grid-cols-[minmax(0,1fr)_auto] items-start", else: "")
+          ]}>
+            <div
+              :if={@event.header != ""}
+              class="prose prose-sm sm:prose-base max-w-none prose-p:my-2 leading-relaxed"
+            >
+              {raw(render_markdown(@event.header))}
+            </div>
+
+            <.pix_panel :if={@pix} pix={@pix} />
           </div>
         </header>
 
@@ -223,8 +241,8 @@ defmodule RolezinhoWeb.EventLive do
           <button
             id="copy-btn"
             type="button"
-            phx-hook=".CopyEvent"
-            data-text={Event.to_text(@event)}
+            phx-hook=".CopyText"
+            data-text={@shareable_text}
             class="btn btn-sm btn-outline"
           >
             <.icon name="hero-clipboard" class="size-4" /> Copiar lista
@@ -234,8 +252,8 @@ defmodule RolezinhoWeb.EventLive do
             type="button"
             phx-hook=".ShareEvent"
             data-title={@event.title}
-            data-text={Event.to_text(@event)}
-            data-url={url_for(@event)}
+            data-text={@shareable_text}
+            data-url={@event_url}
             class="btn btn-sm btn-outline"
           >
             <.icon name="hero-share" class="size-4" /> Compartilhar
@@ -289,14 +307,8 @@ defmodule RolezinhoWeb.EventLive do
 
           <ol class="space-y-2">
             <li
-              :for={{%Attendee{} = att, i} <- Enum.with_index(@event.main_list, 1)}
-              class={[
-                "flex items-center gap-3 rounded-xl px-3 py-2 transition-colors",
-                if(String.trim(att.name) == "",
-                  do: "bg-base-200/50 border border-dashed border-base-300",
-                  else: "bg-base-200"
-                )
-              ]}
+              :for={{%Attendee{} = att, i} <- filled_with_index(@event.main_list)}
+              class="flex items-center gap-3 rounded-xl bg-base-200 px-3 py-2"
             >
               <span class="text-sm font-mono w-8 text-right text-base-content/50">{i}.</span>
 
@@ -319,8 +331,6 @@ defmodule RolezinhoWeb.EventLive do
                       Cancelar
                     </button>
                   </form>
-                <% String.trim(att.name) == "" -> %>
-                  <span class="flex-1 text-sm text-base-content/40 italic">vaga aberta</span>
                 <% true -> %>
                   <span class="flex-1 truncate font-medium">
                     {att.name}
@@ -330,7 +340,7 @@ defmodule RolezinhoWeb.EventLive do
 
               <div class="flex items-center gap-1 shrink-0">
                 <button
-                  :if={@current_admin? and String.trim(att.name) != "" and @editing_main != i}
+                  :if={@current_admin? and @editing_main != i}
                   type="button"
                   phx-click="toggle_paid_main"
                   phx-value-index={i}
@@ -343,7 +353,7 @@ defmodule RolezinhoWeb.EventLive do
                   ✅
                 </button>
                 <button
-                  :if={@current_admin? and String.trim(att.name) != "" and @editing_main != i}
+                  :if={@current_admin? and @editing_main != i}
                   type="button"
                   phx-click="start_edit_main"
                   phx-value-index={i}
@@ -353,7 +363,7 @@ defmodule RolezinhoWeb.EventLive do
                   <.icon name="hero-pencil" class="size-3.5" />
                 </button>
                 <button
-                  :if={@current_admin? and String.trim(att.name) != "" and @editing_main != i}
+                  :if={@current_admin? and @editing_main != i}
                   type="button"
                   phx-click="remove_main"
                   phx-value-index={i}
@@ -364,6 +374,17 @@ defmodule RolezinhoWeb.EventLive do
                   <.icon name="hero-x-mark" class="size-3.5" />
                 </button>
               </div>
+            </li>
+
+            <li
+              :if={main_free_slots(@event) > 0}
+              class="flex items-center gap-3 rounded-xl bg-base-200/40 border border-dashed border-base-300 px-3 py-2 text-sm text-base-content/70"
+            >
+              <.icon name="hero-user-plus" class="size-4 text-primary" />
+              <span class="flex-1">
+                <strong>{Event.vagas_line(main_free_slots(@event), nil)}</strong>:
+                <a href={@event_url} class="link link-primary break-all">{@event_url}</a>
+              </span>
             </li>
           </ol>
 
@@ -408,7 +429,7 @@ defmodule RolezinhoWeb.EventLive do
             </p>
           </div>
 
-          <ol :if={@event.wait_list != []} class="space-y-2">
+          <ol class="space-y-2">
             <li
               :for={{%Attendee{} = att, i} <- Enum.with_index(@event.wait_list, 1)}
               class="flex items-center gap-3 rounded-xl bg-base-200 px-3 py-2"
@@ -486,6 +507,14 @@ defmodule RolezinhoWeb.EventLive do
                 </button>
               </div>
             </li>
+
+            <li class="flex items-center gap-3 rounded-xl bg-base-200/40 border border-dashed border-base-300 px-3 py-2 text-sm text-base-content/70">
+              <.icon name="hero-clock" class="size-4 text-primary" />
+              <span class="flex-1">
+                <strong>Entrar na espera</strong>:
+                <a href={@event_url} class="link link-primary break-all">{@event_url}</a>
+              </span>
+            </li>
           </ol>
 
           <div class="mt-4">
@@ -515,21 +544,22 @@ defmodule RolezinhoWeb.EventLive do
         </section>
       </article>
 
-      <script :type={Phoenix.LiveView.ColocatedHook} name=".CopyEvent">
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".CopyText">
         export default {
           mounted() {
             this.el.addEventListener("click", async () => {
               const text = this.el.dataset.text || ""
+              const done = this.el.dataset.copiedLabel || "Copiado!"
               try {
                 await navigator.clipboard.writeText(text)
-                this.flash("Copiado!")
+                this.flash(done)
               } catch (e) {
                 // Fallback for very old browsers
                 const ta = document.createElement("textarea")
                 ta.value = text
                 document.body.appendChild(ta)
                 ta.select()
-                try { document.execCommand("copy"); this.flash("Copiado!") } catch (_) { this.flash("Não deu pra copiar") }
+                try { document.execCommand("copy"); this.flash(done) } catch (_) { this.flash("Não deu pra copiar") }
                 document.body.removeChild(ta)
               }
             })
@@ -571,8 +601,45 @@ defmodule RolezinhoWeb.EventLive do
 
   defp filled_count(list), do: Enum.count(list, fn a -> String.trim(a.name) != "" end)
 
+  defp filled_with_index(list) do
+    list
+    |> Enum.with_index(1)
+    |> Enum.filter(fn {%Attendee{name: n}, _} -> String.trim(n) != "" end)
+  end
+
+  defp main_free_slots(%Event{} = event), do: Event.main_free_slots(event)
+
   defp url_for(%Event{slug: slug}) do
     RolezinhoWeb.Endpoint.url() <> "/r/" <> slug
+  end
+
+  # ---------- PIX panel ----------
+
+  attr :pix, :map, required: true
+
+  defp pix_panel(assigns) do
+    assigns = assign(assigns, :svg, Rolezinho.Pix.qr_svg(assigns.pix.key, width: 180))
+
+    ~H"""
+    <aside class="shrink-0 sm:w-52 flex flex-col items-center gap-2 rounded-2xl border border-base-300 bg-base-100 p-3">
+      <span class="text-xs font-semibold uppercase tracking-wide text-primary">Pix</span>
+      <div class="bg-white rounded-lg p-2 w-full flex items-center justify-center">
+        {raw(@svg)}
+      </div>
+      <p class="text-sm font-mono tabular-nums text-center break-all">{@pix.display}</p>
+      <button
+        type="button"
+        id={"copy-pix-" <> String.replace(@pix.raw, ~r/\D/, "")}
+        phx-hook=".CopyText"
+        data-text={@pix.raw}
+        data-copied-label="Copiado!"
+        class="btn btn-xs btn-outline w-full"
+        title="Copiar chave Pix"
+      >
+        <.icon name="hero-clipboard" class="size-3.5" /> Copiar chave
+      </button>
+    </aside>
+    """
   end
 
   defp render_markdown(text) when is_binary(text) do

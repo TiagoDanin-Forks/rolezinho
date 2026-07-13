@@ -141,15 +141,102 @@ defmodule Rolezinho.Event do
   end
 
   @doc """
-  Produces the raw text representation people can copy/share.
+  Produces the shareable/raw text representation people can copy or share.
 
-  Same as the persisted markdown but without the leading "# " on the title.
+  Prepends the given URL as the first line, drops the leading `# ` from the title,
+  and replaces empty list slots with a compact summary line:
+
+    * `3 vagas: <url>` (or `1 vaga: <url>`) after the main list when there is
+      still room. Nothing is added when the main list is full.
+    * `Entrar na espera: <url>` after the wait list (always present when the
+      wait list is enabled, since it is infinite).
+
+  The persisted markdown file is unaffected by this — see `render/1`.
   """
-  @spec to_text(t()) :: String.t()
-  def to_text(%Event{} = event) do
-    %Event{event | title: event.title}
-    |> render()
-    |> String.replace(~r/\A#\s+/, "")
+  @spec to_text(t(), String.t() | nil) :: String.t()
+  def to_text(%Event{} = event, url \\ nil) do
+    title_line = String.trim(event.title || "")
+
+    parts =
+      case url do
+        nil -> []
+        "" -> []
+        u -> [u, ""]
+      end
+
+    parts = parts ++ [title_line]
+
+    parts =
+      if event.header != "" and event.header != nil do
+        parts ++ ["", event.header]
+      else
+        parts
+      end
+
+    parts = parts ++ ["", main_list_text(event, url)]
+
+    parts =
+      if event.wait_enabled do
+        intro = event.wait_intro |> to_string() |> String.trim()
+        intro = if intro == "", do: "Lista de reserva", else: intro
+        parts ++ ["", intro, wait_list_text(event, url)]
+      else
+        parts
+      end
+
+    parts =
+      if event.footer != "" and event.footer != nil do
+        parts ++ ["", event.footer]
+      else
+        parts
+      end
+
+    parts
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join("\n")
+    |> String.trim_trailing()
+    |> Kernel.<>("\n")
+  end
+
+  defp main_list_text(%Event{} = event, url) do
+    filled = compact_main(event.main_list)
+    free = event.main_capacity - length(filled)
+
+    lines =
+      filled
+      |> Enum.with_index(1)
+      |> Enum.map(fn {%Attendee{} = att, i} -> render_attendee_line(i, att) end)
+
+    lines =
+      if free > 0 do
+        lines ++ [vagas_line(free, url)]
+      else
+        lines
+      end
+
+    Enum.join(lines, "\n")
+  end
+
+  defp wait_list_text(%Event{} = event, url) do
+    lines =
+      event.wait_list
+      |> Enum.with_index(1)
+      |> Enum.map(fn {%Attendee{} = att, i} -> render_attendee_line(i, att) end)
+
+    Enum.join(lines ++ [entrar_espera_line(url)], "\n")
+  end
+
+  @doc false
+  def vagas_line(count, url) do
+    label = if count == 1, do: "1 vaga", else: "#{count} vagas"
+    if is_binary(url) and url != "", do: "#{label}: #{url}", else: label
+  end
+
+  @doc false
+  def entrar_espera_line(url) do
+    if is_binary(url) and url != "",
+      do: "Entrar na espera: #{url}",
+      else: "Entrar na espera"
   end
 
   # ---------- List operations ----------
