@@ -336,8 +336,14 @@ defmodule RolezinhoWeb.EventLive do
 
           <ol class="space-y-2">
             <li
-              :for={{%Attendee{} = att, i} <- filled_with_index(@event.main_list)}
-              class="flex items-center gap-3 rounded-xl bg-base-200 px-3 py-2"
+              :for={{%Attendee{} = att, i} <- Enum.with_index(@event.main_list, 1)}
+              class={[
+                "flex items-center gap-3 rounded-xl px-3 py-2 transition-colors",
+                if(String.trim(att.name) == "",
+                  do: "bg-base-200/50 border border-dashed border-base-300",
+                  else: "bg-base-200"
+                )
+              ]}
             >
               <span class="text-sm font-mono w-8 text-right text-base-content/50">{i}.</span>
 
@@ -360,6 +366,8 @@ defmodule RolezinhoWeb.EventLive do
                       Cancelar
                     </button>
                   </form>
+                <% String.trim(att.name) == "" -> %>
+                  <span class="flex-1 text-sm text-base-content/40 italic">vaga aberta</span>
                 <% true -> %>
                   <span class="flex-1 truncate font-medium">
                     {att.name}
@@ -369,7 +377,7 @@ defmodule RolezinhoWeb.EventLive do
 
               <div class="flex items-center gap-1 shrink-0">
                 <button
-                  :if={@current_admin? and @editing_main != i}
+                  :if={@current_admin? and String.trim(att.name) != "" and @editing_main != i}
                   type="button"
                   phx-click="toggle_paid_main"
                   phx-value-index={i}
@@ -382,7 +390,7 @@ defmodule RolezinhoWeb.EventLive do
                   ✅
                 </button>
                 <button
-                  :if={@current_admin? and @editing_main != i}
+                  :if={@current_admin? and String.trim(att.name) != "" and @editing_main != i}
                   type="button"
                   phx-click="start_edit_main"
                   phx-value-index={i}
@@ -392,7 +400,7 @@ defmodule RolezinhoWeb.EventLive do
                   <.icon name="hero-pencil" class="size-3.5" />
                 </button>
                 <button
-                  :if={@current_admin? and @editing_main != i}
+                  :if={@current_admin? and String.trim(att.name) != "" and @editing_main != i}
                   type="button"
                   phx-click="remove_main"
                   phx-value-index={i}
@@ -403,17 +411,6 @@ defmodule RolezinhoWeb.EventLive do
                   <.icon name="hero-x-mark" class="size-3.5" />
                 </button>
               </div>
-            </li>
-
-            <li
-              :if={main_free_slots(@event) > 0}
-              class="flex items-center gap-3 rounded-xl bg-base-200/40 border border-dashed border-base-300 px-3 py-2 text-sm text-base-content/70"
-            >
-              <.icon name="hero-user-plus" class="size-4 text-primary" />
-              <span class="flex-1">
-                <strong>{Event.vagas_line(main_free_slots(@event), nil)}</strong>:
-                <a href={@event_url} class="link link-primary break-all">{@event_url}</a>
-              </span>
             </li>
           </ol>
 
@@ -458,7 +455,7 @@ defmodule RolezinhoWeb.EventLive do
             </p>
           </div>
 
-          <ol class="space-y-2">
+          <ol :if={@event.wait_list != []} class="space-y-2">
             <li
               :for={{%Attendee{} = att, i} <- Enum.with_index(@event.wait_list, 1)}
               class="flex items-center gap-3 rounded-xl bg-base-200 px-3 py-2"
@@ -535,14 +532,6 @@ defmodule RolezinhoWeb.EventLive do
                   <.icon name="hero-x-mark" class="size-3.5" />
                 </button>
               </div>
-            </li>
-
-            <li class="flex items-center gap-3 rounded-xl bg-base-200/40 border border-dashed border-base-300 px-3 py-2 text-sm text-base-content/70">
-              <.icon name="hero-clock" class="size-4 text-primary" />
-              <span class="flex-1">
-                <strong>Entrar na espera</strong>:
-                <a href={@event_url} class="link link-primary break-all">{@event_url}</a>
-              </span>
             </li>
           </ol>
 
@@ -629,14 +618,6 @@ defmodule RolezinhoWeb.EventLive do
   end
 
   defp filled_count(list), do: Enum.count(list, fn a -> String.trim(a.name) != "" end)
-
-  defp filled_with_index(list) do
-    list
-    |> Enum.with_index(1)
-    |> Enum.filter(fn {%Attendee{name: n}, _} -> String.trim(n) != "" end)
-  end
-
-  defp main_free_slots(%Event{} = event), do: Event.main_free_slots(event)
 
   defp url_for(%Event{slug: slug}) do
     RolezinhoWeb.Endpoint.url() <> "/r/" <> slug

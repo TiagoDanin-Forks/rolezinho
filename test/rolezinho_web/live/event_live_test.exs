@@ -35,20 +35,16 @@ defmodule RolezinhoWeb.EventLiveTest do
       assert html =~ "Praia"
     end
 
-    test "replaces empty main slots with a vagas summary and shows the wait CTA", %{
-      conn: conn,
-      event: event
-    } do
+    test "still shows individual empty slots on the UI", %{conn: conn, event: event} do
       {:ok, _} = Rolezinho.Events.add_to_main(event, "Alice")
 
       {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
 
-      # No "vaga aberta" rows anymore
-      refute html =~ "vaga aberta"
-      # Summary line with the count present
-      assert html =~ ~r/2 vagas/
-      # Wait list always has the entrar-na-espera CTA
-      assert html =~ "Entrar na espera"
+      # The 2 empty slots are still rendered as "vaga aberta" rows in the UI.
+      # The compact "N vagas: URL" summary lives in the shareable text only.
+      assert html =~ "vaga aberta"
+      # The shareable text (data-text) does have the compact summary.
+      assert html =~ "2 vagas: http"
     end
 
     test "anyone can add themselves to the main list", %{conn: conn, event: event} do
