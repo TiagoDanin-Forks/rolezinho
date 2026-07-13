@@ -7,6 +7,7 @@ defmodule RolezinhoWeb.EventLive do
 
   alias Rolezinho.Event
   alias Rolezinho.Event.Attendee
+  alias Rolezinho.Event.Meta
   alias Rolezinho.Events
   alias Rolezinho.Pix
 
@@ -36,12 +37,16 @@ defmodule RolezinhoWeb.EventLive do
 
   defp assign_event(socket, %Event{} = event) do
     url = url_for(event)
+    {meta, stripped_header} = Meta.extract(event.header)
 
     socket
     |> assign(:event, event)
     |> assign(:event_url, url)
     |> assign(:shareable_text, Event.to_text(event, url))
     |> assign(:pix, Pix.detect(event.header))
+    |> assign(:meta, meta)
+    |> assign(:stripped_header, stripped_header)
+    |> assign(:google_calendar_url, Meta.google_url(meta, event.title, url))
     |> assign(:page_title, page_title_for(event))
   end
 
@@ -251,15 +256,22 @@ defmodule RolezinhoWeb.EventLive do
 
           <h1 class="text-3xl sm:text-4xl font-bold tracking-tight">{@event.title}</h1>
 
+          <.when_where_panel
+            :if={Meta.any?(@meta)}
+            meta={@meta}
+            slug={@event.slug}
+            google_calendar_url={@google_calendar_url}
+          />
+
           <div class={[
             "gap-6",
             if(@pix, do: "grid sm:grid-cols-[minmax(0,1fr)_auto] items-start", else: "")
           ]}>
             <div
-              :if={@event.header != ""}
+              :if={@stripped_header != ""}
               class="prose prose-sm sm:prose-base max-w-none prose-p:my-2 leading-relaxed"
             >
-              {raw(render_markdown(@event.header))}
+              {raw(render_markdown(@stripped_header))}
             </div>
 
             <.pix_panel :if={@pix} pix={@pix} />
@@ -621,6 +633,52 @@ defmodule RolezinhoWeb.EventLive do
 
   defp url_for(%Event{slug: slug}) do
     RolezinhoWeb.Endpoint.url() <> "/r/" <> slug
+  end
+
+  # ---------- When/Where widget ----------
+
+  attr :meta, :map, required: true
+  attr :slug, :string, required: true
+  attr :google_calendar_url, :string, required: true, doc: "nil when no date is set"
+
+  defp when_where_panel(assigns) do
+    ~H"""
+    <section class="rounded-2xl border border-primary/20 bg-primary/5 p-4 sm:p-5 space-y-3">
+      <div :if={@meta.date || @meta.time} class="flex items-start gap-3">
+        <.icon name="hero-calendar" class="size-5 text-primary shrink-0 mt-0.5" />
+        <div class="min-w-0">
+          <p class="font-semibold">Quando</p>
+          <p class="text-base-content/80">{Meta.format_when(@meta)}</p>
+        </div>
+      </div>
+
+      <div :if={@meta.local} class="flex items-start gap-3">
+        <.icon name="hero-map-pin" class="size-5 text-primary shrink-0 mt-0.5" />
+        <div class="min-w-0">
+          <p class="font-semibold">Onde</p>
+          <p class="text-base-content/80 break-words">{@meta.local}</p>
+        </div>
+      </div>
+
+      <div :if={@google_calendar_url} class="flex flex-wrap gap-2 pt-1">
+        <a
+          href={@google_calendar_url}
+          target="_blank"
+          rel="noopener"
+          class="btn btn-sm btn-primary"
+        >
+          <.icon name="hero-calendar-days" class="size-4" /> Google Calendar
+        </a>
+        <a
+          href={"/r/" <> @slug <> "/calendar.ics"}
+          class="btn btn-sm btn-outline"
+          download
+        >
+          <.icon name="hero-arrow-down-tray" class="size-4" /> Apple / .ics
+        </a>
+      </div>
+    </section>
+    """
   end
 
   # ---------- PIX panel ----------

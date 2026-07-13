@@ -3,6 +3,7 @@ defmodule RolezinhoWeb.EventEditLive do
   use RolezinhoWeb, :live_view
 
   alias Rolezinho.Event
+  alias Rolezinho.Event.Meta
   alias Rolezinho.Events
 
   @impl true
@@ -15,15 +16,21 @@ defmodule RolezinhoWeb.EventEditLive do
          |> push_navigate(to: ~p"/admin")}
 
       event ->
-        content = Event.render(event)
-
         {:ok,
          socket
          |> assign(:page_title, "Editar #{event.title}")
-         |> assign(:event, event)
-         |> assign(:content, content)
-         |> assign(:main_size_input, to_string(event.main_capacity))}
+         |> assign_event(event)}
     end
+  end
+
+  defp assign_event(socket, %Event{} = event) do
+    {meta, _rest} = Meta.extract(event.header)
+
+    socket
+    |> assign(:event, event)
+    |> assign(:content, Event.render(event))
+    |> assign(:main_size_input, to_string(event.main_capacity))
+    |> assign(:meta_form, to_form(Meta.to_form_params(meta), as: :meta))
   end
 
   @impl true
@@ -37,8 +44,20 @@ defmodule RolezinhoWeb.EventEditLive do
         {:noreply,
          socket
          |> put_flash(:info, "Salvo!")
-         |> assign(:event, event)
-         |> assign(:content, Event.render(event))}
+         |> assign_event(event)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Não deu pra salvar: #{inspect(reason)}")}
+    end
+  end
+
+  def handle_event("save_meta", %{"meta" => params}, socket) do
+    case Events.update_meta(socket.assigns.event, params) do
+      {:ok, event} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Data, horário e local atualizados.")
+         |> assign_event(event)}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Não deu pra salvar: #{inspect(reason)}")}
@@ -53,9 +72,7 @@ defmodule RolezinhoWeb.EventEditLive do
         {:noreply,
          socket
          |> put_flash(:info, "Tamanho da lista atualizado.")
-         |> assign(:event, event)
-         |> assign(:content, Event.render(event))
-         |> assign(:main_size_input, to_string(event.main_capacity))}
+         |> assign_event(event)}
 
       _ ->
         {:noreply, put_flash(socket, :error, "Tamanho inválido.")}
@@ -69,7 +86,7 @@ defmodule RolezinhoWeb.EventEditLive do
     {:noreply,
      socket
      |> put_flash(:info, "Status atualizado.")
-     |> assign(:event, event)}
+     |> assign_event(event)}
   end
 
   def handle_event("delete", _params, socket) do
@@ -94,6 +111,26 @@ defmodule RolezinhoWeb.EventEditLive do
           <.icon name="hero-arrow-left" class="size-4" /> Voltar
         </.link>
       </div>
+
+      <section class="rounded-2xl border border-base-300 bg-base-100 p-5 mb-6">
+        <h2 class="font-semibold mb-3">Quando &amp; onde</h2>
+        <p class="text-xs text-base-content/60 mb-4">
+          Data e horário no fuso de Brasília (BRT). Todos os campos são opcionais.
+        </p>
+
+        <.form for={@meta_form} id="meta-form" phx-submit="save_meta" class="space-y-4">
+          <.input field={@meta_form[:local]} label="Local" placeholder="ex.: Rua Caripunas" />
+
+          <div class="grid grid-cols-2 gap-4">
+            <.input field={@meta_form[:date]} type="date" label="Data (BRT)" />
+            <.input field={@meta_form[:time]} type="time" label="Horário (BRT)" />
+          </div>
+
+          <div>
+            <button type="submit" class="btn btn-primary">Salvar quando &amp; onde</button>
+          </div>
+        </.form>
+      </section>
 
       <section class="rounded-2xl border border-base-300 bg-base-100 p-5 mb-6">
         <h2 class="font-semibold mb-3">Texto do rolezinho</h2>

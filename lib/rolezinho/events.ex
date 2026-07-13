@@ -13,6 +13,7 @@ defmodule Rolezinho.Events do
   """
 
   alias Rolezinho.Event
+  alias Rolezinho.Event.Meta
   alias Phoenix.PubSub
 
   @pubsub Rolezinho.PubSub
@@ -142,6 +143,7 @@ defmodule Rolezinho.Events do
     title = params |> Map.get("title", "") |> to_string() |> String.trim()
     slug = params |> Map.get("slug", "") |> to_string() |> String.trim() |> String.downcase()
     description = params |> Map.get("description", "") |> to_string()
+    meta = Meta.from_params(params)
     main_size_raw = params |> Map.get("main_size", "")
     wait_size_raw = params |> Map.get("wait_size", "3")
 
@@ -189,6 +191,7 @@ defmodule Rolezinho.Events do
          title: title,
          slug: slug,
          description: description,
+         meta: meta,
          main_size: main_size,
          wait_size: wait_size
        }}
@@ -219,7 +222,7 @@ defmodule Rolezinho.Events do
       slug: attrs.slug,
       status: :active,
       title: attrs.title,
-      header: String.trim(attrs.description || ""),
+      header: Meta.build_header(attrs.meta, attrs.description),
       main_capacity: attrs.main_size,
       main_list: List.duplicate(empty, attrs.main_size),
       wait_enabled: attrs.wait_size > 0,
@@ -310,6 +313,21 @@ defmodule Rolezinho.Events do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  @doc """
+  Updates the structured meta (local/data/horário) on an event. The free-form
+  part of the header is preserved. Pass a `%Rolezinho.Event.Meta{}` struct or
+  a params map (typically from a form submission).
+  """
+  def update_meta(%Event{} = event, %Meta{} = new_meta) do
+    {_current_meta, rest} = Meta.extract(event.header)
+    updated = %Event{event | header: Meta.build_header(new_meta, rest)}
+    save(updated)
+  end
+
+  def update_meta(%Event{} = event, params) when is_map(params) do
+    update_meta(event, Meta.from_params(params))
   end
 
   # Public helpers that mutate + persist in one shot.

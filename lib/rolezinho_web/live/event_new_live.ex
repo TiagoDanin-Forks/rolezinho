@@ -16,6 +16,9 @@ defmodule RolezinhoWeb.EventNewLive do
     %{
       "title" => "",
       "slug" => "",
+      "local" => "",
+      "date" => "",
+      "time" => "",
       "description" => "",
       "main_size" => "18",
       "wait_size" => "3"
@@ -89,11 +92,33 @@ defmodule RolezinhoWeb.EventNewLive do
           </p>
 
           <.input
+            field={@form[:local]}
+            label="Local (opcional)"
+            placeholder="ex.: Rua Caripunas"
+          />
+
+          <div class="grid grid-cols-2 gap-4">
+            <.input
+              field={@form[:date]}
+              type="date"
+              label="Data (BRT, opcional)"
+            />
+            <.input
+              field={@form[:time]}
+              type="time"
+              label="Horário (BRT, opcional)"
+            />
+          </div>
+          <p class="text-xs text-base-content/60 -mt-3">
+            Data e hora usam o fuso de Brasília (BRT). Ambos são opcionais.
+          </p>
+
+          <.input
             field={@form[:description]}
             type="textarea"
-            label="Descrição (endereço, horário, valor, etc.)"
+            label="Descrição (valor, Pix, observações...)"
             rows="6"
-            placeholder="End: Rua ...\nQuando: ...\nHorário: ...\nValor: ...\nPix: ..."
+            placeholder="Valor: 15\nPix: 91984933238\n*PAGAMENTO APENAS NO PIX*"
           />
 
           <div class="grid grid-cols-2 gap-4">
