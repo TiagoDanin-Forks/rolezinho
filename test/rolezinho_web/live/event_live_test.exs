@@ -156,6 +156,72 @@ defmodule RolezinhoWeb.EventLiveTest do
     assert {:error, {:live_redirect, %{to: "/"}}} = live(conn, ~p"/r/nao-existe")
   end
 
+  describe "page title" do
+    test "shows filled/total and reserve count in the general case", %{conn: conn} do
+      {:ok, event} =
+        Rolezinho.Events.create(%{
+          "title" => "Meu Evento",
+          "slug" => "meu-evento",
+          "main_size" => "18",
+          "wait_size" => "3"
+        })
+
+      # 7 people join the main list
+      event =
+        Enum.reduce(1..7, event, fn i, ev ->
+          {:ok, ev} = Rolezinho.Events.add_to_main(ev, "P#{i}")
+          ev
+        end)
+
+      # 3 people join the reserve
+      _event =
+        Enum.reduce(1..3, event, fn i, ev ->
+          {:ok, ev} = Rolezinho.Events.add_to_wait(ev, "W#{i}")
+          ev
+        end)
+
+      {:ok, _view, html} = live(conn, ~p"/r/meu-evento")
+      assert html =~ "<title"
+      assert html =~ "Meu Evento 7/18 (3 na reserva)"
+    end
+
+    test "shows [Cheio] when the main list is full", %{conn: conn} do
+      {:ok, event} =
+        Rolezinho.Events.create(%{
+          "title" => "Outro Evento",
+          "slug" => "outro-evento",
+          "main_size" => "2",
+          "wait_size" => "5"
+        })
+
+      {:ok, event} = Rolezinho.Events.add_to_main(event, "A")
+      {:ok, event} = Rolezinho.Events.add_to_main(event, "B")
+
+      _event =
+        Enum.reduce(1..5, event, fn i, ev ->
+          {:ok, ev} = Rolezinho.Events.add_to_wait(ev, "W#{i}")
+          ev
+        end)
+
+      {:ok, _view, html} = live(conn, ~p"/r/outro-evento")
+      assert html =~ "Outro Evento [Cheio] (5 na reserva)"
+    end
+
+    test "omits the reserve part when it is empty", %{conn: conn} do
+      {:ok, _event} =
+        Rolezinho.Events.create(%{
+          "title" => "Sem Reserva",
+          "slug" => "sem-reserva-title",
+          "main_size" => "3",
+          "wait_size" => "0"
+        })
+
+      {:ok, _view, html} = live(conn, ~p"/r/sem-reserva-title")
+      assert html =~ "Sem Reserva 0/3"
+      refute html =~ "na reserva"
+    end
+  end
+
   describe "pix panel" do
     test "renders a QR code and phone when the description has a Pix key", %{conn: conn} do
       {:ok, _} =

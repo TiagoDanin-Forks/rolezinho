@@ -26,7 +26,6 @@ defmodule RolezinhoWeb.EventLive do
 
         {:ok,
          socket
-         |> assign(:page_title, event.title)
          |> assign_event(event)
          |> assign(:new_main_name, "")
          |> assign(:new_wait_name, "")
@@ -43,6 +42,36 @@ defmodule RolezinhoWeb.EventLive do
     |> assign(:event_url, url)
     |> assign(:shareable_text, Event.to_text(event, url))
     |> assign(:pix, Pix.detect(event.header))
+    |> assign(:page_title, page_title_for(event))
+  end
+
+  # Page title patterns:
+  #
+  #   "Vôlei 7/18 (3 na reserva)"      - general case
+  #   "Vôlei 7/18"                     - when the wait list is empty/disabled
+  #   "Vôlei [Cheio] (5 na reserva)"   - when the main list is full
+  #   "Vôlei [Cheio]"                  - full and no reserve
+  defp page_title_for(%Event{} = event) do
+    filled = filled_count(event.main_list)
+    capacity = event.main_capacity
+
+    status =
+      if capacity > 0 and filled >= capacity do
+        "[Cheio]"
+      else
+        "#{filled}/#{capacity}"
+      end
+
+    wait_count = length(event.wait_list)
+
+    reserve =
+      if event.wait_enabled and wait_count > 0 do
+        " (#{wait_count} na reserva)"
+      else
+        ""
+      end
+
+    "#{event.title} #{status}#{reserve}"
   end
 
   # ---------- PubSub ----------
