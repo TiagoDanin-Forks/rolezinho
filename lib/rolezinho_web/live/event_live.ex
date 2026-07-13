@@ -273,7 +273,7 @@ defmodule RolezinhoWeb.EventLive do
 
           <%= cond do %>
             <% Meta.any?(@meta) and @pix -> %>
-              <div class="grid sm:grid-cols-2 gap-4 items-stretch">
+              <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
                 <.when_where_panel
                   meta={@meta}
                   slug={@event.slug}
@@ -695,7 +695,7 @@ defmodule RolezinhoWeb.EventLive do
 
   defp when_where_panel(assigns) do
     ~H"""
-    <section class="rounded-2xl border border-primary/20 bg-primary/5 p-4 sm:p-5 space-y-3">
+    <section class="rounded-2xl border border-primary/20 bg-primary/5 p-4 sm:p-5 space-y-3 lg:col-span-2">
       <div :if={@meta.date || @meta.time} class="flex items-start gap-3">
         <.icon name="hero-calendar" class="size-5 text-primary shrink-0 mt-0.5" />
         <div class="min-w-0">
@@ -746,22 +746,23 @@ defmodule RolezinhoWeb.EventLive do
       "flex flex-col items-center gap-2 rounded-2xl border border-base-300 bg-base-100 p-3",
       if(@full_width, do: "w-full h-full justify-center", else: "shrink-0 sm:w-52")
     ]}>
-      <span class="text-xs font-semibold uppercase tracking-wide text-primary">Pix</span>
       <div class="bg-white rounded-lg p-2 w-full flex items-center justify-center">
         {raw(@svg)}
       </div>
-      <p class="text-sm font-mono tabular-nums text-center break-all">{@pix.display}</p>
-      <button
-        type="button"
-        id={"copy-pix-" <> String.replace(@pix.raw, ~r/\D/, "")}
-        phx-hook=".CopyText"
-        data-text={@pix.raw}
-        data-copied-label="Copiado!"
-        class="btn btn-xs btn-outline w-full"
-        title="Copiar chave Pix"
-      >
-        <.icon name="hero-clipboard" class="size-3.5" /> Copiar chave
-      </button>
+      <div class="flex items-center gap-2">
+        <p class="text-sm font-mono tabular-nums text-center break-all">{@pix.display}</p>
+        <button
+          type="button"
+          id={"copy-pix-" <> String.replace(@pix.raw, ~r/\D/, "")}
+          phx-hook=".CopyText"
+          data-text={@pix.raw}
+          data-copied-label="Copiado!"
+          class="btn btn-xs btn-outline"
+          title="Copiar chave Pix"
+        >
+          <.icon name="hero-clipboard" class="size-3.5" /> Copiar
+        </button>
+      </div>
     </aside>
     """
   end
