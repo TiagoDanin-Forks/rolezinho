@@ -1,7 +1,6 @@
 import Config
 
 config :rolezinho,
-  data_path: "tmp/data_test",
   admin_password: "test-admin-password"
 
 # Configure your database

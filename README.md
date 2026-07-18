@@ -1,112 +1,99 @@
 # Rolezinho
 
-Uma aplicação Phoenix para organizar eventos "rolezinhos" (encontros informais).
-Cada rolezinho vive em `/r/<slug>` e é editável pelo admin com um formulário estruturado
-e/ou um editor de markdown livre. Os dados agora vivem em **Postgres**.
+Uma aplicação Phoenix LiveView para organizar rolezinhos (encontros informais).
+Cada evento vive em `/r/<slug>`, é editável por um admin, e mostra widget de
+data/local, QR Code Pix e listas de presença ao vivo.
 
-Em produção, o app roda em `roles.lubien.me`.
+Em produção, o app roda em [roles.lubien.me](https://roles.lubien.me).
 
-## Arquitetura
-
-- **Banco de dados**: PostgreSQL, tabela `events` com colunas escalares + duas
-  colunas JSONB `main_list` / `wait_list` (embeds Ecto).
-- **Status** de cada evento: `:active` (aparece na home), `:hidden` (só via link
-  direto) ou `:done` (só admin acessa).
-- **Autenticação de admin**: senha única em `ADMIN_PASSWORD` (padrão em dev:
-  `admin`).
-- **Header do evento** guarda metadata canônica no topo, em texto legível:
-
-  ```
-  Local: Rua Caripunas
-  Data: 15/07/2026
-  Horário: 19:00 (BRT)
-
-  Valor: 15
-  Pix: 91984933238
-
-  *PAGAMENTO APENAS NO PIX*
-  ```
-
-  A UI detecta esses campos e desenha um widget "Quando & onde" com botões pro
-  Google Calendar e download `.ics` (Apple/Outlook/etc). A chave Pix vira um QR
-  Code BR Code padrão.
-
-## Rodando
+## Rodando localmente
 
 ```sh
-mix setup                 # instala deps, cria DB, migra e builda assets
-mix phx.server            # sobe em http://localhost:4000
-mix test                  # roda a suíte de testes (Ecto Sandbox)
-mix precommit             # compila, formata e roda os testes
+mix setup         # instala deps, cria DB, migra e builda assets
+mix phx.server    # http://localhost:4000
+mix test          # roda a suíte de testes
+mix precommit     # compila, formata e roda os testes
 ```
 
-Variáveis de ambiente úteis:
+Depende de PostgreSQL rodando em `localhost:5432` com user/senha `postgres`.
+
+## Hospedando você mesmo
+
+O app é uma aplicação Phoenix padrão. Qualquer host que rode releases OTP +
+Postgres serve. Abaixo, o caminho pelo [Fly.io](https://fly.io) (o mesmo que
+`roles.lubien.me` usa).
+
+### Pré-requisitos
+
+- Conta no Fly.io e o CLI [`flyctl`](https://fly.io/docs/hands-on/install-flyctl/)
+  instalado.
+- Um fork/clone deste repositório.
+
+### 1. Criar o app e o Postgres
+
+```sh
+fly launch --no-deploy         # aceita o fly.toml existente; escolha um nome único
+fly postgres create            # crie uma instância pequena na mesma região
+fly postgres attach <db-name>  # seta DATABASE_URL no app automaticamente
+```
+
+### 2. Configurar segredos
+
+```sh
+fly secrets set \
+  SECRET_KEY_BASE=$(mix phx.gen.secret) \
+  ADMIN_PASSWORD=<uma-senha-forte>
+```
+
+Ajuste `PHX_HOST` no `fly.toml` para o domínio que você vai usar (ou deixe o
+`*.fly.dev` que veio do `fly launch`).
+
+### 3. Deploy
+
+```sh
+fly deploy
+```
+
+O release inclui `bin/migrate`, então o `release_command` no `fly.toml` roda
+as migrações automaticamente em cada deploy.
+
+### 4. (Opcional) 2 máquinas com cluster
+
+Recomendado para não ter downtime durante deploys:
+
+```sh
+fly scale count 2
+```
+
+O `fly.toml` já tem `DNS_CLUSTER_QUERY=<app>.internal`, então as máquinas se
+conectam num cluster BEAM e o PubSub do LiveView funciona entre elas.
+
+### Domínio próprio
+
+```sh
+fly certs create seu-dominio.com
+# aponte um A/AAAA/CNAME no seu DNS conforme instrução do fly
+```
+
+Depois edite `PHX_HOST` no `fly.toml` para o novo domínio e rode `fly deploy`
+de novo.
+
+### Variáveis de ambiente
 
 | Variável | Descrição |
 | --- | --- |
-| `DATABASE_URL` | Conexão do Postgres em produção (`ecto://USER:PASS@HOST/DB`). |
-| `ADMIN_PASSWORD` | Senha do admin. Padrão em dev: `admin`. |
-| `PHX_HOST`, `SECRET_KEY_BASE`, `PORT` | Configuração padrão do Phoenix. |
-| `DATA_PATH` | (Somente para a task de importação) diretório com arquivos `.md` a serem importados. Padrão: `priv/data`. |
-
-## Importando os `.md` antigos
-
-Se você estava usando a versão anterior baseada em arquivos, use o script de
-migração para trazer tudo pro banco.
-
-### Em dev (com Mix)
-
-```sh
-mix rolezinho.import --dry-run                       # preview
-mix rolezinho.import                                 # importa $DATA_PATH
-mix rolezinho.import --data-path /caminho/pros/mds   # diretório customizado
-mix rolezinho.import --overwrite                     # substitui existentes
-```
-
-### Em produção (release compilada)
-
-O release inclui um binário `bin/import` (e um `bin/migrate` de brinde) além
-do `bin/rolezinho` padrão. Roda dentro do release, sem precisar de Mix:
-
-```sh
-# Rodar migrações (primeira vez / novo deploy):
-./bin/migrate
-
-# Preview:
-./bin/import --data-path /data --dry-run
-
-# Importar de verdade:
-./bin/import --data-path /data
-
-# Sobrescrever slugs já existentes:
-./bin/import --data-path /data --overwrite
-```
-
-`--data-path` pode ser omitido se a env `DATA_PATH` estiver setada. O binário
-lê o `DATABASE_URL` do ambiente do release, então funciona no Fly com o
-volume já montado apontando pros `.md`.
-
-Layout esperado:
-
-```
-DATA_PATH/<slug>.md         -> importado como :active
-DATA_PATH/hidden/<slug>.md  -> importado como :hidden
-DATA_PATH/done/<slug>.md    -> importado como :done
-```
-
-Ambos os caminhos são **idempotentes**: rodando de novo, arquivos com slugs
-já presentes no banco são pulados a menos que você passe `--overwrite`.
+| `DATABASE_URL` | Conexão do Postgres (`ecto://USER:PASS@HOST/DB`). |
+| `ADMIN_PASSWORD` | Senha do admin. |
+| `SECRET_KEY_BASE` | Chave usada pra assinar cookies/sessão. |
+| `PHX_HOST` | Domínio público. |
+| `PORT` | Porta HTTP (o Fly usa 8080). |
+| `DNS_CLUSTER_QUERY` | Domínio pra descoberta de nós (`app.internal` no Fly). |
+| `POOL_SIZE` | Pool de conexões Postgres. Padrão 10. |
 
 ## URLs
 
 - `/` — home com os rolezinhos ativos.
-- `/r/<slug>` — página do rolezinho (todo mundo pode entrar/sair da reserva,
-  promover, copiar/compartilhar).
-- `/r/<slug>.txt` — versão em texto puro pra copiar (com URL no topo).
-- `/r/<slug>/calendar.ics` — arquivo iCalendar pra importar no Apple Calendar,
-  Outlook, Fantastical, etc.
-- `/admin/login` — login do admin.
-- `/admin` — painel com todos os rolezinhos (ativos, ocultos e concluídos).
-- `/admin/new` — formulário para criar um rolezinho.
-- `/admin/r/<slug>/edit` — editor de texto raw + slug + local/data/horário +
-  status.
+- `/r/<slug>` — página do rolezinho.
+- `/r/<slug>.txt` — versão em texto puro.
+- `/r/<slug>/calendar.ics` — arquivo iCalendar.
+- `/admin/login` · `/admin` · `/admin/new` · `/admin/r/<slug>/edit`.

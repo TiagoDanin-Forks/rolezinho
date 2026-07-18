@@ -23,10 +23,6 @@ end
 config :rolezinho, RolezinhoWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
-if data_path = System.get_env("DATA_PATH") do
-  config :rolezinho, :data_path, data_path
-end
-
 if admin_password = System.get_env("ADMIN_PASSWORD") do
   config :rolezinho, :admin_password, admin_password
 end

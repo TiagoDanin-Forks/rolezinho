@@ -435,37 +435,6 @@ defmodule Rolezinho.Events do
 
   def resize_main(%Event{} = event, new_size), do: save(Event.resize_main(event, new_size))
 
-  # ---------- Import helper ----------
-
-  @doc """
-  Inserts an event from a parsed markdown blob at the given slug/status. Used
-  by the `mix rolezinho.import` task. Returns `{:ok, event}` or
-  `{:error, changeset_errors}`.
-  """
-  def insert_imported(slug, status, %{} = parsed) when status in @statuses do
-    attrs =
-      %{
-        slug: slug,
-        status: status,
-        title: parsed.title,
-        header: parsed.header,
-        footer: parsed.footer,
-        main_capacity: parsed.main_capacity,
-        wait_enabled: parsed.wait_enabled,
-        wait_intro: parsed.wait_intro,
-        main_list: Enum.map(parsed.main_list, &Map.from_struct/1),
-        wait_list: Enum.map(parsed.wait_list, &Map.from_struct/1)
-      }
-
-    %Event{}
-    |> Event.changeset(attrs)
-    |> Repo.insert()
-    |> case do
-      {:ok, event} -> {:ok, event}
-      {:error, changeset} -> {:error, changeset_errors(changeset)}
-    end
-  end
-
   # ---------- Broadcasts ----------
 
   defp broadcast(%Event{} = event, kind \\ :updated) do
