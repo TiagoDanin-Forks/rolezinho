@@ -92,21 +92,23 @@ defmodule RolezinhoWeb.AdminHomeLive do
           </div>
           <div class="flex items-center gap-2 shrink-0">
             <.link navigate={~p"/r/#{event.slug}"} class="btn btn-sm btn-ghost">Abrir</.link>
-            <button
-              type="button"
-              phx-click="clone"
-              phx-value-slug={event.slug}
-              class="btn btn-sm btn-outline"
-              title="Clonar"
-            >
-              <.icon name="hero-document-duplicate" class="size-4" /> Clonar
-            </button>
             <.link
               navigate={~p"/admin/r/#{event.slug}/edit"}
               class="btn btn-sm btn-primary"
             >
               Editar
             </.link>
+            <span class="h-6 w-px bg-base-300 mx-1" aria-hidden="true" />
+            <button
+              type="button"
+              phx-click="clone"
+              phx-value-slug={event.slug}
+              data-confirm={"Criar uma cópia de \"" <> event.title <> "\"?"}
+              class="btn btn-sm btn-outline"
+              title="Clonar"
+            >
+              <.icon name="hero-document-duplicate" class="size-4" /> Clonar
+            </button>
           </div>
         </li>
       </ul>

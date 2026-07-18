@@ -479,15 +479,6 @@ defmodule RolezinhoWeb.EventLive do
           >
             <.icon name="hero-document-text" class="size-4" /> Texto puro
           </a>
-          <button
-            :if={@current_admin?}
-            type="button"
-            phx-click="clone"
-            class="btn btn-sm btn-outline"
-            title="Duplicar este rolezinho para editar em cima"
-          >
-            <.icon name="hero-document-duplicate" class="size-4" /> Clonar
-          </button>
           <.link
             :if={@current_admin?}
             navigate={~p"/admin/r/#{@event.slug}/edit"}
@@ -495,6 +486,21 @@ defmodule RolezinhoWeb.EventLive do
           >
             <.icon name="hero-pencil-square" class="size-4" /> Editar
           </.link>
+        </div>
+
+        <div
+          :if={@current_admin?}
+          class="flex flex-wrap gap-2 pt-2 border-t border-base-300"
+        >
+          <button
+            type="button"
+            phx-click="clone"
+            data-confirm="Criar uma cópia deste rolezinho?"
+            class="btn btn-sm btn-outline"
+            title="Duplicar este rolezinho para editar em cima"
+          >
+            <.icon name="hero-document-duplicate" class="size-4" /> Clonar
+          </button>
         </div>
 
         <label
