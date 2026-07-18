@@ -1,45 +1,43 @@
 defmodule Rolezinho.Event do
   @moduledoc """
-  Represents a Rolezinho (event).
+  Represents a rolezinho (event), persisted as a row in the `events` table.
 
-  Parses and serializes the markdown file that persists the event.
-  The parser is intentionally forgiving so admins can freely edit the raw
-  markdown while the app still recognizes the attendee/wait lists.
-
-  File layout produced by `render/1`:
-
-      # TITLE
-
-      <free-form header text>
-
-      1- Person ✅
-      2- Other
-      ...
-      N-
-
-      Lista de reserva
-      1- ...
-
-      <free-form footer text>
+  The struct also provides pure functions to render/share the event as text
+  and to manipulate the attendee lists. All mutation functions return a new
+  `%Event{}` struct without touching the database — the `Rolezinho.Events`
+  context is what persists changes.
   """
+
+  use Ecto.Schema
+  import Ecto.Changeset
 
   alias Rolezinho.Event
   alias Rolezinho.Event.Attendee
 
-  defstruct slug: nil,
-            status: :active,
-            title: "",
-            header: "",
-            main_capacity: 0,
-            main_list: [],
-            wait_enabled: false,
-            wait_intro: "Lista de reserva",
-            wait_list: [],
-            footer: ""
+  @statuses [:active, :hidden, :done]
+
+  @slug_regex ~r/^[a-z0-9](?:[a-z0-9-]{0,60}[a-z0-9])?$/
+
+  schema "events" do
+    field :slug, :string
+    field :title, :string, default: ""
+    field :status, Ecto.Enum, values: @statuses, default: :active
+    field :header, :string, default: ""
+    field :footer, :string, default: ""
+    field :main_capacity, :integer, default: 0
+    field :wait_enabled, :boolean, default: false
+    field :wait_intro, :string, default: "Lista de reserva"
+
+    embeds_many :main_list, Attendee, on_replace: :delete
+    embeds_many :wait_list, Attendee, on_replace: :delete
+
+    timestamps(type: :utc_datetime)
+  end
 
   @type status :: :active | :hidden | :done
 
   @type t :: %__MODULE__{
+          id: integer() | nil,
           slug: String.t() | nil,
           status: status(),
           title: String.t(),
@@ -52,56 +50,42 @@ defmodule Rolezinho.Event do
           footer: String.t()
         }
 
-  @paid_marks ["✅️", "✅"]
-  @item_regex ~r/^\s*(\d+)\s*[-.\)]\s*(.*)$/u
-
   @doc """
-  Parses a markdown string into an %Event{}.
+  Full changeset used by the `Rolezinho.Events` context to persist events.
+  Callers pass a plain map of attributes; embeds are cast recursively.
   """
-  @spec parse(String.t(), keyword()) :: t()
-  def parse(content, opts \\ []) when is_binary(content) do
-    slug = Keyword.get(opts, :slug)
-    status = Keyword.get(opts, :status, :active)
-
-    lines = String.split(content, ~r/\r?\n/)
-
-    {title, rest} = extract_title(lines)
-    {header_lines, list1_lines, between_lines, list2_lines, footer_lines} = split_sections(rest)
-
-    {main_capacity, main_list} = parse_list(list1_lines)
-    wait_enabled = list2_lines != []
-    {_wait_capacity, wait_list_padded} = parse_list(list2_lines)
-
-    # The wait list is conceptually infinite; drop empty trailing slots and
-    # ignore empty in-between slots. Only real attendees are kept.
-    wait_list =
-      Enum.filter(wait_list_padded, fn %Attendee{name: n} -> String.trim(n) != "" end)
-
-    wait_intro =
-      between_lines
-      |> Enum.join("\n")
-      |> String.trim()
-      |> case do
-        "" -> "Lista de reserva"
-        other -> other
-      end
-
-    %Event{
-      slug: slug,
-      status: status,
-      title: title,
-      header: header_lines |> Enum.join("\n") |> String.trim("\n"),
-      main_capacity: main_capacity,
-      main_list: main_list,
-      wait_enabled: wait_enabled,
-      wait_intro: wait_intro,
-      wait_list: wait_list,
-      footer: footer_lines |> Enum.join("\n") |> String.trim("\n")
-    }
+  def changeset(%Event{} = event, attrs) do
+    event
+    |> cast(attrs, [
+      :slug,
+      :title,
+      :status,
+      :header,
+      :footer,
+      :main_capacity,
+      :wait_enabled,
+      :wait_intro
+    ])
+    |> cast_embed(:main_list, with: &Attendee.changeset/2)
+    |> cast_embed(:wait_list, with: &Attendee.changeset/2)
+    |> validate_required([:slug, :title, :status])
+    |> update_change(:slug, &String.downcase(String.trim(&1 || "")))
+    |> validate_format(:slug, @slug_regex, message: "use letras minúsculas, números e traços")
+    |> validate_number(:main_capacity, greater_than_or_equal_to: 0)
+    |> unique_constraint(:slug, message: "já está em uso")
   end
 
+  @doc "Valid values for the `status` enum."
+  def statuses, do: @statuses
+
+  @doc "Regex used to validate slug values."
+  def slug_regex, do: @slug_regex
+
+  # ---------- Text renderers ----------
+
   @doc """
-  Serializes an %Event{} back into markdown.
+  Serializes an %Event{} into the pretty markdown form that used to live on disk.
+  Still used as the initial value for the raw editor and for exports.
   """
   @spec render(t()) :: String.t()
   def render(%Event{} = event) do
@@ -150,8 +134,6 @@ defmodule Rolezinho.Event do
       still room. Nothing is added when the main list is full.
     * `Entrar na espera: <url>` after the wait list (always present when the
       wait list is enabled, since it is infinite).
-
-  The persisted markdown file is unaffected by this — see `render/1`.
   """
   @spec to_text(t(), String.t() | nil) :: String.t()
   def to_text(%Event{} = event, url \\ nil) do
@@ -239,22 +221,18 @@ defmodule Rolezinho.Event do
       else: "Entrar na espera"
   end
 
-  # ---------- List operations ----------
+  # ---------- Pure list operations ----------
 
-  @doc """
-  Ensures the main list has exactly `capacity` slots (padding with empty).
-  """
+  @doc "Ensures the main list has exactly `capacity` slots (padding with empty)."
   @spec normalize_main(t()) :: t()
   def normalize_main(%Event{} = event) do
     filled = compact_main(event.main_list)
     capacity = max(event.main_capacity, length(filled))
     padded = pad(filled, capacity)
-    %Event{event | main_capacity: capacity, main_list: padded}
+    %{event | main_capacity: capacity, main_list: padded}
   end
 
-  @doc """
-  Adds an attendee to the first empty main slot. Returns {:ok, event} or {:error, reason}.
-  """
+  @doc "Adds an attendee to the first empty main slot."
   @spec add_to_main(t(), String.t()) :: {:ok, t()} | {:error, atom()}
   def add_to_main(%Event{} = event, name) do
     name = clean_name(name)
@@ -268,7 +246,7 @@ defmodule Rolezinho.Event do
 
       true ->
         list = replace_first_empty(event.main_list, %Attendee{name: name, paid: false})
-        {:ok, %Event{event | main_list: list}}
+        {:ok, %{event | main_list: list}}
     end
   end
 
@@ -285,7 +263,7 @@ defmodule Rolezinho.Event do
         {:error, :wait_disabled}
 
       true ->
-        {:ok, %Event{event | wait_list: event.wait_list ++ [%Attendee{name: name, paid: false}]}}
+        {:ok, %{event | wait_list: event.wait_list ++ [%Attendee{name: name, paid: false}]}}
     end
   end
 
@@ -298,27 +276,27 @@ defmodule Rolezinho.Event do
       |> Kernel.++([%Attendee{}])
       |> Enum.take(event.main_capacity)
 
-    %Event{event | main_list: compact_then_pad(new_list, event.main_capacity)}
+    %{event | main_list: compact_then_pad(new_list, event.main_capacity)}
   end
 
   @doc "Removes an attendee from the wait list (1-based)."
   @spec remove_wait(t(), pos_integer()) :: t()
   def remove_wait(%Event{} = event, index) do
-    %Event{event | wait_list: List.delete_at(event.wait_list, index - 1)}
+    %{event | wait_list: List.delete_at(event.wait_list, index - 1)}
   end
 
   @doc "Toggles the paid flag on a main list attendee (1-based)."
   @spec toggle_paid_main(t(), pos_integer()) :: t()
   def toggle_paid_main(%Event{} = event, index) do
     list = update_at(event.main_list, index - 1, fn att -> %{att | paid: !att.paid} end)
-    %Event{event | main_list: list}
+    %{event | main_list: list}
   end
 
   @doc "Toggles the paid flag on a wait list attendee."
   @spec toggle_paid_wait(t(), pos_integer()) :: t()
   def toggle_paid_wait(%Event{} = event, index) do
     list = update_at(event.wait_list, index - 1, fn att -> %{att | paid: !att.paid} end)
-    %Event{event | wait_list: list}
+    %{event | wait_list: list}
   end
 
   @doc "Renames a main list attendee."
@@ -326,7 +304,7 @@ defmodule Rolezinho.Event do
   def rename_main(%Event{} = event, index, name) do
     name = clean_name(name)
     list = update_at(event.main_list, index - 1, fn att -> %{att | name: name} end)
-    %Event{event | main_list: list}
+    %{event | main_list: list}
   end
 
   @doc "Renames a wait list attendee."
@@ -334,7 +312,7 @@ defmodule Rolezinho.Event do
   def rename_wait(%Event{} = event, index, name) do
     name = clean_name(name)
     list = update_at(event.wait_list, index - 1, fn att -> %{att | name: name} end)
-    %Event{event | wait_list: list}
+    %{event | wait_list: list}
   end
 
   @doc "Promotes the wait list entry at `index` (1-based) to the first empty main slot."
@@ -351,7 +329,7 @@ defmodule Rolezinho.Event do
         %Attendee{} = person = Enum.at(event.wait_list, index - 1)
         new_wait = List.delete_at(event.wait_list, index - 1)
         new_main = replace_first_empty(event.main_list, person)
-        {:ok, %Event{event | main_list: new_main, wait_list: new_wait}}
+        {:ok, %{event | main_list: new_main, wait_list: new_wait}}
     end
   end
 
@@ -363,7 +341,7 @@ defmodule Rolezinho.Event do
   def resize_main(%Event{} = event, requested) when is_integer(requested) do
     filled = compact_main(event.main_list)
     new_capacity = max(requested, length(filled))
-    %Event{event | main_capacity: new_capacity, main_list: pad(filled, new_capacity)}
+    %{event | main_capacity: new_capacity, main_list: pad(filled, new_capacity)}
   end
 
   @doc "How many main slots are still empty."
@@ -376,104 +354,31 @@ defmodule Rolezinho.Event do
   @spec main_full?(t()) :: boolean()
   def main_full?(%Event{} = event), do: main_free_slots(event) <= 0
 
-  # ---------- Internal helpers ----------
+  # ---------- Serialization helpers ----------
 
-  defp extract_title(lines) do
-    {title, rest} =
-      case Enum.split_while(lines, fn line -> not String.match?(line, ~r/^\s*#\s+/u) end) do
-        {before, [title_line | rest]} ->
-          title =
-            title_line
-            |> String.replace(~r/^\s*#+\s*/u, "")
-            |> String.trim()
-
-          # Anything before the title heading is discarded (usually just blank lines).
-          _ = before
-          {title, rest}
-
-        {all, []} ->
-          {"", all}
-      end
-
-    {title, drop_leading_blanks(rest)}
+  @doc """
+  Converts the attendee lists in an event struct into plain maps, suitable for
+  passing back into `changeset/2` as attrs.
+  """
+  @spec attrs_from_struct(t()) :: map()
+  def attrs_from_struct(%Event{} = event) do
+    %{
+      slug: event.slug,
+      title: event.title,
+      status: event.status,
+      header: event.header,
+      footer: event.footer,
+      main_capacity: event.main_capacity,
+      wait_enabled: event.wait_enabled,
+      wait_intro: event.wait_intro,
+      main_list: Enum.map(event.main_list, &attendee_to_map/1),
+      wait_list: Enum.map(event.wait_list, &attendee_to_map/1)
+    }
   end
 
-  defp drop_leading_blanks(lines) do
-    Enum.drop_while(lines, &(String.trim(&1) == ""))
-  end
+  defp attendee_to_map(%Attendee{name: n, paid: p}), do: %{name: n, paid: p}
 
-  defp split_sections(lines) do
-    {header, after_header} =
-      Enum.split_while(lines, fn line -> not is_list_item?(line) end)
-
-    {list1, after_list1} = take_list(after_header)
-
-    {between, after_between} =
-      Enum.split_while(after_list1, fn line -> not is_list_item?(line) end)
-
-    case take_list(after_between) do
-      {[], _} ->
-        {trim_edges(header), list1, [], [], trim_edges(after_list1)}
-
-      {list2, footer} ->
-        {trim_edges(header), list1, trim_edges(between), list2, trim_edges(footer)}
-    end
-  end
-
-  defp take_list(lines), do: Enum.split_while(lines, &is_list_item?/1)
-
-  defp is_list_item?(line), do: String.match?(line, @item_regex)
-
-  defp trim_edges(lines) do
-    lines
-    |> Enum.drop_while(&(String.trim(&1) == ""))
-    |> Enum.reverse()
-    |> Enum.drop_while(&(String.trim(&1) == ""))
-    |> Enum.reverse()
-  end
-
-  defp parse_list([]), do: {0, []}
-
-  defp parse_list(lines) do
-    parsed =
-      Enum.map(lines, fn line ->
-        [_, num_str, rest] = Regex.run(@item_regex, line)
-        {String.to_integer(num_str), parse_attendee(rest)}
-      end)
-
-    capacity =
-      parsed
-      |> Enum.map(&elem(&1, 0))
-      |> Enum.max(fn -> 0 end)
-      |> max(length(parsed))
-
-    by_index =
-      parsed
-      |> Enum.map(fn {n, att} -> {n, att} end)
-      |> Enum.into(%{})
-
-    list =
-      for i <- 1..capacity do
-        Map.get(by_index, i, %Attendee{})
-      end
-
-    {capacity, list}
-  end
-
-  defp parse_attendee(text) do
-    text = String.trim(text || "")
-
-    {text, paid} =
-      Enum.reduce(@paid_marks, {text, false}, fn mark, {acc, paid?} ->
-        if String.contains?(acc, mark) do
-          {String.replace(acc, mark, ""), true}
-        else
-          {acc, paid?}
-        end
-      end)
-
-    %Attendee{name: String.trim(text), paid: paid}
-  end
+  # ---------- Rendering helpers ----------
 
   defp render_list(list, capacity) do
     slots = pad(compact_main(list), capacity)
@@ -484,11 +389,7 @@ defmodule Rolezinho.Event do
     |> Enum.join("\n")
   end
 
-  defp render_wait_list([]) do
-    # Emit a single empty slot so the file still contains a second numbered
-    # list and re-parsing preserves `wait_enabled: true`.
-    "1-"
-  end
+  defp render_wait_list([]), do: "1-"
 
   defp render_wait_list(list) do
     list

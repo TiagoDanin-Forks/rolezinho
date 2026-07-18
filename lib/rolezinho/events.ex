@@ -1,54 +1,33 @@
 defmodule Rolezinho.Events do
   @moduledoc """
-  Context for managing rolezinhos (events) persisted as markdown files.
+  Context for managing rolezinhos, backed by Postgres.
 
-  Files live under `DATA_PATH` (see config):
-
-    * `DATA_PATH/<slug>.md`         — active events
-    * `DATA_PATH/hidden/<slug>.md`  — hidden events (not on home page)
-    * `DATA_PATH/done/<slug>.md`    — finished events (not publicly listable)
-
-  Changes are broadcast on the `event:<slug>` PubSub topic so multiple
-  connected viewers stay in sync.
+  Every persisting function broadcasts on the `event:<slug>` PubSub topic so
+  connected LiveViews stay in sync, plus a `events:home` topic for the home
+  page listing.
   """
 
+  import Ecto.Query, warn: false
+
+  alias Ecto.Multi
   alias Rolezinho.Event
   alias Rolezinho.Event.Meta
+  alias Rolezinho.Event.Parser
+  alias Rolezinho.Repo
   alias Phoenix.PubSub
 
   @pubsub Rolezinho.PubSub
 
-  @slug_regex ~r/^[a-z0-9](?:[a-z0-9-]{0,60}[a-z0-9])?$/
-
   @statuses [:active, :hidden, :done]
-
-  # ---------- Storage layout ----------
-
-  @doc "Base directory where markdown files live."
-  def data_path do
-    Application.get_env(:rolezinho, :data_path, "priv/data")
-  end
-
-  def status_dir(:active), do: data_path()
-  def status_dir(:hidden), do: Path.join(data_path(), "hidden")
-  def status_dir(:done), do: Path.join(data_path(), "done")
-
-  def file_path(slug, status) when status in @statuses do
-    Path.join(status_dir(status), slug <> ".md")
-  end
 
   @doc "PubSub topic for a specific slug."
   def topic(slug), do: "event:" <> slug
 
   @doc "Subscribes the caller to updates for a given slug."
-  def subscribe(slug) do
-    PubSub.subscribe(@pubsub, topic(slug))
-  end
+  def subscribe(slug), do: PubSub.subscribe(@pubsub, topic(slug))
 
   @doc "Subscribes the caller to the home-page updates."
-  def subscribe_home do
-    PubSub.subscribe(@pubsub, "events:home")
-  end
+  def subscribe_home, do: PubSub.subscribe(@pubsub, "events:home")
 
   # ---------- Listing ----------
 
@@ -62,79 +41,56 @@ defmodule Rolezinho.Events do
   def list_done, do: do_list(:done)
 
   defp do_list(status) do
-    status
-    |> status_dir()
-    |> File.ls()
-    |> case do
-      {:ok, files} -> files
-      {:error, _} -> []
-    end
-    |> Enum.filter(&String.ends_with?(&1, ".md"))
-    |> Enum.map(fn file ->
-      slug = String.trim_trailing(file, ".md")
-      load(slug, status)
-    end)
-    |> Enum.reject(&is_nil/1)
-    |> Enum.sort_by(& &1.title)
+    from(e in Event, where: e.status == ^status, order_by: [asc: e.title])
+    |> Repo.all()
   end
 
   # ---------- Fetching ----------
 
   @doc """
-  Loads an event by slug in the given status. Returns nil if not found.
+  Finds an event by slug. Returns nil if not found.
+
+    * `visibility: :public` -> active + hidden (default: excludes :done)
+    * `visibility: :any`    -> any status
+    * `visibility: :active` -> only active
   """
-  def load(slug, status) when status in @statuses do
-    path = file_path(slug, status)
-
-    with true <- File.exists?(path),
-         {:ok, content} <- File.read(path) do
-      Event.parse(content, slug: slug, status: status)
-    else
-      _ -> nil
-    end
-  end
-
-  @doc """
-  Finds an event by slug across active + hidden + done. Returns nil if not found.
-
-  Use `visibility: :public` to exclude done events.
-  """
-  def find(slug, opts \\ []) do
+  def find(slug, opts \\ []) when is_binary(slug) do
     visibility = Keyword.get(opts, :visibility, :any)
 
     statuses =
       case visibility do
         :public -> [:active, :hidden]
-        :any -> [:active, :hidden, :done]
+        :any -> @statuses
         :active -> [:active]
       end
 
-    Enum.find_value(statuses, fn status -> load(slug, status) end)
+    from(e in Event, where: e.slug == ^slug and e.status in ^statuses)
+    |> Repo.one()
   end
 
   @doc "Returns true when a slug already exists in any status."
   def slug_taken?(slug) do
-    Enum.any?(@statuses, &File.exists?(file_path(slug, &1)))
+    from(e in Event, where: e.slug == ^slug, select: 1)
+    |> Repo.exists?()
   end
 
   # ---------- Creation ----------
 
   @doc """
-  Creates a new event from admin form params. Returns `{:ok, event}` or `{:error, changeset_like_map}`.
+  Creates a new event from admin form params.
 
-  Expected keys (strings): "title", "slug", "description", "main_size", "wait_size".
+  Expected keys (strings): `title`, `slug`, `description`, `local`, `date`,
+  `time`, `main_size`, `wait_size`.
   """
   def create(params) when is_map(params) do
     with {:ok, attrs} <- validate_create_params(params) do
-      event = build_event(attrs)
-
-      case write_event(event) do
-        :ok ->
+      case %Event{} |> Event.changeset(build_attrs(attrs)) |> Repo.insert() do
+        {:ok, event} ->
           broadcast_home()
           {:ok, event}
 
-        {:error, reason} ->
-          {:error, %{base: [to_string(reason)]}}
+        {:error, changeset} ->
+          {:error, changeset_errors(changeset)}
       end
     end
   end
@@ -148,16 +104,14 @@ defmodule Rolezinho.Events do
     wait_size_raw = params |> Map.get("wait_size", "3")
 
     errors = %{}
-
-    errors =
-      if title == "", do: put_error(errors, :title, "obrigatório"), else: errors
+    errors = if title == "", do: put_error(errors, :title, "obrigatório"), else: errors
 
     errors =
       cond do
         slug == "" ->
           put_error(errors, :slug, "obrigatório")
 
-        not Regex.match?(@slug_regex, slug) ->
+        not Regex.match?(Event.slug_regex(), slug) ->
           put_error(errors, :slug, "use letras minúsculas, números e traços")
 
         slug_taken?(slug) ->
@@ -169,20 +123,14 @@ defmodule Rolezinho.Events do
 
     {main_size, errors} =
       case parse_int(main_size_raw) do
-        {:ok, n} when n >= 1 and n <= 500 ->
-          {n, errors}
-
-        _ ->
-          {0, put_error(errors, :main_size, "número inteiro entre 1 e 500")}
+        {:ok, n} when n >= 1 and n <= 500 -> {n, errors}
+        _ -> {0, put_error(errors, :main_size, "número inteiro entre 1 e 500")}
       end
 
     {wait_size, errors} =
       case parse_int(wait_size_raw) do
-        {:ok, n} when n >= 0 and n <= 100 ->
-          {n, errors}
-
-        _ ->
-          {0, put_error(errors, :wait_size, "número inteiro entre 0 e 100")}
+        {:ok, n} when n >= 0 and n <= 100 -> {n, errors}
+        _ -> {0, put_error(errors, :wait_size, "número inteiro entre 0 e 100")}
       end
 
     if errors == %{} do
@@ -200,6 +148,23 @@ defmodule Rolezinho.Events do
     end
   end
 
+  defp build_attrs(attrs) do
+    empty_slots = for _ <- 1..attrs.main_size//1, do: %{name: "", paid: false}
+
+    %{
+      slug: attrs.slug,
+      title: attrs.title,
+      status: :active,
+      header: Meta.build_header(attrs.meta, attrs.description),
+      footer: "",
+      main_capacity: attrs.main_size,
+      wait_enabled: attrs.wait_size > 0,
+      wait_intro: "Lista de reserva",
+      main_list: empty_slots,
+      wait_list: []
+    }
+  end
+
   defp parse_int(v) when is_integer(v), do: {:ok, v}
 
   defp parse_int(v) when is_binary(v) do
@@ -215,98 +180,108 @@ defmodule Rolezinho.Events do
     Map.update(errors, key, [message], &[message | &1])
   end
 
-  defp build_event(attrs) do
-    empty = %Rolezinho.Event.Attendee{}
-
-    %Event{
-      slug: attrs.slug,
-      status: :active,
-      title: attrs.title,
-      header: Meta.build_header(attrs.meta, attrs.description),
-      main_capacity: attrs.main_size,
-      main_list: List.duplicate(empty, attrs.main_size),
-      wait_enabled: attrs.wait_size > 0,
-      wait_intro: "Lista de reserva",
-      wait_list: [],
-      footer: ""
-    }
+  defp changeset_errors(changeset) do
+    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+      Regex.replace(~r"%{(\w+)}", msg, fn _, key ->
+        opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
+      end)
+    end)
   end
 
-  # ---------- Mutating operations ----------
+  # ---------- Persistence primitives ----------
 
-  @doc "Rewrites the event's file with the current contents."
+  @doc """
+  Persists an event struct that has been mutated in memory. Uses the passed
+  struct as the original DB state, so callers must not mutate the same struct
+  used to derive it.
+  """
+  @spec save(Event.t()) :: {:ok, Event.t()} | {:error, term()}
   def save(%Event{} = event) do
-    case write_event(event) do
-      :ok ->
-        broadcast(event)
-        broadcast_home()
-        {:ok, event}
+    original =
+      case event.id do
+        nil -> %Event{}
+        id -> Repo.get!(Event, id)
+      end
 
-      {:error, reason} ->
-        {:error, reason}
+    original
+    |> Event.changeset(Event.attrs_from_struct(event))
+    |> Repo.update()
+    |> case do
+      {:ok, saved} ->
+        broadcast(saved)
+        broadcast_home()
+        {:ok, saved}
+
+      {:error, changeset} ->
+        {:error, changeset_errors(changeset)}
     end
   end
 
-  @doc "Replaces the raw markdown content on disk (used by the raw editor)."
+  # ---------- Raw editor ----------
+
+  @doc """
+  Replaces the whole event (title/header/lists/footer) by parsing the raw
+  markdown blob provided by the admin.
+  """
+  @spec save_raw(Event.t(), String.t()) :: {:ok, Event.t()} | {:error, term()}
   def save_raw(%Event{} = event, raw_content) when is_binary(raw_content) do
-    path = file_path(event.slug, event.status)
+    parsed = Parser.parse(raw_content)
 
-    case File.write(path, raw_content) do
-      :ok ->
-        reloaded = load(event.slug, event.status)
-        broadcast(reloaded)
+    attrs =
+      %{
+        slug: event.slug,
+        status: event.status,
+        title: parsed.title,
+        header: parsed.header,
+        footer: parsed.footer,
+        main_capacity: parsed.main_capacity,
+        wait_enabled: parsed.wait_enabled,
+        wait_intro: parsed.wait_intro,
+        main_list: Enum.map(parsed.main_list, &Map.from_struct/1),
+        wait_list: Enum.map(parsed.wait_list, &Map.from_struct/1)
+      }
+
+    event
+    |> Event.changeset(attrs)
+    |> Repo.update()
+    |> case do
+      {:ok, saved} ->
+        broadcast(saved)
         broadcast_home()
-        {:ok, reloaded}
+        {:ok, saved}
 
-      {:error, reason} ->
-        {:error, reason}
+      {:error, changeset} ->
+        {:error, changeset_errors(changeset)}
     end
   end
 
-  @doc "Changes an event's status by moving its file between directories."
+  # ---------- Status changes ----------
+
+  @doc "Changes an event's status."
   def set_status(%Event{} = event, new_status) when new_status in @statuses do
     if new_status == event.status do
       {:ok, event}
     else
-      from = file_path(event.slug, event.status)
-      to = file_path(event.slug, new_status)
-
-      File.mkdir_p!(Path.dirname(to))
-
-      case File.rename(from, to) do
-        :ok ->
-          updated = %Event{event | status: new_status}
+      event
+      |> Ecto.Changeset.change(status: new_status)
+      |> Repo.update()
+      |> case do
+        {:ok, updated} ->
           broadcast(updated)
           broadcast_home()
           {:ok, updated}
 
-        {:error, :exdev} ->
-          # Cross-device rename fallback: copy + remove.
-          with :ok <- File.cp(from, to),
-               :ok <- File.rm(from) do
-            updated = %Event{event | status: new_status}
-            broadcast(updated)
-            broadcast_home()
-            {:ok, updated}
-          end
-
-        {:error, reason} ->
-          {:error, reason}
+        {:error, changeset} ->
+          {:error, changeset_errors(changeset)}
       end
     end
   end
 
   @doc "Permanently deletes an event."
   def delete(%Event{} = event) do
-    path = file_path(event.slug, event.status)
-
-    case File.rm(path) do
-      :ok ->
+    case Repo.delete(event) do
+      {:ok, _} ->
         broadcast(event, :deleted)
-        broadcast_home()
-        :ok
-
-      {:error, :enoent} ->
         broadcast_home()
         :ok
 
@@ -316,100 +291,30 @@ defmodule Rolezinho.Events do
   end
 
   @doc """
-  Creates an exact copy of the given event. The clone's title has " Clonado"
-  appended and its slug ends in `-clonado` (with a numeric suffix if that is
-  already taken).
-
-  All fields — header, list capacity, attendees, footer — are preserved. The
-  clone is created with status `:active`.
+  Clones an event. The clone's title has " Clonado" appended and its slug
+  ends in `-clonado` (with a numeric suffix when that is already taken).
   """
   @spec clone(Event.t()) :: {:ok, Event.t()} | {:error, term()}
   def clone(%Event{} = source) do
     clone_slug = unique_clone_slug(source.slug)
 
-    clone = %Event{
-      slug: clone_slug,
-      status: :active,
-      title: source.title <> " Clonado",
-      header: source.header,
-      main_capacity: source.main_capacity,
-      main_list: source.main_list,
-      wait_enabled: source.wait_enabled,
-      wait_intro: source.wait_intro,
-      wait_list: source.wait_list,
-      footer: source.footer
-    }
+    attrs =
+      source
+      |> Event.attrs_from_struct()
+      |> Map.merge(%{
+        slug: clone_slug,
+        title: source.title <> " Clonado",
+        status: :active
+      })
 
-    case write_event(clone) do
-      :ok ->
+    case %Event{} |> Event.changeset(attrs) |> Repo.insert() do
+      {:ok, clone} ->
         broadcast_home()
         {:ok, clone}
 
-      {:error, reason} ->
-        {:error, reason}
+      {:error, changeset} ->
+        {:error, changeset_errors(changeset)}
     end
-  end
-
-  @doc """
-  Renames an event's slug by moving its markdown file. Keeps the event's
-  current status directory (`active`/`hidden`/`done`).
-
-  Returns:
-    * `{:ok, updated_event}` on success (also when the slug did not change),
-    * `{:error, :invalid_slug}` when the format is invalid,
-    * `{:error, :slug_taken}` when another event already uses the target slug,
-    * `{:error, reason}` on I/O failures.
-  """
-  @spec rename_slug(Event.t(), String.t()) ::
-          {:ok, Event.t()} | {:error, :invalid_slug | :slug_taken | term()}
-  def rename_slug(%Event{} = event, new_slug) when is_binary(new_slug) do
-    new_slug = new_slug |> String.trim() |> String.downcase()
-
-    cond do
-      new_slug == event.slug ->
-        {:ok, event}
-
-      not Regex.match?(@slug_regex, new_slug) ->
-        {:error, :invalid_slug}
-
-      slug_taken?(new_slug) ->
-        {:error, :slug_taken}
-
-      true ->
-        do_rename_slug(event, new_slug)
-    end
-  end
-
-  defp do_rename_slug(%Event{} = event, new_slug) do
-    old_path = file_path(event.slug, event.status)
-    new_path = file_path(new_slug, event.status)
-
-    File.mkdir_p!(Path.dirname(new_path))
-
-    case File.rename(old_path, new_path) do
-      :ok ->
-        finish_rename(event, new_slug)
-
-      {:error, :exdev} ->
-        # Cross-device fallback (rare, e.g. between mount points).
-        with :ok <- File.cp(old_path, new_path),
-             :ok <- File.rm(old_path) do
-          finish_rename(event, new_slug)
-        end
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp finish_rename(%Event{} = event, new_slug) do
-    updated = %{event | slug: new_slug}
-    # Notify any viewer of the old page that the event has moved so they can
-    # navigate away, then announce the new identity on its own topic.
-    PubSub.broadcast(@pubsub, topic(event.slug), {:moved, updated})
-    broadcast(updated)
-    broadcast_home()
-    {:ok, updated}
   end
 
   defp unique_clone_slug(source_slug) do
@@ -426,22 +331,82 @@ defmodule Rolezinho.Events do
     end
   end
 
+  # ---------- Slug rename ----------
+
+  @doc """
+  Renames an event's slug. Returns:
+
+    * `{:ok, updated_event}` on success (including when unchanged),
+    * `{:error, :invalid_slug}` when the format is invalid,
+    * `{:error, :slug_taken}` when another event already uses the target slug,
+    * `{:error, changeset_errors}` on other validation failures.
+  """
+  @spec rename_slug(Event.t(), String.t()) ::
+          {:ok, Event.t()} | {:error, :invalid_slug | :slug_taken | map()}
+  def rename_slug(%Event{} = event, new_slug) when is_binary(new_slug) do
+    new_slug = new_slug |> String.trim() |> String.downcase()
+
+    cond do
+      new_slug == event.slug ->
+        {:ok, event}
+
+      not Regex.match?(Event.slug_regex(), new_slug) ->
+        {:error, :invalid_slug}
+
+      slug_taken?(new_slug) ->
+        {:error, :slug_taken}
+
+      true ->
+        old_slug = event.slug
+
+        Multi.new()
+        |> Multi.update(:event, Ecto.Changeset.change(event, slug: new_slug))
+        |> Repo.transaction()
+        |> case do
+          {:ok, %{event: updated}} ->
+            PubSub.broadcast(@pubsub, topic(old_slug), {:moved, updated})
+            broadcast(updated)
+            broadcast_home()
+            {:ok, updated}
+
+          {:error, :event, changeset, _} ->
+            case Keyword.get(changeset.errors, :slug) do
+              {_msg, [{:constraint, :unique} | _]} -> {:error, :slug_taken}
+              _ -> {:error, changeset_errors(changeset)}
+            end
+        end
+    end
+  end
+
+  # ---------- Meta ----------
+
   @doc """
   Updates the structured meta (local/data/horário) on an event. The free-form
-  part of the header is preserved. Pass a `%Rolezinho.Event.Meta{}` struct or
-  a params map (typically from a form submission).
+  part of the header is preserved.
   """
   def update_meta(%Event{} = event, %Meta{} = new_meta) do
     {_current_meta, rest} = Meta.extract(event.header)
-    updated = %Event{event | header: Meta.build_header(new_meta, rest)}
-    save(updated)
+    new_header = Meta.build_header(new_meta, rest)
+
+    event
+    |> Ecto.Changeset.change(header: new_header)
+    |> Repo.update()
+    |> case do
+      {:ok, saved} ->
+        broadcast(saved)
+        broadcast_home()
+        {:ok, saved}
+
+      {:error, changeset} ->
+        {:error, changeset_errors(changeset)}
+    end
   end
 
   def update_meta(%Event{} = event, params) when is_map(params) do
     update_meta(event, Meta.from_params(params))
   end
 
-  # Public helpers that mutate + persist in one shot.
+  # ---------- List operations ----------
 
   def add_to_main(%Event{} = event, name) do
     with {:ok, updated} <- Event.add_to_main(event, name) do
@@ -470,13 +435,38 @@ defmodule Rolezinho.Events do
 
   def resize_main(%Event{} = event, new_size), do: save(Event.resize_main(event, new_size))
 
-  # ---------- File I/O ----------
+  # ---------- Import helper ----------
 
-  defp write_event(%Event{} = event) do
-    File.mkdir_p!(status_dir(event.status))
-    path = file_path(event.slug, event.status)
-    File.write(path, Event.render(event))
+  @doc """
+  Inserts an event from a parsed markdown blob at the given slug/status. Used
+  by the `mix rolezinho.import` task. Returns `{:ok, event}` or
+  `{:error, changeset_errors}`.
+  """
+  def insert_imported(slug, status, %{} = parsed) when status in @statuses do
+    attrs =
+      %{
+        slug: slug,
+        status: status,
+        title: parsed.title,
+        header: parsed.header,
+        footer: parsed.footer,
+        main_capacity: parsed.main_capacity,
+        wait_enabled: parsed.wait_enabled,
+        wait_intro: parsed.wait_intro,
+        main_list: Enum.map(parsed.main_list, &Map.from_struct/1),
+        wait_list: Enum.map(parsed.wait_list, &Map.from_struct/1)
+      }
+
+    %Event{}
+    |> Event.changeset(attrs)
+    |> Repo.insert()
+    |> case do
+      {:ok, event} -> {:ok, event}
+      {:error, changeset} -> {:error, changeset_errors(changeset)}
+    end
   end
+
+  # ---------- Broadcasts ----------
 
   defp broadcast(%Event{} = event, kind \\ :updated) do
     PubSub.broadcast(@pubsub, topic(event.slug), {kind, event})

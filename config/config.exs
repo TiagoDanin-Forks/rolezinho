@@ -8,6 +8,8 @@
 import Config
 
 config :rolezinho,
+  ecto_repos: [Rolezinho.Repo],
+  generators: [timestamp_type: :utc_datetime],
   data_path: "priv/data",
   admin_password: "admin"
 

@@ -32,7 +32,7 @@ defmodule RolezinhoWeb.ConnCase do
   end
 
   setup tags do
-    Rolezinho.DataCase.setup_data_dir(tags)
+    Rolezinho.DataCase.setup_sandbox(tags)
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
 end

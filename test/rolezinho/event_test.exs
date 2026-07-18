@@ -3,6 +3,11 @@ defmodule Rolezinho.EventTest do
 
   alias Rolezinho.Event
   alias Rolezinho.Event.Attendee
+  alias Rolezinho.Event.Parser
+
+  # Small helper: run the markdown parser and wrap the resulting fields into
+  # an %Event{} struct so tests can exercise the pure list ops uniformly.
+  defp parse_event(content), do: struct(Event, Parser.parse(content))
 
   @sample """
   # VÔLEI VER-O-BEACH
@@ -41,7 +46,7 @@ defmodule Rolezinho.EventTest do
   """
 
   test "parses the sample markdown" do
-    event = Event.parse(@sample, slug: "volei")
+    event = parse_event(@sample)
 
     assert event.title == "VÔLEI VER-O-BEACH"
     assert String.contains?(event.header, "End: Rua Caripunas")
@@ -71,7 +76,8 @@ defmodule Rolezinho.EventTest do
 
   test "normalize_main compacts empty slots to the end" do
     event =
-      Event.parse(@sample, slug: "x")
+      @sample
+      |> parse_event()
       |> Event.normalize_main()
 
     # after normalization slot 10 (empty) should be pushed to end
@@ -86,7 +92,8 @@ defmodule Rolezinho.EventTest do
 
   test "add_to_main fills first empty slot" do
     event =
-      Event.parse(@sample, slug: "x")
+      @sample
+      |> parse_event()
       |> Event.normalize_main()
 
     {:ok, event} = Event.add_to_main(event, "Novato")
@@ -233,9 +240,9 @@ defmodule Rolezinho.EventTest do
   end
 
   test "round-trips through render/parse" do
-    event = Event.parse(@sample, slug: "x") |> Event.normalize_main()
+    event = @sample |> parse_event() |> Event.normalize_main()
     rendered = Event.render(event)
-    reparsed = Event.parse(rendered, slug: "x")
+    reparsed = parse_event(rendered)
 
     assert reparsed.title == event.title
     assert reparsed.main_capacity == event.main_capacity

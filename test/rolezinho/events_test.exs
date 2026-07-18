@@ -3,6 +3,7 @@ defmodule Rolezinho.EventsTest do
 
   alias Rolezinho.Event
   alias Rolezinho.Events
+  alias Rolezinho.Repo
 
   describe "create/1" do
     test "creates an event and persists a file" do
@@ -20,7 +21,7 @@ defmodule Rolezinho.EventsTest do
       assert length(event.main_list) == 10
       assert event.wait_enabled
 
-      assert File.exists?(Events.file_path("volei", :active))
+      assert Repo.get_by(Event, slug: "volei").title == "Vôlei"
     end
 
     test "requires a valid slug" do
@@ -120,21 +121,17 @@ defmodule Rolezinho.EventsTest do
       %{event: event}
     end
 
-    test "moves the file and updates the struct", %{event: event} do
+    test "updates the row's slug", %{event: event} do
       assert {:ok, renamed} = Events.rename_slug(event, "novo")
       assert renamed.slug == "novo"
 
-      refute File.exists?(Events.file_path("antigo", :active))
-      assert File.exists?(Events.file_path("novo", :active))
-
-      # Reachable by the new slug, not the old one
       assert Events.find("novo").title == "T"
       assert Events.find("antigo") == nil
     end
 
     test "is a no-op when the slug does not change", %{event: event} do
       assert {:ok, ^event} = Events.rename_slug(event, event.slug)
-      assert File.exists?(Events.file_path(event.slug, :active))
+      assert Events.find(event.slug).id == event.id
     end
 
     test "normalizes the input (trims whitespace and lowercases)", %{event: event} do
@@ -144,8 +141,7 @@ defmodule Rolezinho.EventsTest do
 
     test "rejects malformed slugs", %{event: event} do
       assert {:error, :invalid_slug} = Events.rename_slug(event, "nao valido!")
-      # Original file still exists
-      assert File.exists?(Events.file_path(event.slug, :active))
+      assert Events.find(event.slug).title == "T"
     end
 
     test "rejects a slug taken by another event", %{event: event} do
@@ -160,14 +156,13 @@ defmodule Rolezinho.EventsTest do
       assert {:error, :slug_taken} = Events.rename_slug(event, "tomado")
     end
 
-    test "keeps the current status directory when renaming", %{event: event} do
+    test "keeps the current status when renaming", %{event: event} do
       {:ok, hidden} = Events.set_status(event, :hidden)
       assert {:ok, renamed} = Events.rename_slug(hidden, "escondido-novo")
 
       assert renamed.status == :hidden
-      assert File.exists?(Events.file_path("escondido-novo", :hidden))
-      refute File.exists?(Events.file_path("antigo", :hidden))
-      refute File.exists?(Events.file_path("escondido-novo", :active))
+      assert Events.find("escondido-novo").status == :hidden
+      assert Events.find("antigo") == nil
     end
   end
 
@@ -219,10 +214,9 @@ defmodule Rolezinho.EventsTest do
       assert third.slug == "volei-clonado-3"
     end
 
-    test "persists the clone on disk", %{event: event} do
+    test "persists the clone in the database", %{event: event} do
       {:ok, clone} = Events.clone(event)
-      assert File.exists?(Events.file_path(clone.slug, :active))
-      assert Events.find(clone.slug).title == "Vôlei Clonado"
+      assert Repo.get_by(Event, slug: clone.slug).title == "Vôlei Clonado"
     end
   end
 
@@ -239,11 +233,10 @@ defmodule Rolezinho.EventsTest do
       %{event: event}
     end
 
-    test "set_status moves the file", %{event: event} do
+    test "set_status updates the row", %{event: event} do
       assert {:ok, hidden} = Events.set_status(event, :hidden)
       assert hidden.status == :hidden
-      refute File.exists?(Events.file_path("moveable", :active))
-      assert File.exists?(Events.file_path("moveable", :hidden))
+      assert Repo.get_by(Event, slug: "moveable").status == :hidden
 
       # hidden events don't show on home
       assert Events.list_active() == []

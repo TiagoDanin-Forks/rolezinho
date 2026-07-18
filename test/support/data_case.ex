@@ -1,45 +1,40 @@
 defmodule Rolezinho.DataCase do
   @moduledoc """
-  Test helpers for tests that interact with the file-based storage.
+  Test helpers for tests that interact with the database via Ecto.
 
-  Configures an isolated `DATA_PATH` per test and cleans it up on exit.
+  Uses the SQL sandbox so tests are isolated and can run concurrently.
   """
 
   use ExUnit.CaseTemplate
 
   using do
     quote do
+      alias Rolezinho.Repo
+
+      import Ecto
+      import Ecto.Changeset
+      import Ecto.Query
       import Rolezinho.DataCase
     end
   end
 
   setup tags do
-    Rolezinho.DataCase.setup_data_dir(tags)
+    Rolezinho.DataCase.setup_sandbox(tags)
     :ok
   end
 
-  @doc """
-  Points `:rolezinho, :data_path` at a fresh directory for the duration of the test.
-  """
-  def setup_data_dir(_tags) do
-    dir = Path.join([System.tmp_dir!(), "rolezinho_test", random_id()])
-    File.rm_rf!(dir)
-    File.mkdir_p!(dir)
-    File.mkdir_p!(Path.join(dir, "hidden"))
-    File.mkdir_p!(Path.join(dir, "done"))
-
-    prev = Application.get_env(:rolezinho, :data_path)
-    Application.put_env(:rolezinho, :data_path, dir)
-
-    ExUnit.Callbacks.on_exit(fn ->
-      File.rm_rf!(dir)
-      Application.put_env(:rolezinho, :data_path, prev)
-    end)
-
-    {:ok, data_path: dir}
+  @doc "Sets up the Ecto SQL sandbox based on the test tags."
+  def setup_sandbox(tags) do
+    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Rolezinho.Repo, shared: not tags[:async])
+    on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
   end
 
-  defp random_id do
-    :crypto.strong_rand_bytes(6) |> Base.encode16(case: :lower)
+  @doc "Traverses changeset errors into a map of messages for assertions."
+  def errors_on(changeset) do
+    Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
+      Regex.replace(~r"%{(\w+)}", message, fn _, key ->
+        opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
+      end)
+    end)
   end
 end

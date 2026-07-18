@@ -1,0 +1,14 @@
+#!/bin/sh
+# Runs pending Ecto migrations against the release's configured database.
+#
+# Usage: bin/migrate
+#
+# The release must be able to connect to the database, which usually means
+# DATABASE_URL is set (and DNS_CLUSTER_QUERY / PHX_HOST / SECRET_KEY_BASE
+# if the release enforces them via config/runtime.exs).
+
+set -eu
+
+script_dir="$(cd -- "$(dirname -- "$0")" && pwd)"
+
+exec "$script_dir/rolezinho" eval 'Rolezinho.Release.migrate()'
