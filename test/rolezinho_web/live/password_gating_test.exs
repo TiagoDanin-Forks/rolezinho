@@ -98,6 +98,23 @@ defmodule RolezinhoWeb.PasswordGatingTest do
       refute html =~ "Google Calendar"
       refute html =~ "Apple / .ics"
     end
+
+    test "attendee names are hidden in the UI and .txt", %{conn: conn, event: event} do
+      # Seed a couple of names as admin so we can verify they get masked.
+      {:ok, event} = Rolezinho.Events.set_status(event, :active)
+      # Add via context bypass (admin) so the locked non-admin visitor can then
+      # try to see them.
+      {:ok, event} = Rolezinho.Events.add_to_main(%{event | password: nil}, "Alice")
+      {:ok, _} = Rolezinho.Events.update_password(event, "senha123")
+
+      {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
+      refute html =~ "Alice"
+      assert html =~ "•••"
+
+      conn = get(conn, "/r/#{event.slug}.txt")
+      refute conn.resp_body =~ "Alice"
+      assert conn.resp_body =~ "1- •••"
+    end
   end
 
   describe "unlock flow via POST /r/:slug/unlock" do
@@ -163,6 +180,20 @@ defmodule RolezinhoWeb.PasswordGatingTest do
       assert conn.resp_body =~ "Local: Endereço revelado"
     end
 
+    test "attendee names are visible when unlocked", %{conn: conn, event: event} do
+      {:ok, _} = Rolezinho.Events.update_password(event, "")
+      {:ok, event} = Rolezinho.Events.add_to_main(Rolezinho.Events.find(event.slug), "Alice")
+      {:ok, _} = Rolezinho.Events.update_password(event, "senha")
+
+      {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
+      assert html =~ "Alice"
+      refute html =~ "•••"
+
+      conn = get(conn, "/r/#{event.slug}.txt")
+      assert conn.resp_body =~ "1- Alice"
+      refute conn.resp_body =~ "•••"
+    end
+
     test "calendar.ics endpoint serves the file with LOCATION", %{conn: conn, event: event} do
       # This event was created without a date, so add one to make .ics valid.
       # update_meta replaces the whole meta block, so re-send `local` too.
@@ -188,6 +219,16 @@ defmodule RolezinhoWeb.PasswordGatingTest do
       {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
       assert html =~ "onde"
       refute html =~ "Rolezinho protegido por senha"
+    end
+
+    test "admin sees attendee names", %{conn: conn, event: event} do
+      {:ok, _} = Rolezinho.Events.update_password(event, "")
+      {:ok, _} = Rolezinho.Events.add_to_main(Rolezinho.Events.find(event.slug), "Alice")
+      {:ok, _} = Rolezinho.Events.update_password(Rolezinho.Events.find(event.slug), "s")
+
+      {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
+      assert html =~ "Alice"
+      refute html =~ "•••"
     end
   end
 end

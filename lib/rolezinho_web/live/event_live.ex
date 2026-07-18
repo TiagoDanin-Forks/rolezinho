@@ -95,6 +95,7 @@ defmodule RolezinhoWeb.EventLive do
     text =
       Event.to_text(event, url,
         strip_location: not unlocked?,
+        hide_names: not unlocked?,
         include_password: include_password?
       )
 
@@ -583,8 +584,11 @@ defmodule RolezinhoWeb.EventLive do
                 <% String.trim(att.name) == "" -> %>
                   <span class="flex-1 text-sm text-base-content/40 italic">vaga aberta</span>
                 <% true -> %>
-                  <span class="flex-1 truncate font-medium">
-                    {att.name}
+                  <span class={[
+                    "flex-1 truncate font-medium",
+                    not @unlocked? && "tracking-widest text-base-content/60"
+                  ]}>
+                    {display_name(att.name, @unlocked?)}
                     <span :if={att.paid} class="ml-1 text-success" title="Pago">✅</span>
                   </span>
               <% end %>
@@ -708,8 +712,11 @@ defmodule RolezinhoWeb.EventLive do
                     <button type="button" phx-click="cancel_edit" class="btn btn-sm btn-ghost">Cancelar</button>
                   </form>
                 <% true -> %>
-                  <span class="flex-1 truncate font-medium">
-                    {att.name}
+                  <span class={[
+                    "flex-1 truncate font-medium",
+                    not @unlocked? && "tracking-widest text-base-content/60"
+                  ]}>
+                    {display_name(att.name, @unlocked?)}
                     <span :if={att.paid} class="ml-1 text-success" title="Pago">✅</span>
                   </span>
               <% end %>
@@ -853,6 +860,12 @@ defmodule RolezinhoWeb.EventLive do
   end
 
   defp filled_count(list), do: Enum.count(list, fn a -> String.trim(a.name) != "" end)
+
+  # Attendee name shown in the list rows. Password-protected events hide names
+  # from visitors who haven't unlocked the session yet.
+  defp display_name(name, true = _unlocked?), do: name
+  defp display_name("", _), do: ""
+  defp display_name(_name, false = _unlocked?), do: Event.hidden_name_placeholder()
 
   defp url_for(%Event{slug: slug}) do
     RolezinhoWeb.Endpoint.url() <> "/r/" <> slug

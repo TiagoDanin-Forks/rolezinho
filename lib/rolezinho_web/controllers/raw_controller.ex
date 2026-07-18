@@ -19,7 +19,10 @@ defmodule RolezinhoWeb.RawController do
         unlocked? = unlocked?(conn, event)
 
         text_body =
-          Event.to_text(event, url, strip_location: not unlocked?)
+          Event.to_text(event, url,
+            strip_location: not unlocked?,
+            hide_names: not unlocked?
+          )
 
         conn
         |> put_resp_content_type("text/plain; charset=utf-8")

@@ -177,6 +177,8 @@ defmodule Rolezinho.Event do
 
     * `:strip_location` — when true, removes the `Local:` line from the header.
       Used for password-protected events viewed by non-unlocked users.
+    * `:hide_names` — when true, replaces every filled attendee name with the
+      `•••` placeholder (empty slots stay empty). Paid marks are preserved.
     * `:include_password` — when true and the event has a password set, inserts
       a `Senha: <password>` line right below the URL so shared messages can
       bundle the link and the password together.
@@ -222,13 +224,15 @@ defmodule Rolezinho.Event do
         parts
       end
 
-    parts = parts ++ ["", main_list_text(event, url)]
+    hide_names? = Keyword.get(opts, :hide_names, false)
+
+    parts = parts ++ ["", main_list_text(event, url, hide_names?)]
 
     parts =
       if event.wait_enabled do
         intro = event.wait_intro |> to_string() |> String.trim()
         intro = if intro == "", do: "Lista de reserva", else: intro
-        parts ++ ["", intro, wait_list_text(event, url)]
+        parts ++ ["", intro, wait_list_text(event, url, hide_names?)]
       else
         parts
       end
@@ -247,14 +251,14 @@ defmodule Rolezinho.Event do
     |> Kernel.<>("\n")
   end
 
-  defp main_list_text(%Event{} = event, url) do
+  defp main_list_text(%Event{} = event, url, hide_names?) do
     filled = compact_main(event.main_list)
     free = event.main_capacity - length(filled)
 
     lines =
       filled
       |> Enum.with_index(1)
-      |> Enum.map(fn {%Attendee{} = att, i} -> render_attendee_line(i, att) end)
+      |> Enum.map(fn {%Attendee{} = att, i} -> render_attendee_line(i, att, hide_names?) end)
 
     lines =
       if free > 0 and not locked_signups?(event) do
@@ -266,11 +270,11 @@ defmodule Rolezinho.Event do
     Enum.join(lines, "\n")
   end
 
-  defp wait_list_text(%Event{} = event, url) do
+  defp wait_list_text(%Event{} = event, url, hide_names?) do
     lines =
       event.wait_list
       |> Enum.with_index(1)
-      |> Enum.map(fn {%Attendee{} = att, i} -> render_attendee_line(i, att) end)
+      |> Enum.map(fn {%Attendee{} = att, i} -> render_attendee_line(i, att, hide_names?) end)
 
     trailer = if locked_signups?(event), do: [], else: [entrar_espera_line(url)]
 
@@ -477,11 +481,19 @@ defmodule Rolezinho.Event do
     |> Enum.join("\n")
   end
 
-  defp render_attendee_line(i, %Attendee{name: "", paid: _}), do: "#{i}- "
+  @hidden_name_placeholder "•••"
 
-  defp render_attendee_line(i, %Attendee{name: name, paid: paid}) do
+  @doc "Placeholder used when attendee names must be hidden (locked view)."
+  def hidden_name_placeholder, do: @hidden_name_placeholder
+
+  defp render_attendee_line(i, att, hide_names? \\ false)
+
+  defp render_attendee_line(i, %Attendee{name: "", paid: _}, _hide?), do: "#{i}- "
+
+  defp render_attendee_line(i, %Attendee{name: name, paid: paid}, hide?) do
+    display = if hide?, do: @hidden_name_placeholder, else: name
     mark = if paid, do: " ✅", else: ""
-    "#{i}- #{name}#{mark}"
+    "#{i}- #{display}#{mark}"
   end
 
   defp compact_main(list) do
