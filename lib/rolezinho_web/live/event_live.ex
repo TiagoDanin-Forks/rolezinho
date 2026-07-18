@@ -39,15 +39,46 @@ defmodule RolezinhoWeb.EventLive do
     url = url_for(event)
     {meta, stripped_header} = Meta.extract(event.header)
 
+    unlocked? =
+      socket.assigns.current_admin? or
+        not Event.password_protected?(event) or
+        MapSet.member?(socket.assigns.unlocked_events, event.slug)
+
+    # When the visitor hasn't unlocked, hide the location everywhere: the
+    # widget, the description block, the share text, and the PIX QR (which
+    # itself may leak identifying info).
+    display_meta = if unlocked?, do: meta, else: %{meta | local: nil}
+    display_header = if unlocked?, do: stripped_header, else: strip_local_line(stripped_header)
+
+    shareable_text =
+      Event.to_text(event, url, strip_location: not unlocked?)
+
+    google_calendar_url =
+      if unlocked?, do: Meta.google_url(display_meta, event.title, url), else: nil
+
     socket
     |> assign(:event, event)
     |> assign(:event_url, url)
-    |> assign(:shareable_text, Event.to_text(event, url))
-    |> assign(:pix, Pix.detect(event.header))
-    |> assign(:meta, meta)
-    |> assign(:stripped_header, stripped_header)
-    |> assign(:google_calendar_url, Meta.google_url(meta, event.title, url))
+    |> assign(:shareable_text, shareable_text)
+    |> assign(:pix, if(unlocked?, do: Pix.detect(event.header), else: nil))
+    |> assign(:meta, display_meta)
+    |> assign(:stripped_header, display_header)
+    |> assign(:google_calendar_url, google_calendar_url)
+    |> assign(:unlocked?, unlocked?)
+    |> assign(:signups_locked?, Event.locked_signups?(event))
+    |> assign(:password_protected?, Event.password_protected?(event))
+    |> assign(:has_location?, is_binary(meta.local) and meta.local != "")
     |> assign(:page_title, page_title_for(event))
+  end
+
+  defp strip_local_line(nil), do: nil
+
+  defp strip_local_line(header) when is_binary(header) do
+    header
+    |> String.split(~r/\r?\n/)
+    |> Enum.reject(&Regex.match?(~r/^\s*local\s*:/iu, &1))
+    |> Enum.join("\n")
+    |> String.trim("\n")
   end
 
   # Page title patterns:
@@ -104,13 +135,20 @@ defmodule RolezinhoWeb.EventLive do
 
   @impl true
   def handle_event("add_to_main", %{"name" => name}, socket) do
-    case Events.add_to_main(socket.assigns.event, name) do
-      {:ok, event} ->
+    with :ok <- ensure_can_signup(socket),
+         {:ok, event} <- Events.add_to_main(socket.assigns.event, name) do
+      {:noreply,
+       socket
+       |> assign_event(event)
+       |> assign(:new_main_name, "")
+       |> put_flash(:info, "Entrou na lista!")}
+    else
+      {:error, :locked} ->
+        {:noreply, put_flash(socket, :error, "Precisa da senha pra entrar nesse rolezinho.")}
+
+      {:error, :signups_locked} ->
         {:noreply,
-         socket
-         |> assign_event(event)
-         |> assign(:new_main_name, "")
-         |> put_flash(:info, "Entrou na lista!")}
+         put_flash(socket, :error, "Este rolezinho está fechado para novas inscrições.")}
 
       {:error, :main_full} ->
         {:noreply, put_flash(socket, :error, "Lista principal cheia.")}
@@ -121,13 +159,20 @@ defmodule RolezinhoWeb.EventLive do
   end
 
   def handle_event("add_to_wait", %{"name" => name}, socket) do
-    case Events.add_to_wait(socket.assigns.event, name) do
-      {:ok, event} ->
+    with :ok <- ensure_can_signup(socket),
+         {:ok, event} <- Events.add_to_wait(socket.assigns.event, name) do
+      {:noreply,
+       socket
+       |> assign_event(event)
+       |> assign(:new_wait_name, "")
+       |> put_flash(:info, "Entrou na reserva!")}
+    else
+      {:error, :locked} ->
+        {:noreply, put_flash(socket, :error, "Precisa da senha pra entrar nesse rolezinho.")}
+
+      {:error, :signups_locked} ->
         {:noreply,
-         socket
-         |> assign_event(event)
-         |> assign(:new_wait_name, "")
-         |> put_flash(:info, "Entrou na reserva!")}
+         put_flash(socket, :error, "Este rolezinho está fechado para novas inscrições.")}
 
       {:error, :empty_name} ->
         {:noreply, put_flash(socket, :error, "Digite um nome.")}
@@ -138,12 +183,18 @@ defmodule RolezinhoWeb.EventLive do
   end
 
   def handle_event("promote", %{"index" => index}, socket) do
-    case Events.promote(socket.assigns.event, String.to_integer(index)) do
-      {:ok, event} ->
-        {:noreply,
-         socket
-         |> assign_event(event)
-         |> put_flash(:info, "Promovido pra lista principal!")}
+    with :ok <- ensure_can_signup(socket),
+         {:ok, event} <- Events.promote(socket.assigns.event, String.to_integer(index)) do
+      {:noreply,
+       socket
+       |> assign_event(event)
+       |> put_flash(:info, "Promovido pra lista principal!")}
+    else
+      {:error, :locked} ->
+        {:noreply, put_flash(socket, :error, "Precisa da senha pra mexer nesse rolezinho.")}
+
+      {:error, :signups_locked} ->
+        {:noreply, put_flash(socket, :error, "Rolezinho fechado para novas inscrições.")}
 
       {:error, :main_full} ->
         {:noreply, put_flash(socket, :error, "A lista principal está cheia.")}
@@ -252,6 +303,12 @@ defmodule RolezinhoWeb.EventLive do
     {:noreply, assign(socket, :new_wait_name, name)}
   end
 
+  # Ensures the current visitor may sign up: admins always can, otherwise the
+  # slug must be in the unlocked-set (or the event must have no password).
+  defp ensure_can_signup(socket) do
+    if socket.assigns.unlocked?, do: :ok, else: {:error, :locked}
+  end
+
   defp require_admin!(socket) do
     unless socket.assigns.current_admin? do
       raise "unauthorized"
@@ -274,9 +331,19 @@ defmodule RolezinhoWeb.EventLive do
             <span>/r/{@event.slug}</span>
             <span :if={@event.status == :hidden} class="badge badge-warning badge-sm">Oculto</span>
             <span :if={@event.status == :done} class="badge badge-neutral badge-sm">Concluído</span>
+            <span :if={@signups_locked?} class="badge badge-info badge-sm">Só pagamentos</span>
+            <span :if={@password_protected?} class="badge badge-outline badge-sm">Com senha</span>
           </div>
 
           <h1 class="text-3xl sm:text-4xl font-bold tracking-tight">{@event.title}</h1>
+
+          <.payments_only_notice :if={@signups_locked?} />
+
+          <.unlock_panel
+            :if={@password_protected? and not @unlocked?}
+            slug={@event.slug}
+            has_location?={@has_location?}
+          />
 
           <%= cond do %>
             <% Meta.any?(@meta) and @pix -> %>
@@ -485,7 +552,10 @@ defmodule RolezinhoWeb.EventLive do
             </li>
           </ol>
 
-          <div :if={not Event.main_full?(@event)} class="mt-4">
+          <div
+            :if={not Event.main_full?(@event) and not @signups_locked? and @unlocked?}
+            class="mt-4"
+          >
             <form
               phx-submit="add_to_main"
               phx-change="update_new_main_name"
@@ -505,7 +575,18 @@ defmodule RolezinhoWeb.EventLive do
           </div>
 
           <p
-            :if={Event.main_full?(@event) and not @event.wait_enabled}
+            :if={not @unlocked? and not @signups_locked?}
+            class="mt-4 text-sm text-base-content/60"
+          >
+            Digite a senha acima pra entrar na lista.
+          </p>
+
+          <p :if={@signups_locked?} class="mt-4 text-sm text-base-content/60">
+            Novas inscrições estão pausadas. Marcados com <span class="text-success">✅</span> pagaram.
+          </p>
+
+          <p
+            :if={Event.main_full?(@event) and not @event.wait_enabled and not @signups_locked?}
             class="mt-4 text-sm text-warning"
           >
             A lista principal está cheia.
@@ -606,7 +687,7 @@ defmodule RolezinhoWeb.EventLive do
             </li>
           </ol>
 
-          <div class="mt-4">
+          <div :if={@unlocked? and not @signups_locked?} class="mt-4">
             <form
               phx-submit="add_to_wait"
               phx-change="update_new_wait_name"
@@ -624,6 +705,13 @@ defmodule RolezinhoWeb.EventLive do
               <button type="submit" class="btn btn-outline">Entrar na reserva</button>
             </form>
           </div>
+
+          <p
+            :if={not @unlocked? and not @signups_locked?}
+            class="mt-4 text-sm text-base-content/60"
+          >
+            Digite a senha acima pra entrar na reserva.
+          </p>
         </section>
 
         <section :if={@event.footer != ""} class="rounded-2xl border border-base-300 bg-base-100 p-5">
@@ -692,6 +780,75 @@ defmodule RolezinhoWeb.EventLive do
 
   defp url_for(%Event{slug: slug}) do
     RolezinhoWeb.Endpoint.url() <> "/r/" <> slug
+  end
+
+  # ---------- Payments-only banner + unlock panel ----------
+
+  defp payments_only_notice(assigns) do
+    ~H"""
+    <section class="rounded-2xl border border-info/40 bg-info/10 p-4 sm:p-5">
+      <div class="flex items-start gap-3">
+        <.icon name="hero-banknotes" class="size-5 text-info shrink-0 mt-0.5" />
+        <div class="space-y-1">
+          <p class="font-semibold">Rolezinho fechado, só pagamentos.</p>
+          <p class="text-sm text-base-content/80">
+            Quem ainda não tem o <span class="text-success font-semibold">✅</span>
+            precisa pagar pra confirmar a vaga. Não dá pra entrar em novas listas
+            enquanto o rolezinho estiver nesse estado.
+          </p>
+        </div>
+      </div>
+    </section>
+    """
+  end
+
+  attr :slug, :string, required: true
+  attr :has_location?, :boolean, required: true
+
+  defp unlock_panel(assigns) do
+    ~H"""
+    <section class="rounded-2xl border border-warning/40 bg-warning/10 p-4 sm:p-5">
+      <div class="flex items-start gap-3">
+        <.icon name="hero-lock-closed" class="size-5 text-warning shrink-0 mt-0.5" />
+        <div class="flex-1 min-w-0 space-y-3">
+          <div>
+            <p class="font-semibold">Rolezinho protegido por senha.</p>
+            <p class="text-sm text-base-content/80">
+              <%= if @has_location? do %>
+                Digite a senha pra ver o local e entrar na lista.
+              <% else %>
+                Digite a senha pra entrar na lista.
+              <% end %>
+            </p>
+          </div>
+
+          <form
+            method="post"
+            action={~p"/r/#{@slug}/unlock"}
+            id={"unlock-form-" <> @slug}
+            class="flex flex-wrap gap-2"
+          >
+            <input
+              type="hidden"
+              name="_csrf_token"
+              value={Phoenix.Controller.get_csrf_token()}
+            />
+            <input
+              type="password"
+              name="password"
+              placeholder="Senha do rolezinho"
+              autocomplete="off"
+              required
+              class="input input-bordered flex-1 min-w-0"
+            />
+            <button type="submit" class="btn btn-warning">
+              <.icon name="hero-key" class="size-4" /> Desbloquear
+            </button>
+          </form>
+        </div>
+      </div>
+    </section>
+    """
   end
 
   # ---------- When/Where widget ----------

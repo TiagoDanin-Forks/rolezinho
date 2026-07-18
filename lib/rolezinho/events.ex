@@ -18,7 +18,7 @@ defmodule Rolezinho.Events do
 
   @pubsub Rolezinho.PubSub
 
-  @statuses [:active, :hidden, :done]
+  @statuses [:active, :payments_only, :hidden, :done]
 
   @doc "PubSub topic for a specific slug."
   def topic(slug), do: "event:" <> slug
@@ -31,8 +31,20 @@ defmodule Rolezinho.Events do
 
   # ---------- Listing ----------
 
-  @doc "Lists active events (used on the home page)."
+  @doc "Lists events shown on the public home page (active + payments_only)."
+  def list_open do
+    from(e in Event,
+      where: e.status in ^Event.open_statuses(),
+      order_by: [asc: e.title]
+    )
+    |> Repo.all()
+  end
+
+  @doc "Lists strictly active events."
   def list_active, do: do_list(:active)
+
+  @doc "Lists payments-only events."
+  def list_payments_only, do: do_list(:payments_only)
 
   @doc "Lists hidden events."
   def list_hidden, do: do_list(:hidden)
@@ -59,7 +71,7 @@ defmodule Rolezinho.Events do
 
     statuses =
       case visibility do
-        :public -> [:active, :hidden]
+        :public -> Event.public_statuses()
         :any -> @statuses
         :active -> [:active]
       end
@@ -102,6 +114,7 @@ defmodule Rolezinho.Events do
     meta = Meta.from_params(params)
     main_size_raw = params |> Map.get("main_size", "")
     wait_size_raw = params |> Map.get("wait_size", "3")
+    password = params |> Map.get("password", "") |> to_string() |> String.trim()
 
     errors = %{}
     errors = if title == "", do: put_error(errors, :title, "obrigatório"), else: errors
@@ -141,7 +154,8 @@ defmodule Rolezinho.Events do
          description: description,
          meta: meta,
          main_size: main_size,
-         wait_size: wait_size
+         wait_size: wait_size,
+         password: password
        }}
     else
       {:error, errors}
@@ -161,7 +175,8 @@ defmodule Rolezinho.Events do
       wait_enabled: attrs.wait_size > 0,
       wait_intro: "Lista de reserva",
       main_list: empty_slots,
-      wait_list: []
+      wait_list: [],
+      password: attrs.password
     }
   end
 
@@ -406,18 +421,59 @@ defmodule Rolezinho.Events do
     update_meta(event, Meta.from_params(params))
   end
 
+  # ---------- Password ----------
+
+  @doc """
+  Sets, changes or clears the event's password. An empty/whitespace value
+  clears the password.
+  """
+  def update_password(%Event{} = event, password) do
+    event
+    |> Event.changeset(%{password: password})
+    |> Repo.update()
+    |> case do
+      {:ok, saved} ->
+        broadcast(saved)
+        broadcast_home()
+        {:ok, saved}
+
+      {:error, changeset} ->
+        {:error, changeset_errors(changeset)}
+    end
+  end
+
+  @doc """
+  Constant-time password check against the event's stored value. Returns true
+  when the event has no password (i.e. is open to everyone).
+  """
+  @spec check_password(Event.t(), String.t() | nil) :: boolean()
+  def check_password(%Event{password: nil}, _submitted), do: true
+  def check_password(%Event{password: ""}, _submitted), do: true
+
+  def check_password(%Event{password: expected}, submitted) when is_binary(submitted) do
+    Plug.Crypto.secure_compare(expected, submitted)
+  end
+
+  def check_password(%Event{}, _), do: false
+
   # ---------- List operations ----------
 
   def add_to_main(%Event{} = event, name) do
-    with {:ok, updated} <- Event.add_to_main(event, name) do
+    with :ok <- ensure_signups_open(event),
+         {:ok, updated} <- Event.add_to_main(event, name) do
       save(updated)
     end
   end
 
   def add_to_wait(%Event{} = event, name) do
-    with {:ok, updated} <- Event.add_to_wait(event, name) do
+    with :ok <- ensure_signups_open(event),
+         {:ok, updated} <- Event.add_to_wait(event, name) do
       save(updated)
     end
+  end
+
+  defp ensure_signups_open(%Event{} = event) do
+    if Event.locked_signups?(event), do: {:error, :signups_locked}, else: :ok
   end
 
   def remove_main(%Event{} = event, index), do: save(Event.remove_main(event, index))
@@ -428,7 +484,8 @@ defmodule Rolezinho.Events do
   def rename_wait(%Event{} = event, index, name), do: save(Event.rename_wait(event, index, name))
 
   def promote(%Event{} = event, index) do
-    with {:ok, updated} <- Event.promote(event, index) do
+    with :ok <- ensure_signups_open(event),
+         {:ok, updated} <- Event.promote(event, index) do
       save(updated)
     end
   end

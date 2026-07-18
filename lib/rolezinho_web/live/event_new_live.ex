@@ -21,7 +21,8 @@ defmodule RolezinhoWeb.EventNewLive do
       "time" => "",
       "description" => "",
       "main_size" => "18",
-      "wait_size" => "3"
+      "wait_size" => "3",
+      "password" => ""
     }
   end
 
@@ -141,6 +142,19 @@ defmodule RolezinhoWeb.EventNewLive do
           <p class="text-xs text-base-content/60 -mt-3">
             Coloque 0 para desativar a lista de reserva. A reserva é infinita depois de criada.
           </p>
+
+          <div>
+            <.input
+              field={@form[:password]}
+              label="Senha (opcional)"
+              placeholder="em branco = sem senha"
+              autocomplete="off"
+            />
+            <p class="text-xs text-base-content/60 mt-1">
+              Se preenchida, quem quiser ver o local ou entrar na lista precisa
+              digitar essa senha. Ótima pra bloquear bots — não precisa ser forte.
+            </p>
+          </div>
 
           <div class="flex gap-3 pt-2">
             <button type="submit" class="btn btn-primary">Criar rolezinho</button>

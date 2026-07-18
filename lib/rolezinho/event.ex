@@ -14,7 +14,13 @@ defmodule Rolezinho.Event do
   alias Rolezinho.Event
   alias Rolezinho.Event.Attendee
 
-  @statuses [:active, :hidden, :done]
+  @statuses [:active, :payments_only, :hidden, :done]
+
+  # Statuses that appear on the public home page.
+  @open_statuses [:active, :payments_only]
+
+  # Statuses reachable by direct slug for anonymous visitors.
+  @public_statuses [:active, :payments_only, :hidden]
 
   @slug_regex ~r/^[a-z0-9](?:[a-z0-9-]{0,60}[a-z0-9])?$/
 
@@ -27,6 +33,7 @@ defmodule Rolezinho.Event do
     field :main_capacity, :integer, default: 0
     field :wait_enabled, :boolean, default: false
     field :wait_intro, :string, default: "Lista de reserva"
+    field :password, :string
 
     embeds_many :main_list, Attendee, on_replace: :delete
     embeds_many :wait_list, Attendee, on_replace: :delete
@@ -34,7 +41,7 @@ defmodule Rolezinho.Event do
     timestamps(type: :utc_datetime)
   end
 
-  @type status :: :active | :hidden | :done
+  @type status :: :active | :payments_only | :hidden | :done
 
   @type t :: %__MODULE__{
           id: integer() | nil,
@@ -47,7 +54,8 @@ defmodule Rolezinho.Event do
           wait_enabled: boolean(),
           wait_intro: String.t(),
           wait_list: [Attendee.t()],
-          footer: String.t()
+          footer: String.t(),
+          password: String.t() | nil
         }
 
   @doc """
@@ -64,8 +72,10 @@ defmodule Rolezinho.Event do
       :footer,
       :main_capacity,
       :wait_enabled,
-      :wait_intro
+      :wait_intro,
+      :password
     ])
+    |> update_change(:password, &normalize_password/1)
     |> cast_embed(:main_list, with: &Attendee.changeset/2)
     |> cast_embed(:wait_list, with: &Attendee.changeset/2)
     |> validate_required([:slug, :title, :status])
@@ -77,6 +87,34 @@ defmodule Rolezinho.Event do
 
   @doc "Valid values for the `status` enum."
   def statuses, do: @statuses
+
+  @doc "Statuses visible on the public home page."
+  def open_statuses, do: @open_statuses
+
+  @doc "Statuses reachable by anonymous visitors with the slug."
+  def public_statuses, do: @public_statuses
+
+  @doc "Returns true when the event blocks non-admin signups (payments-only state)."
+  @spec locked_signups?(t()) :: boolean()
+  def locked_signups?(%Event{status: :payments_only}), do: true
+  def locked_signups?(%Event{}), do: false
+
+  @doc "Returns true when the event has a password set."
+  @spec password_protected?(t()) :: boolean()
+  def password_protected?(%Event{password: p}) when is_binary(p) and p != "", do: true
+  def password_protected?(%Event{}), do: false
+
+  # Empty strings collapse to nil so the DB stores "no password" as NULL.
+  defp normalize_password(nil), do: nil
+
+  defp normalize_password(str) when is_binary(str) do
+    case String.trim(str) do
+      "" -> nil
+      other -> other
+    end
+  end
+
+  defp normalize_password(_), do: nil
 
   @doc "Regex used to validate slug values."
   def slug_regex, do: @slug_regex
@@ -134,10 +172,23 @@ defmodule Rolezinho.Event do
       still room. Nothing is added when the main list is full.
     * `Entrar na espera: <url>` after the wait list (always present when the
       wait list is enabled, since it is infinite).
+
+  Opts:
+
+    * `:strip_location` — when true, removes the `Local:` line from the header.
+      Used for password-protected events viewed by non-unlocked users.
+    * `:include_password` — when true and the event has a password set, inserts
+      a `Senha: <password>` line right below the URL so shared messages can
+      bundle the link and the password together.
+
+  Payments-only events omit the vagas/espera summary lines automatically, since
+  in that mode signups are closed.
   """
-  @spec to_text(t(), String.t() | nil) :: String.t()
-  def to_text(%Event{} = event, url \\ nil) do
+  @spec to_text(t(), String.t() | nil, keyword()) :: String.t()
+  def to_text(%Event{} = event, url \\ nil, opts \\ []) do
     title_line = String.trim(event.title || "")
+    strip_location? = Keyword.get(opts, :strip_location, false)
+    include_password? = Keyword.get(opts, :include_password, false)
 
     parts =
       case url do
@@ -146,11 +197,27 @@ defmodule Rolezinho.Event do
         u -> [u, ""]
       end
 
+    # Bundle the password right below the URL for easy sharing.
+    parts =
+      if include_password? and password_protected?(event) do
+        # Replace the trailing blank line with the password line + blank.
+        List.delete_at(parts, -1) ++ ["Senha: #{event.password}", ""]
+      else
+        parts
+      end
+
     parts = parts ++ [title_line]
 
+    header =
+      cond do
+        event.header in ["", nil] -> nil
+        strip_location? -> strip_local_line(event.header)
+        true -> event.header
+      end
+
     parts =
-      if event.header != "" and event.header != nil do
-        parts ++ ["", event.header]
+      if header && header != "" do
+        parts ++ ["", header]
       else
         parts
       end
@@ -190,7 +257,7 @@ defmodule Rolezinho.Event do
       |> Enum.map(fn {%Attendee{} = att, i} -> render_attendee_line(i, att) end)
 
     lines =
-      if free > 0 do
+      if free > 0 and not locked_signups?(event) do
         lines ++ [vagas_line(free, url)]
       else
         lines
@@ -205,7 +272,18 @@ defmodule Rolezinho.Event do
       |> Enum.with_index(1)
       |> Enum.map(fn {%Attendee{} = att, i} -> render_attendee_line(i, att) end)
 
-    Enum.join(lines ++ [entrar_espera_line(url)], "\n")
+    trailer = if locked_signups?(event), do: [], else: [entrar_espera_line(url)]
+
+    Enum.join(lines ++ trailer, "\n")
+  end
+
+  # Drops any header line whose canonical label is `Local:` (case-insensitive).
+  defp strip_local_line(header) when is_binary(header) do
+    header
+    |> String.split(~r/\r?\n/)
+    |> Enum.reject(&Regex.match?(~r/^\s*local\s*:/iu, &1))
+    |> Enum.join("\n")
+    |> String.trim("\n")
   end
 
   @doc false
@@ -371,6 +449,7 @@ defmodule Rolezinho.Event do
       main_capacity: event.main_capacity,
       wait_enabled: event.wait_enabled,
       wait_intro: event.wait_intro,
+      password: event.password,
       main_list: Enum.map(event.main_list, &attendee_to_map/1),
       wait_list: Enum.map(event.wait_list, &attendee_to_map/1)
     }

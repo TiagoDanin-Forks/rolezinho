@@ -8,6 +8,10 @@ primary_region = 'gru'
 kill_signal = 'SIGTERM'
 
 [build]
+
+[deploy]
+  release_command = '/app/bin/migrate'
+
 [env]
   PHX_HOST = 'rolezinho.lubien.dev'
   PORT = '8080'

@@ -31,6 +31,7 @@ defmodule RolezinhoWeb.EventEditLive do
     |> assign(:content, Event.render(event))
     |> assign(:main_size_input, to_string(event.main_capacity))
     |> assign(:slug_input, event.slug)
+    |> assign(:password_input, event.password || "")
     |> assign(:meta_form, to_form(Meta.to_form_params(meta), as: :meta))
   end
 
@@ -101,6 +102,28 @@ defmodule RolezinhoWeb.EventEditLive do
 
   def handle_event("update_slug_input", %{"slug" => slug}, socket) do
     {:noreply, assign(socket, :slug_input, slug)}
+  end
+
+  def handle_event("update_password_input", %{"password" => password}, socket) do
+    {:noreply, assign(socket, :password_input, password)}
+  end
+
+  def handle_event("save_password", %{"password" => password}, socket) do
+    case Events.update_password(socket.assigns.event, password) do
+      {:ok, event} ->
+        message =
+          if Event.password_protected?(event),
+            do: "Senha atualizada.",
+            else: "Senha removida."
+
+        {:noreply,
+         socket
+         |> put_flash(:info, message)
+         |> assign_event(event)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Não deu pra salvar: #{inspect(reason)}")}
+    end
   end
 
   def handle_event("rename_slug", %{"slug" => new_slug}, socket) do
@@ -243,10 +266,51 @@ defmodule RolezinhoWeb.EventEditLive do
       </section>
 
       <section class="rounded-2xl border border-base-300 bg-base-100 p-5 mb-6">
+        <h2 class="font-semibold mb-3">Senha (opcional)</h2>
+        <p class="text-xs text-base-content/60 mb-3">
+          Se preenchida, quem quiser ver o local ou entrar na lista precisa digitar
+          a senha. Serve pra bloquear bots e curiosos — não precisa ser forte.
+          Deixe em branco para remover.
+        </p>
+
+        <form
+          phx-submit="save_password"
+          phx-change="update_password_input"
+          id="password-form"
+          class="flex flex-wrap items-end gap-3"
+        >
+          <label class="flex-1 min-w-64">
+            <span class="label text-sm mb-1">Senha</span>
+            <input
+              type="text"
+              name="password"
+              id="event-password-input"
+              value={@password_input}
+              placeholder="em branco = sem senha"
+              class="input input-bordered w-full font-mono text-sm"
+              autocomplete="off"
+            />
+          </label>
+          <button
+            type="submit"
+            class="btn btn-primary"
+            disabled={@password_input == (@event.password || "")}
+          >
+            Salvar senha
+          </button>
+        </form>
+
+        <p :if={@event.password} class="text-xs text-base-content/60 mt-3">
+          Senha atual:
+          <code class="font-mono text-base-content bg-base-200 px-1 py-0.5 rounded">{@event.password}</code>
+        </p>
+      </section>
+
+      <section class="rounded-2xl border border-base-300 bg-base-100 p-5 mb-6">
         <h2 class="font-semibold mb-3">Status</h2>
         <div class="flex flex-wrap gap-2">
           <button
-            :for={status <- [:active, :hidden, :done]}
+            :for={status <- [:active, :payments_only, :hidden, :done]}
             type="button"
             phx-click="set_status"
             phx-value-status={to_string(status)}
@@ -261,8 +325,10 @@ defmodule RolezinhoWeb.EventEditLive do
         </div>
         <p class="text-xs text-base-content/60 mt-3">
           <strong>Ativo:</strong>
-          aparece na página inicial. <strong>Oculto:</strong>
-          não aparece, mas acessível pelo link. <strong>Concluído:</strong>
+          aparece na página inicial e aceita novas inscrições. <strong>Só pagamentos:</strong>
+          aparece na home, mas ninguém consegue entrar em novas listas —
+          admin só marca quem pagou. <strong>Oculto:</strong>
+          não aparece na home, só pelo link. <strong>Concluído:</strong>
           arquivado, apenas o admin acessa.
         </p>
       </section>
@@ -286,6 +352,7 @@ defmodule RolezinhoWeb.EventEditLive do
   end
 
   defp status_label(:active), do: "Ativo"
+  defp status_label(:payments_only), do: "Só pagamentos"
   defp status_label(:hidden), do: "Oculto"
   defp status_label(:done), do: "Concluído"
 

@@ -21,7 +21,7 @@ defmodule RolezinhoWeb.HomeLive do
   end
 
   defp load_events(socket) do
-    assign(socket, :events, Events.list_active())
+    assign(socket, :events, Events.list_open())
   end
 
   @impl true
@@ -76,12 +76,26 @@ defmodule RolezinhoWeb.HomeLive do
             <div class="mt-4 flex flex-wrap items-center gap-2 text-xs">
               <span class={[
                 "px-2 py-0.5 rounded-full font-medium",
-                if(Event.main_full?(event),
-                  do: "bg-warning/20 text-warning-content",
-                  else: "bg-success/20 text-success"
-                )
+                cond do
+                  event.status == :payments_only -> "bg-info/20 text-info"
+                  Event.main_full?(event) -> "bg-warning/20 text-warning-content"
+                  true -> "bg-success/20 text-success"
+                end
               ]}>
-                {if Event.main_full?(event), do: "Lotado", else: "Tem vaga"}
+                <%= cond do %>
+                  <% event.status == :payments_only -> %>
+                    Só pagamentos
+                  <% Event.main_full?(event) -> %>
+                    Lotado
+                  <% true -> %>
+                    Tem vaga
+                <% end %>
+              </span>
+              <span
+                :if={Event.password_protected?(event)}
+                class="px-2 py-0.5 rounded-full font-medium bg-base-300 text-base-content"
+              >
+                Com senha
               </span>
             </div>
           </.link>

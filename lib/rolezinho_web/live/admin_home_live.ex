@@ -34,6 +34,7 @@ defmodule RolezinhoWeb.AdminHomeLive do
   defp load_all(socket) do
     socket
     |> assign(:active_events, Events.list_active())
+    |> assign(:payments_only_events, Events.list_payments_only())
     |> assign(:hidden_events, Events.list_hidden())
     |> assign(:done_events, Events.list_done())
   end
@@ -53,6 +54,11 @@ defmodule RolezinhoWeb.AdminHomeLive do
       </div>
 
       <.event_section title="Ativos" empty="Nenhum rolezinho ativo." events={@active_events} />
+      <.event_section
+        title="Só pagamentos"
+        empty="Nenhum rolezinho em modo só pagamentos."
+        events={@payments_only_events}
+      />
       <.event_section title="Ocultos" empty="Nenhum rolezinho oculto." events={@hidden_events} />
       <.event_section title="Concluídos" empty="Nenhum rolezinho concluído." events={@done_events} />
     </Layouts.app>
