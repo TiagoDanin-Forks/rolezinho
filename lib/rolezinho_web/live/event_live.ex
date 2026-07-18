@@ -27,6 +27,7 @@ defmodule RolezinhoWeb.EventLive do
 
         {:ok,
          socket
+         |> assign(:show_password_in_share?, false)
          |> assign_event(event)
          |> assign(:new_main_name, "")
          |> assign(:new_wait_name, "")
@@ -50,16 +51,12 @@ defmodule RolezinhoWeb.EventLive do
     display_meta = if unlocked?, do: meta, else: %{meta | local: nil}
     display_header = if unlocked?, do: stripped_header, else: strip_local_line(stripped_header)
 
-    shareable_text =
-      Event.to_text(event, url, strip_location: not unlocked?)
-
     google_calendar_url =
       if unlocked?, do: Meta.google_url(display_meta, event.title, url), else: nil
 
     socket
     |> assign(:event, event)
     |> assign(:event_url, url)
-    |> assign(:shareable_text, shareable_text)
     |> assign(:pix, if(unlocked?, do: Pix.detect(event.header), else: nil))
     |> assign(:meta, display_meta)
     |> assign(:stripped_header, display_header)
@@ -69,6 +66,39 @@ defmodule RolezinhoWeb.EventLive do
     |> assign(:password_protected?, Event.password_protected?(event))
     |> assign(:has_location?, is_binary(meta.local) and meta.local != "")
     |> assign(:page_title, page_title_for(event))
+    |> reset_share_toggle_if_disallowed()
+    |> assign_shareable_text()
+  end
+
+  # If the event's password was removed or the user is no longer unlocked,
+  # the toggle must snap back to `false` — both to keep the UI honest and to
+  # prevent a stale flag from leaking the password on the next recompute.
+  defp reset_share_toggle_if_disallowed(socket) do
+    if socket.assigns.unlocked? and socket.assigns.password_protected? do
+      socket
+    else
+      assign(socket, :show_password_in_share?, false)
+    end
+  end
+
+  defp assign_shareable_text(socket) do
+    %{
+      event: event,
+      event_url: url,
+      unlocked?: unlocked?,
+      show_password_in_share?: show_pw?
+    } = socket.assigns
+
+    include_password? =
+      show_pw? and unlocked? and Event.password_protected?(event)
+
+    text =
+      Event.to_text(event, url,
+        strip_location: not unlocked?,
+        include_password: include_password?
+      )
+
+    assign(socket, :shareable_text, text)
   end
 
   defp strip_local_line(nil), do: nil
@@ -293,6 +323,23 @@ defmodule RolezinhoWeb.EventLive do
     end
   end
 
+  # ---------- Share options ----------
+
+  def handle_event("toggle_share_password", _params, socket) do
+    if allowed_to_toggle_share_password?(socket) do
+      show? = not socket.assigns.show_password_in_share?
+
+      {:noreply,
+       socket
+       |> assign(:show_password_in_share?, show?)
+       |> assign_shareable_text()}
+    else
+      # Silently drop unauthorized toggles so a crafted socket message can't
+      # even leak that the flag exists on this session.
+      {:noreply, socket}
+    end
+  end
+
   # ---------- Input tracking ----------
 
   def handle_event("update_new_main_name", %{"name" => name}, socket) do
@@ -307,6 +354,14 @@ defmodule RolezinhoWeb.EventLive do
   # slug must be in the unlocked-set (or the event must have no password).
   defp ensure_can_signup(socket) do
     if socket.assigns.unlocked?, do: :ok, else: {:error, :locked}
+  end
+
+  # Server-side gate for the "include password in share text" toggle. The
+  # checkbox is only rendered for admins/unlocked users on password-protected
+  # events, but we re-check here so a hacker crafting a raw socket message
+  # can't flip the flag and read the password from `data-text`.
+  defp allowed_to_toggle_share_password?(socket) do
+    socket.assigns.unlocked? and Event.password_protected?(socket.assigns.event)
   end
 
   defp require_admin!(socket) do
@@ -441,6 +496,21 @@ defmodule RolezinhoWeb.EventLive do
             <.icon name="hero-pencil-square" class="size-4" /> Editar
           </.link>
         </div>
+
+        <label
+          :if={@password_protected? and @unlocked?}
+          for="share-password-toggle"
+          class="inline-flex items-center gap-2 text-sm text-base-content/80 cursor-pointer select-none"
+        >
+          <input
+            id="share-password-toggle"
+            type="checkbox"
+            class="checkbox checkbox-sm"
+            phx-click="toggle_share_password"
+            checked={@show_password_in_share?}
+          />
+          <span>Mostrar senha no compartilhamento?</span>
+        </label>
 
         <section class="rounded-2xl border border-base-300 bg-base-100 p-5">
           <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
