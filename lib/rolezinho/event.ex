@@ -177,6 +177,9 @@ defmodule Rolezinho.Event do
 
     * `:strip_location` — when true, removes the `Local:` line from the header.
       Used for password-protected events viewed by non-unlocked users.
+    * `:hide_description` — when true, omits the entire header (meta lines and
+      free-form description) from the output. Takes precedence over
+      `:strip_location`.
     * `:hide_names` — when true, replaces every filled attendee name with the
       `•••` placeholder (empty slots stay empty). Paid marks are preserved.
     * `:include_password` — when true and the event has a password set, inserts
@@ -190,6 +193,7 @@ defmodule Rolezinho.Event do
   def to_text(%Event{} = event, url \\ nil, opts \\ []) do
     title_line = String.trim(event.title || "")
     strip_location? = Keyword.get(opts, :strip_location, false)
+    hide_description? = Keyword.get(opts, :hide_description, false)
     include_password? = Keyword.get(opts, :include_password, false)
 
     parts =
@@ -212,6 +216,7 @@ defmodule Rolezinho.Event do
 
     header =
       cond do
+        hide_description? -> nil
         event.header in ["", nil] -> nil
         strip_location? -> strip_local_line(event.header)
         true -> event.header

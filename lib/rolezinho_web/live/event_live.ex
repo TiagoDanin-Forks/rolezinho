@@ -45,11 +45,13 @@ defmodule RolezinhoWeb.EventLive do
         not Event.password_protected?(event) or
         MapSet.member?(socket.assigns.unlocked_events, event.slug)
 
-    # When the visitor hasn't unlocked, hide the location everywhere: the
-    # widget, the description block, the share text, and the PIX QR (which
-    # itself may leak identifying info).
+    # When the visitor hasn't unlocked, hide everything that could reveal
+    # sensitive info: the location line, the free-form description block, the
+    # PIX QR (which sits inside the description), and the calendar buttons.
+    # The Quando (date/time) block on the widget still renders when set — it's
+    # a common "save the date" preview.
     display_meta = if unlocked?, do: meta, else: %{meta | local: nil}
-    display_header = if unlocked?, do: stripped_header, else: strip_local_line(stripped_header)
+    display_header = if unlocked?, do: stripped_header, else: ""
 
     google_calendar_url =
       if unlocked?, do: Meta.google_url(display_meta, event.title, url), else: nil
@@ -95,21 +97,12 @@ defmodule RolezinhoWeb.EventLive do
     text =
       Event.to_text(event, url,
         strip_location: not unlocked?,
+        hide_description: not unlocked?,
         hide_names: not unlocked?,
         include_password: include_password?
       )
 
     assign(socket, :shareable_text, text)
-  end
-
-  defp strip_local_line(nil), do: nil
-
-  defp strip_local_line(header) when is_binary(header) do
-    header
-    |> String.split(~r/\r?\n/)
-    |> Enum.reject(&Regex.match?(~r/^\s*local\s*:/iu, &1))
-    |> Enum.join("\n")
-    |> String.trim("\n")
   end
 
   # Page title patterns:
@@ -904,9 +897,9 @@ defmodule RolezinhoWeb.EventLive do
             <p class="font-semibold">Rolezinho protegido por senha.</p>
             <p class="text-sm text-base-content/80">
               <%= if @has_location? do %>
-                Digite a senha pra ver o local e entrar na lista.
+                Digite a senha pra ver os detalhes, o local, os nomes e entrar na lista.
               <% else %>
-                Digite a senha pra entrar na lista.
+                Digite a senha pra ver os detalhes, os nomes e entrar na lista.
               <% end %>
             </p>
           </div>

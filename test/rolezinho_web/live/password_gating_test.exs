@@ -54,7 +54,7 @@ defmodule RolezinhoWeb.PasswordGatingTest do
       assert html =~ "Rolezinho protegido por senha"
       assert html =~ "unlock-form-#{event.slug}"
       # Google Calendar button gone since location is a factor + we don't want to leak
-      assert html =~ "Digite a senha pra ver o local"
+      assert html =~ "Digite a senha pra ver os detalhes"
     end
 
     test "hides the join form and shows a hint instead", %{conn: conn, event: event} do
@@ -114,6 +114,39 @@ defmodule RolezinhoWeb.PasswordGatingTest do
       conn = get(conn, "/r/#{event.slug}.txt")
       refute conn.resp_body =~ "Alice"
       assert conn.resp_body =~ "1- •••"
+    end
+
+    test "description is hidden from the UI and .txt", %{conn: conn, event: event} do
+      # Add some free-form description via the raw editor— admin-only path.
+      {:ok, _} =
+        Rolezinho.Events.save_raw(event, """
+        # Vôlei
+
+        Local: Rua Secreta
+        Data: 15/07/2026
+
+        Valor: 15
+        Pix: 91984933238
+        Detalhes secretos.
+
+        1-
+        2-
+        3-
+        """)
+
+      {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
+      # Free-form details gone.
+      refute html =~ "Valor: 15"
+      refute html =~ "Pix: 91984933238"
+      refute html =~ "Detalhes secretos"
+
+      # `.txt` also hides the whole description block.
+      conn = get(conn, "/r/#{event.slug}.txt")
+      refute conn.resp_body =~ "Valor: 15"
+      refute conn.resp_body =~ "Pix: 91984933238"
+      refute conn.resp_body =~ "Detalhes secretos"
+      # Title and list structure remain
+      assert conn.resp_body =~ "Vôlei"
     end
   end
 
@@ -192,6 +225,24 @@ defmodule RolezinhoWeb.PasswordGatingTest do
       conn = get(conn, "/r/#{event.slug}.txt")
       assert conn.resp_body =~ "1- Alice"
       refute conn.resp_body =~ "•••"
+    end
+
+    test "description shows up again when unlocked", %{conn: conn, event: event} do
+      {:ok, _} =
+        Rolezinho.Events.save_raw(event, """
+        # Vôlei
+
+        Valor: 15
+        Pix: 91984933238
+
+        1-
+        2-
+        3-
+        """)
+
+      {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
+      assert html =~ "Valor: 15"
+      assert html =~ "Pix: 91984933238"
     end
 
     test "calendar.ics endpoint serves the file with LOCATION", %{conn: conn, event: event} do

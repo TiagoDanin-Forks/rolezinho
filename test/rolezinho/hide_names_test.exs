@@ -67,4 +67,61 @@ defmodule Rolezinho.HideNamesTest do
     assert rendered =~ "2- Bob"
     refute rendered =~ Event.hidden_name_placeholder()
   end
+
+  describe "hide_description" do
+    test "omits the entire header (meta lines + free-form)" do
+      event = %Event{
+        title: "T",
+        header:
+          "Local: Rua X\nData: 15/07/2026\nHorário: 19:00 (BRT)\n\nValor: 15\nPix: 91984933238",
+        main_capacity: 1,
+        main_list: [%Attendee{name: "A"}],
+        wait_enabled: false
+      }
+
+      text = Event.to_text(event, "http://roles/t", hide_description: true)
+
+      refute text =~ "Local: Rua X"
+      refute text =~ "Data: 15/07/2026"
+      refute text =~ "Horário: 19:00"
+      refute text =~ "Valor: 15"
+      refute text =~ "Pix:"
+      # But title, URL and list stay visible
+      assert text =~ "http://roles/t"
+      assert text =~ "T"
+      assert text =~ "1- A"
+    end
+
+    test "takes precedence over strip_location" do
+      event = %Event{
+        title: "T",
+        header: "Local: Rua X\nValor: 15",
+        main_capacity: 1,
+        main_list: [%Attendee{name: "A"}],
+        wait_enabled: false
+      }
+
+      text =
+        Event.to_text(event, "http://roles/t",
+          strip_location: true,
+          hide_description: true
+        )
+
+      refute text =~ "Rua X"
+      refute text =~ "Valor:"
+    end
+
+    test "is a no-op when off" do
+      event = %Event{
+        title: "T",
+        header: "Valor: 15",
+        main_capacity: 1,
+        main_list: [%Attendee{name: "A"}],
+        wait_enabled: false
+      }
+
+      text = Event.to_text(event, "http://roles/t")
+      assert text =~ "Valor: 15"
+    end
+  end
 end

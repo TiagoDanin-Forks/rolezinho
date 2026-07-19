@@ -21,6 +21,7 @@ defmodule RolezinhoWeb.RawController do
         text_body =
           Event.to_text(event, url,
             strip_location: not unlocked?,
+            hide_description: not unlocked?,
             hide_names: not unlocked?
           )
 
