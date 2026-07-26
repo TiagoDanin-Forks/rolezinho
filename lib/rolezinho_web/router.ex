@@ -33,6 +33,7 @@ defmodule RolezinhoWeb.Router do
       live "/", HomeLive, :index
       live "/me", SettingsLive, :show
       live "/r/:slug", EventLive, :show
+      live "/r/:slug/pagamento", PaymentLive, :show
     end
 
     get "/r/txt/:slug", RawController, :show

@@ -98,13 +98,17 @@ defmodule RolezinhoWeb.JoinSheetTest do
       assert has_element?(view, ~s{form#join-form[action="/r/#{event.slug}/join"][method="post"]})
     end
 
-    test "targets the queue directly when the list is full", %{conn: conn} do
+    test "sends someone to the queue when the list is full", %{conn: conn} do
       event = create_event(%{"main_size" => "1"})
       {:ok, _} = Events.add_to_main(event, "Ana", participant_id: "someone")
 
-      {:ok, view, _html} = live(conn, ~p"/r/#{event.slug}")
+      # The destination is resolved server-side from the room actually left, not
+      # from a hidden field the client could have been holding since page load.
+      post(conn, ~p"/r/#{event.slug}/join", %{"name" => "Bruno"})
 
-      assert has_element?(view, ~s{input[name="list"][value="wait"]})
+      reloaded = Events.find(event.slug)
+      assert Enum.map(reloaded.wait_list, & &1.name) == ["Bruno"]
+      assert Enum.map(reloaded.main_list, & &1.name) == ["Ana"]
     end
 
     test "carries the field the saved profile fills in", %{conn: conn} do

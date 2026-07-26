@@ -118,6 +118,19 @@ defmodule RolezinhoWeb.EventLive do
     socket
     |> assign(:can_join?, can_join?)
     |> assign(:confirmed_names, confirmed_names(event, unlocked?))
+    |> assign(:party_room, party_room(event))
+  end
+
+  # How large a party this event can still take, which is what the stepper is
+  # allowed to reach. With a waiting list the answer is the whole allowance,
+  # since the overflow has somewhere to go; without one it is however many slots
+  # are actually free.
+  defp party_room(%Event{wait_enabled: true}), do: Event.max_party_size()
+
+  defp party_room(%Event{main_list: list}) do
+    list
+    |> Enum.count(&(String.trim(&1.name) == ""))
+    |> min(Event.max_party_size())
   end
 
   # Names are part of what a password gates, so someone who has not unlocked
@@ -1183,11 +1196,6 @@ defmodule RolezinhoWeb.EventLive do
           phx-hook=".JoinDefaults"
         >
           <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
-          <input
-            type="hidden"
-            name="list"
-            value={if Event.main_full?(@event), do: "wait", else: "main"}
-          />
 
           <label class="block">
             <span class="mb-1 block text-[11px] font-bold text-ink/50">Seu nome *</span>
@@ -1202,6 +1210,18 @@ defmodule RolezinhoWeb.EventLive do
               class="w-full rounded-row border border-ink/12 bg-base-100 px-3.5 py-3 text-[13px] font-semibold text-ink outline-none placeholder:font-normal placeholder:text-ink/35 focus:border-accent focus:ring-2 focus:ring-accent/20"
             />
           </label>
+
+          <!-- RN-04: each companion becomes a row of their own, so the count
+               here decides how many rows are created, not a "+2" suffix on one
+               of them. -->
+          <.form_stepper
+            :if={@party_room > 1}
+            name="qty"
+            label="Quantas pessoas?"
+            hint="Você + acompanhantes"
+            max={@party_room}
+            class="mt-3"
+          />
 
           <button
             type="submit"

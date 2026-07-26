@@ -575,6 +575,22 @@ defmodule Rolezinho.Events do
     end
   end
 
+  @doc """
+  Adds someone plus their companions in one action (RN-04).
+
+  Returns `{:ok, event, placed}` with how many landed in each list, so the
+  caller can say what actually happened rather than assuming everyone got in.
+  """
+  @spec add_party(Event.t(), String.t(), pos_integer(), keyword()) ::
+          {:ok, Event.t(), map()} | {:error, term()}
+  def add_party(%Event{} = event, name, size, opts \\ []) do
+    with :ok <- ensure_signups_open(event),
+         {:ok, updated, placed} <- Event.add_party(event, name, size, opts),
+         {:ok, saved} <- save(updated) do
+      {:ok, saved, placed}
+    end
+  end
+
   defp ensure_signups_open(%Event{} = event) do
     if Event.locked_signups?(event), do: {:error, :signups_locked}, else: :ok
   end

@@ -51,7 +51,7 @@ create.(%{
   "date" => in_days.(2),
   "time" => "19:00",
   "price" => "R$ 15",
-  "pix_key" => "91984933238",
+  "pix_key" => "(91) 98493-3238",
   "description" => "Leva água. Quadra 3.",
   "main_size" => "12",
   "wait_size" => "4"
@@ -153,7 +153,7 @@ past =
     "date" => in_days.(-6),
     "time" => "08:00",
     "price" => "18",
-    "pix_key" => "91988887777",
+    "pix_key" => "(91) 98888-7777",
     "main_size" => "6",
     "wait_size" => "0"
   })

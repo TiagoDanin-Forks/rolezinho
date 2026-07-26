@@ -21,23 +21,24 @@ defmodule RolezinhoWeb.JoinController do
 
   def create(conn, %{"slug" => slug} = params) do
     name = params |> Map.get("name", "") |> to_string()
-    list = if Map.get(params, "list") == "wait", do: :wait, else: :main
+    size = params |> Map.get("qty") |> parse_size()
 
     case Events.find(slug, visibility: :public) do
-      %Event{} = event -> join(conn, event, list, name)
+      %Event{} = event -> join(conn, event, name, size)
       nil -> not_found(conn)
     end
   end
 
-  defp join(conn, %Event{} = event, list, name) do
+  defp join(conn, %Event{} = event, name, size) do
     with :ok <- ensure_unlocked(conn, event),
          :ok <- ensure_open(conn, event),
          participant_id <- Token.generate_participant(),
-         {:ok, _updated} <- add(event, list, name, participant_id) do
+         {:ok, _updated, placed} <-
+           Events.add_party(event, name, size, participant_id: participant_id) do
       conn
       |> Participant.put_participant(event.slug, participant_id)
-      |> put_flash(:info, flash_for(list))
-      |> redirect(to: ~p"/r/#{event.slug}")
+      |> put_flash(:info, placement_message(placed))
+      |> redirect(to: next_step(event))
     else
       {:error, reason} ->
         conn
@@ -46,11 +47,41 @@ defmodule RolezinhoWeb.JoinController do
     end
   end
 
-  defp add(event, :main, name, participant_id),
-    do: Events.add_to_main(event, name, participant_id: participant_id)
+  # A party can be split across both lists, so the message says what actually
+  # happened rather than assuming everyone got a slot.
+  defp placement_message(%{main: main, wait: 0}), do: "#{people(main)} na lista!"
+  defp placement_message(%{main: 0, wait: wait}), do: "#{people(wait)} na espera."
 
-  defp add(event, :wait, name, participant_id),
-    do: Events.add_to_wait(event, name, participant_id: participant_id)
+  defp placement_message(%{main: main, wait: wait}) do
+    "#{people(main)} na lista e #{people(wait)} na espera."
+  end
+
+  defp people(1), do: "Você entrou"
+  defp people(count), do: "#{count} entraram"
+
+  # Paying is the next thing on someone's mind after getting a slot, so a paid
+  # event routes there instead of dropping them back on the list to find the
+  # key themselves (RN-11).
+  defp next_step(%Event{} = event) do
+    if payable?(event), do: ~p"/r/#{event.slug}/pagamento", else: ~p"/r/#{event.slug}"
+  end
+
+  defp payable?(%Event{price_cents: cents, pix_key: key}) do
+    is_integer(cents) and cents > 0 and is_binary(key) and key != ""
+  end
+
+  # A party size arriving from the client is bounded here, not trusted: the
+  # stepper stops at nine, but the request does not have to come from it.
+  defp parse_size(nil), do: 1
+
+  defp parse_size(value) when is_binary(value) do
+    case Integer.parse(String.trim(value)) do
+      {size, ""} when size >= 1 -> min(size, Event.max_party_size())
+      _ -> 1
+    end
+  end
+
+  defp parse_size(_), do: 1
 
   # A password-gated event has to be unlocked before anyone can join it, or the
   # gate would only be hiding the list rather than protecting it.
@@ -78,13 +109,15 @@ defmodule RolezinhoWeb.JoinController do
     |> redirect(to: ~p"/")
   end
 
-  defp flash_for(:main), do: "Entrou na lista!"
-  defp flash_for(:wait), do: "Entrou na reserva!"
-
   defp message_for(:locked), do: "Precisa da senha pra entrar nesse rolezinho."
   defp message_for(:signups_locked), do: "Este rolezinho está fechado para novas inscrições."
   defp message_for(:main_full), do: "Lista principal cheia."
   defp message_for(:empty_name), do: "Digite um nome."
   defp message_for(:wait_disabled), do: "Este rolezinho não tem lista de reserva."
+  defp message_for(:invalid_party_size), do: "Escolha de 1 a 9 pessoas."
+
+  defp message_for(:party_does_not_fit),
+    do: "Não tem vaga pra todo mundo, e esse rolê não tem lista de espera."
+
   defp message_for(_), do: "Não deu pra entrar na lista."
 end

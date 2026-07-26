@@ -406,6 +406,86 @@ defmodule Rolezinho.Event do
     }
   end
 
+  @doc """
+  Adds someone and their companions in one action (RN-04).
+
+  Each person becomes a row of their own, because a slot holds one person: a
+  single row saying "Márcia +2" would let three people occupy one place and the
+  count would lie. The companions are named after whoever brought them
+  ("Convidado de Márcia"), which is also who owes for them.
+
+  When the party does not fit, the overflow goes to the waiting list in the same
+  action rather than failing — someone bringing two friends should not have to
+  guess how many slots were left and retry.
+
+  Returns `{:ok, event, placed}` where `placed` says how many landed in each
+  list, so the caller can tell the person what actually happened.
+  """
+  @spec add_party(t(), String.t(), pos_integer(), keyword()) ::
+          {:ok, t(), %{main: non_neg_integer(), wait: non_neg_integer()}} | {:error, atom()}
+  def add_party(%Event{} = event, name, size, opts \\ []) when is_integer(size) do
+    name = clean_name(name)
+
+    cond do
+      name == "" -> {:error, :empty_name}
+      size < 1 or size > max_party_size() -> {:error, :invalid_party_size}
+      true -> place_party(event, name, size, opts)
+    end
+  end
+
+  @doc "The largest party one person can bring in a single join (RN-04)."
+  def max_party_size, do: 9
+
+  defp place_party(%Event{} = event, name, size, opts) do
+    names = party_names(name, size)
+    {for_main, overflow} = Enum.split(names, free_main_slots(event))
+
+    # Without a waiting list there is nowhere for the overflow to go. Taking the
+    # first few and silently dropping the rest would be worse than refusing:
+    # someone would believe their friends are in.
+    for_wait = if event.wait_enabled, do: overflow, else: []
+
+    cond do
+      for_main == [] and for_wait == [] and event.wait_enabled ->
+        {:error, :main_full}
+
+      for_main == [] and overflow != [] and not event.wait_enabled ->
+        {:error, :main_full}
+
+      overflow != [] and not event.wait_enabled ->
+        {:error, :party_does_not_fit}
+
+      true ->
+        with {:ok, event} <- add_each(event, for_main, opts, &add_to_main/3),
+             {:ok, event} <- add_each(event, for_wait, opts, &add_to_wait/3) do
+          {:ok, event, %{main: length(for_main), wait: length(for_wait)}}
+        end
+    end
+  end
+
+  # The person who joined keeps their name; everyone they brought is identified
+  # by them, since that is how the group refers to them and who settles up.
+  defp party_names(name, 1), do: [name]
+
+  defp party_names(name, size) do
+    [name | Enum.map(2..size, fn _ -> "Convidado de #{name}" end)]
+  end
+
+  # The whole party shares one participant_id: it came from one browser, and the
+  # person who joined is the one who can act on all of those rows.
+  defp add_each(event, names, opts, add) do
+    Enum.reduce_while(names, {:ok, event}, fn name, {:ok, acc} ->
+      case add.(acc, name, opts) do
+        {:ok, updated} -> {:cont, {:ok, updated}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp free_main_slots(%Event{main_list: list}) do
+    Enum.count(list, &(String.trim(&1.name) == ""))
+  end
+
   @doc "Adds an attendee to the end of the wait list."
   @spec add_to_wait(t(), String.t(), keyword()) :: {:ok, t()} | {:error, atom()}
   def add_to_wait(%Event{} = event, name, opts \\ []) do
