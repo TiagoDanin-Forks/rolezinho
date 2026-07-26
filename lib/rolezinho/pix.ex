@@ -32,6 +32,130 @@ defmodule Rolezinho.Pix do
 
   def detect(_), do: nil
 
+  @doc """
+  Identifies which of the five DICT key types a string is, and returns it in the
+  exact form the BR Code expects.
+
+  Format matters here beyond tidiness: the payload carries the key verbatim, and
+  a key the payer's bank cannot resolve produces a QR that scans and then fails.
+  Each type has one canonical shape — phone with `+55`, CPF and CNPJ as digits
+  only, a random key with its hyphens — so the same key typed three different
+  ways still reaches the same account.
+
+  This validates *shape*, not ownership: whether the key belongs to the
+  organizer is between them and whoever pays (RN-10).
+
+  ## Examples
+
+      iex> Rolezinho.Pix.classify("(91) 98493-3238")
+      {:ok, :phone, "+5591984933238"}
+
+      iex> Rolezinho.Pix.classify("123.456.789-00")
+      {:ok, :cpf, "12345678900"}
+
+      iex> Rolezinho.Pix.classify("nope")
+      :error
+  """
+  @spec classify(String.t() | nil) ::
+          {:ok, :phone | :cpf | :cnpj | :email | :random, String.t()} | :error
+  def classify(nil), do: :error
+
+  def classify(value) when is_binary(value) do
+    trimmed = String.trim(value)
+
+    cond do
+      trimmed == "" -> :error
+      email?(trimmed) -> {:ok, :email, String.downcase(trimmed)}
+      random_key?(trimmed) -> {:ok, :random, String.downcase(trimmed)}
+      true -> classify_digits(trimmed)
+    end
+  end
+
+  @doc """
+  Returns the canonical form of a key, or `nil` when it is not a valid one.
+
+  ## Examples
+
+      iex> Rolezinho.Pix.normalize("91984933238")
+      "+5591984933238"
+  """
+  @spec normalize(String.t() | nil) :: String.t() | nil
+  def normalize(value) do
+    case classify(value) do
+      {:ok, _type, canonical} -> canonical
+      :error -> nil
+    end
+  end
+
+  @doc """
+  Formats a key for display, keeping it recognizable to whoever typed it.
+
+  A phone reads as a phone and a CPF as a CPF; e-mail and random keys are
+  already in the form people recognize.
+  """
+  @spec display(String.t() | nil) :: String.t() | nil
+  def display(value) do
+    case classify(value) do
+      {:ok, :phone, canonical} -> format_phone(canonical)
+      {:ok, :cpf, digits} -> format_cpf(digits)
+      {:ok, :cnpj, digits} -> format_cnpj(digits)
+      {:ok, _type, canonical} -> canonical
+      :error -> nil
+    end
+  end
+
+  defp classify_digits(value) do
+    digits = Regex.replace(~r/\D/, value, "")
+
+    cond do
+      # A phone is the only type written with a leading +, and the only one this
+      # project rewrites: 10 or 11 local digits gain the country code.
+      String.starts_with?(value, "+") and byte_size(digits) in [12, 13] ->
+        {:ok, :phone, "+" <> digits}
+
+      String.starts_with?(digits, "55") and byte_size(digits) == 13 ->
+        {:ok, :phone, "+" <> digits}
+
+      byte_size(digits) in [10, 11] and phone_shaped?(value) ->
+        {:ok, :phone, "+55" <> digits}
+
+      byte_size(digits) == 11 ->
+        {:ok, :cpf, digits}
+
+      byte_size(digits) == 14 ->
+        {:ok, :cnpj, digits}
+
+      true ->
+        :error
+    end
+  end
+
+  # 11 digits is ambiguous: it is both a mobile number and a CPF. Punctuation
+  # decides — "(91) 98493-3238" is a phone, "123.456.789-00" is a CPF — and a
+  # bare 11-digit string falls through to CPF, which is the safer default since
+  # a wrong phone would be someone else's real number.
+  defp phone_shaped?(value), do: String.contains?(value, ["(", ")", " "])
+
+  defp email?(value) do
+    Regex.match?(~r/^[^\s@]+@[^\s@]+\.[^\s@]+$/u, value) and byte_size(value) <= 77
+  end
+
+  defp random_key?(value) do
+    Regex.match?(~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, value)
+  end
+
+  defp format_cpf(<<a::binary-3, b::binary-3, c::binary-3, d::binary-2>>) do
+    "#{a}.#{b}.#{c}-#{d}"
+  end
+
+  defp format_cpf(digits), do: digits
+
+  defp format_cnpj(<<a::binary-2, b::binary-3, c::binary-3, d::binary-4, e::binary-2>>) do
+    "#{a}.#{b}.#{c}/#{d}-#{e}"
+  end
+
+  defp format_cnpj(digits), do: digits
+
   defp normalize_phone(digits) do
     cond do
       String.starts_with?(digits, "55") and byte_size(digits) in [12, 13] ->
