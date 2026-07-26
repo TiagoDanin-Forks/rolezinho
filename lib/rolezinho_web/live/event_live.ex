@@ -36,7 +36,8 @@ defmodule RolezinhoWeb.EventLive do
          |> assign(:new_main_name, "")
          |> assign(:new_wait_name, "")
          |> assign(:editing_main, nil)
-         |> assign(:editing_wait, nil)}
+         |> assign(:editing_wait, nil)
+         |> assign(:confirming_removal, nil)}
     end
   end
 
@@ -173,6 +174,68 @@ defmodule RolezinhoWeb.EventLive do
 
   defp charge_label(%{debtors: [_one]}), do: "Cobrar no WhatsApp"
   defp charge_label(%{debtors: debtors}), do: "Cobrar os #{length(debtors)} no WhatsApp"
+
+  # Whether this caller can act on every part of the row, which is what makes
+  # the swipe gesture worth attaching. An empty slot has nothing to swipe.
+  defp manages_row?(%Attendee{name: ""}, _admin?, _organizer?), do: false
+  defp manages_row?(_attendee, true, _organizer?), do: true
+  defp manages_row?(_attendee, _admin?, organizer?), do: organizer?
+
+  # One row of the list, extracted so it can be rendered bare or wrapped in the
+  # swipe container without the markup being written twice.
+  attr :attendee, Attendee, required: true
+  attr :index, :integer, required: true
+  attr :event, Event, required: true
+  attr :mine_index, :integer, default: nil
+  attr :unlocked?, :boolean, required: true
+  attr :current_admin?, :boolean, required: true
+  attr :organizer?, :boolean, required: true
+  attr :can_join?, :boolean, required: true
+
+  defp event_participant_row(assigns) do
+    assigns = assign(assigns, :mine?, assigns.mine_index == assigns.index)
+
+    ~H"""
+    <.participant_row
+      number={@index}
+      name={display_name(@attendee.name, @unlocked?)}
+      paid={@attendee.paid}
+      highlighted={@mine?}
+      divider={@index < length(@event.main_list)}
+      paid_click={
+        can_toggle?(@event, @attendee, @mine?, @current_admin?, @organizer?) && "toggle_paid_main"
+      }
+      join_click={@can_join? and BottomSheet.show("join-sheet")}
+      empty_label="Vaga livre"
+      join_label="Entrar"
+      phx-value-index={@index}
+    >
+      <:actions>
+        <button
+          :if={@current_admin? and String.trim(@attendee.name) != ""}
+          type="button"
+          phx-click="start_edit_main"
+          phx-value-index={@index}
+          class="grid size-11 shrink-0 place-items-center text-ink/35"
+          aria-label={"Editar #{@attendee.name}"}
+        >
+          <.icon name="tabler-pencil" class="size-4" />
+        </button>
+        <button
+          :if={can_remove?(@attendee, @mine?, @current_admin?, @organizer?)}
+          type="button"
+          phx-click="remove_main"
+          phx-value-index={@index}
+          data-confirm={remove_confirm(@mine?, @attendee.name)}
+          class="grid size-11 shrink-0 place-items-center text-ink/35"
+          aria-label={if @mine?, do: "Sair da lista", else: "Remover #{@attendee.name}"}
+        >
+          <.icon name="tabler-x" class="size-4" />
+        </button>
+      </:actions>
+    </.participant_row>
+    """
+  end
 
   # RN-03: a full main list does not hide the action, it changes what it means.
   # The label has to say which, or someone taps expecting a slot and lands in a
@@ -383,6 +446,22 @@ defmodule RolezinhoWeb.EventLive do
     end)
   end
 
+  # The swipe gesture cannot carry a data-confirm, so it asks first and the
+  # confirmation sheet performs the removal (RN-22). Reaching it does not
+  # authorize anything: remove_main still consults the policy.
+  def handle_event("ask_remove_main", %{"id" => index}, socket) do
+    with {:ok, position} <- parse_position(index),
+         %Attendee{} = attendee <- fetch_row(socket.assigns.event, :main, position) do
+      {:noreply, assign(socket, :confirming_removal, %{index: position, name: attendee.name})}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("cancel_remove", _params, socket) do
+    {:noreply, assign(socket, :confirming_removal, nil)}
+  end
+
   # RN-21: a participant removes only themselves; the organizer removes anyone.
   def handle_event("remove_main", %{"index" => index}, socket) do
     authorize_row(socket, :main, index, &Policy.can_remove?/3, fn event, position ->
@@ -523,7 +602,10 @@ defmodule RolezinhoWeb.EventLive do
          %Attendee{} = attendee <- fetch_row(event, list, position),
          true <- allowed?.(event, attendee, policy_opts(socket)),
          {:ok, updated} <- operation.(event, position) do
-      {:noreply, assign_event(socket, updated)}
+      # Any row action settles whatever confirmation was pending: leaving the
+      # sheet open over a list that just changed would point it at a row that
+      # may no longer be the one it named.
+      {:noreply, socket |> assign(:confirming_removal, nil) |> assign_event(updated)}
     else
       _ -> {:noreply, socket}
     end
@@ -758,50 +840,39 @@ defmodule RolezinhoWeb.EventLive do
                   </button>
                 </form>
               <% else %>
-                <.participant_row
-                  number={i}
-                  name={display_name(att.name, @unlocked?)}
-                  paid={att.paid}
-                  highlighted={@mine_index == i}
-                  divider={i < length(@event.main_list)}
-                  paid_click={
-                    can_toggle?(@event, att, @mine_index == i, @current_admin?, @organizer?) &&
-                      "toggle_paid_main"
-                  }
-                  join_click={
-                    @unlocked? and not @signups_locked? and
-                      JS.focus(to: "#add-main-form input[name=name]")
-                  }
-                  empty_label="Vaga livre"
-                  join_label="Entrar"
-                  phx-value-index={i}
+                <!-- An organizer going down eighteen rows gets the gesture as an
+                     accelerator. It is never the only way in: the same actions
+                     stay in the row as buttons, which is what keyboard and
+                     screen-reader users reach. -->
+                <.swipe_actions
+                  :if={manages_row?(att, @current_admin?, @organizer?)}
+                  value={to_string(i)}
                 >
-                  <:actions>
-                    <button
-                      :if={@current_admin? and String.trim(att.name) != ""}
-                      type="button"
-                      phx-click="start_edit_main"
-                      phx-value-index={i}
-                      class="grid size-11 shrink-0 place-items-center text-ink/35"
-                      aria-label={"Editar #{att.name}"}
-                    >
-                      <.icon name="tabler-pencil" class="size-4" />
-                    </button>
-                    <button
-                      :if={can_remove?(att, @mine_index == i, @current_admin?, @organizer?)}
-                      type="button"
-                      phx-click="remove_main"
-                      phx-value-index={i}
-                      data-confirm={remove_confirm(@mine_index == i, att.name)}
-                      class="grid size-11 shrink-0 place-items-center text-ink/35"
-                      aria-label={
-                        if @mine_index == i, do: "Sair da lista", else: "Remover #{att.name}"
-                      }
-                    >
-                      <.icon name="tabler-x" class="size-4" />
-                    </button>
-                  </:actions>
-                </.participant_row>
+                  <:action label="Pago" tone="accent" on_click="toggle_paid_main" />
+                  <:action label="Tirar" tone="danger" on_click="ask_remove_main" />
+                  <.event_participant_row
+                    attendee={att}
+                    index={i}
+                    event={@event}
+                    mine_index={@mine_index}
+                    unlocked?={@unlocked?}
+                    current_admin?={@current_admin?}
+                    organizer?={@organizer?}
+                    can_join?={@can_join?}
+                  />
+                </.swipe_actions>
+
+                <.event_participant_row
+                  :if={not manages_row?(att, @current_admin?, @organizer?)}
+                  attendee={att}
+                  index={i}
+                  event={@event}
+                  mine_index={@mine_index}
+                  unlocked?={@unlocked?}
+                  current_admin?={@current_admin?}
+                  organizer?={@organizer?}
+                  can_join?={@can_join?}
+                />
               <% end %>
             </li>
           </ol>
@@ -981,6 +1052,36 @@ defmodule RolezinhoWeb.EventLive do
           {join_label(@event)}
         </button>
       </div>
+
+      <!-- RN-22: removal always confirms, naming who is going. The destructive
+           action sits on the right, in the danger tone, so the safe one is
+           where a thumb lands by default. -->
+      <.bottom_sheet
+        :if={@confirming_removal}
+        id="remove-sheet"
+        open
+        title={"Remover #{@confirming_removal.name} da lista?"}
+        description="Quem estiver na espera pode ser promovido pra vaga."
+        on_cancel={JS.push("cancel_remove")}
+      >
+        <:actions>
+          <button
+            type="button"
+            phx-click="cancel_remove"
+            class="flex-1 rounded-row bg-ink/[0.06] py-3 text-xs font-bold text-ink"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            phx-click="remove_main"
+            phx-value-index={@confirming_removal.index}
+            class="flex-1 rounded-row bg-danger py-3 text-xs font-bold text-danger-content"
+          >
+            Remover
+          </button>
+        </:actions>
+      </.bottom_sheet>
 
       <!-- RN-40: the group chat is the channel, so the product's job is to hand
            back a block of text somebody can paste there. The preview shows what
