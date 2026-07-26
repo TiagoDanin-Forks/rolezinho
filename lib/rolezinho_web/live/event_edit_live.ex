@@ -365,14 +365,16 @@ defmodule RolezinhoWeb.EventEditLive do
             {status_label(status)}
           </button>
         </div>
-        <p class="text-[11px] leading-relaxed text-muted mt-3">
-          <strong>Ativo:</strong>
-          aparece na página inicial e aceita novas inscrições. <strong>Só pagamentos:</strong>
-          aparece na home, mas ninguém consegue entrar em novas listas —
-          admin só marca quem pagou. <strong>Oculto:</strong>
-          não aparece na home, só pelo link. <strong>Concluído:</strong>
-          arquivado, apenas o admin acessa.
-        </p>
+        <!-- A definition list, not a paragraph: four states running together in
+             prose meant the only thing separating one from the next was where the
+             bold stopped, and choosing a status means comparing them. One per
+             line, so scanning down the terms is enough. -->
+        <dl class="mt-3 space-y-1.5 text-[11px] leading-relaxed text-muted">
+          <div :for={status <- [:active, :payments_only, :hidden, :done]} class="flex gap-1.5">
+            <dt class="shrink-0 font-bold">{status_label(status)}:</dt>
+            <dd class="flex-1">{status_description(status)}</dd>
+          </div>
+        </dl>
       </section>
 
       <section class="rounded-2xl border border-error/40 bg-error/5 p-5">
@@ -392,6 +394,14 @@ defmodule RolezinhoWeb.EventEditLive do
     </Layouts.app>
     """
   end
+
+  defp status_description(:active), do: "aparece na página inicial e aceita novas inscrições."
+
+  defp status_description(:payments_only),
+    do: "aparece na home, mas ninguém entra em novas listas — o admin só marca quem pagou."
+
+  defp status_description(:hidden), do: "não aparece na home, só pelo link."
+  defp status_description(:done), do: "arquivado, apenas o admin acessa."
 
   defp status_label(:active), do: "Ativo"
   defp status_label(:payments_only), do: "Só pagamentos"

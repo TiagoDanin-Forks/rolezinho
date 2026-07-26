@@ -167,6 +167,11 @@ defmodule RolezinhoWeb.EventLive do
     socket
     |> assign(:cash, if(show?, do: Cash.summary(event)))
     |> assign(:reminder_text, if(show?, do: Cash.reminder_text(event)))
+    # Admin-only, matching `handle_event("clone", ...)`: cloning lands on an
+    # /admin edit page, so showing it to a plain organizer would offer a door
+    # that closes in their face. A finished event gets the louder "Repetir esse
+    # rolê" instead, so this is the button for one still running.
+    |> assign(:can_duplicate?, socket.assigns.current_admin? and event.status != :done)
   end
 
   # The 1-based position of this browser's own row, or nil. Used to highlight it
@@ -217,6 +222,16 @@ defmodule RolezinhoWeb.EventLive do
       {paid, total} when paid == total -> "todos pagaram"
       {paid, total} -> "#{paid} de #{total} já pagaram"
     end
+  end
+
+  # Shared by every organizer action in the footer group. They sit next to each
+  # other, so a divergence between them is visible immediately; keeping one list
+  # is what stops that.
+  defp organizer_action_class do
+    "flex w-full items-center justify-center gap-1.5 rounded-cta border border-hairline " <>
+      "bg-surface px-4 py-3 text-[13px] font-bold text-ink transition-all hover:bg-tint " <>
+      "active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 " <>
+      "focus-visible:outline-accent"
   end
 
   defp charge_label(%{debtors: [_one]}), do: "Cobrar no WhatsApp"
@@ -813,16 +828,6 @@ defmodule RolezinhoWeb.EventLive do
           <.icon name="tabler-repeat" class="size-[18px]" /> Repetir esse rolê
         </button>
 
-        <button
-          :if={@current_admin? and @event.status != :done}
-          type="button"
-          phx-click="clone"
-          data-confirm="Criar uma cópia deste rolezinho?"
-          class="flex w-full items-center justify-center gap-2 rounded-cta border-[1.5px] border-ink/15 px-4 py-3.5 text-[13px] font-bold text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-        >
-          <.icon name="tabler-copy" class="size-4" /> Duplicar pra outra data
-        </button>
-
         <section class="rounded-2xl border border-base-300 bg-base-100 p-5">
           <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
             <div>
@@ -1094,24 +1099,50 @@ defmodule RolezinhoWeb.EventLive do
             {raw(render_markdown(@event.footer))}
           </div>
         </section>
-      </article>
+        <!-- Deliberately tighter than the article's 32px rhythm, which separates
+             independent cards. This is not a third card: it reports on the lists
+             above and acts on them, so it reads as their footer. At a full 32px
+             it floated as its own unrelated section. `!mt-4` because `space-y-8`
+             on the parent sets the margin on every sibling.
 
-      <!-- One primary action per screen, at the bottom where the thumb is.
-           The label follows what tapping it will actually do: with the main
-           list full, joining means joining the queue (RN-03). -->
-      <div :if={@cash} class="mt-6">
-        <.alert_banner tone="warn">{debt_summary(@cash)}</.alert_banner>
-        <a
-          :if={@reminder_text}
-          href={"https://wa.me/?text=" <> URI.encode(@reminder_text)}
-          target="_blank"
-          rel="noopener"
-          class="mt-2 flex w-full items-center justify-center gap-1.5 rounded-cta bg-ink px-4 py-3 text-[13px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-        >
-          <.icon name="tabler-brand-whatsapp" class="size-4" />
-          {charge_label(@cash)}
-        </a>
-      </div>
+             The banner states a condition and the button acts on it, so they
+             stay a pair — but at 8px the button read as the banner's own
+             footer. 12px keeps the causal link legible while giving the button
+             its own edge as a tap target.
+
+             Outlined rather than solid: the pinned action below is already the
+             filled one, and two black buttons stacked read as two primary
+             actions competing. Charging is the organizer's errand; joining is
+             what the visitor came for, so joining keeps the weight.
+
+             `hairline` is the project's border token, so this matches the cards
+             around it. No surface in the palette reaches 3:1 against the canvas,
+             so the outline is not carrying identification on its own — the
+             label, the WhatsApp mark, and the link role do that, and focus draws
+             a full accent ring. -->
+        <div :if={not is_nil(@cash) or @can_duplicate?} class="!mt-4 space-y-3">
+          <.alert_banner :if={@cash} tone="warn">{debt_summary(@cash)}</.alert_banner>
+          <a
+            :if={not is_nil(@cash) and not is_nil(@reminder_text)}
+            href={"https://wa.me/?text=" <> URI.encode(@reminder_text)}
+            target="_blank"
+            rel="noopener"
+            class={organizer_action_class()}
+          >
+            <.icon name="tabler-brand-whatsapp" class="size-4" />
+            {charge_label(@cash)}
+          </a>
+          <button
+            :if={@can_duplicate?}
+            type="button"
+            phx-click="clone"
+            data-confirm="Criar uma cópia deste rolezinho?"
+            class={organizer_action_class()}
+          >
+            <.icon name="tabler-copy" class="size-4" /> Duplicar pra outra data
+          </button>
+        </div>
+      </article>
 
       <!-- RN-22: removal always confirms, naming who is going. The destructive
            action sits on the right, in the danger tone, so the safe one is
