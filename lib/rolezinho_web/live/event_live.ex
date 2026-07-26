@@ -798,17 +798,31 @@ defmodule RolezinhoWeb.EventLive do
           >
             <.icon name="tabler-pencil" class="size-[18px]" />
           </.link>
-          <button
-            :if={@current_admin?}
-            type="button"
-            phx-click="clone"
-            data-confirm="Criar uma cópia deste rolezinho?"
-            class="grid size-11 place-items-center rounded-full bg-ink/[0.06] text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-            aria-label="Clonar o rolê"
-          >
-            <.icon name="tabler-copy" class="size-[18px]" />
-          </button>
         </div>
+
+        <!-- RN-52: repeating is the natural next move once a rolê is over, and
+             it is the moment somebody looks for it. An unlabelled duplicate icon
+             in a toolbar is not something anyone goes hunting for, so on a
+             finished event it becomes the primary action, named for what it
+             does rather than for the operation behind it. -->
+        <button
+          :if={@current_admin? and @event.status == :done}
+          type="button"
+          phx-click="clone"
+          class="flex w-full items-center justify-center gap-2 rounded-cta bg-ink px-4 py-4 text-[15px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
+          <.icon name="tabler-repeat" class="size-[18px]" /> Repetir esse rolê
+        </button>
+
+        <button
+          :if={@current_admin? and @event.status != :done}
+          type="button"
+          phx-click="clone"
+          data-confirm="Criar uma cópia deste rolezinho?"
+          class="flex w-full items-center justify-center gap-2 rounded-cta border-[1.5px] border-ink/15 px-4 py-3.5 text-[13px] font-bold text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
+          <.icon name="tabler-copy" class="size-4" /> Duplicar pra outra data
+        </button>
 
         <section class="rounded-2xl border border-base-300 bg-base-100 p-5">
           <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">

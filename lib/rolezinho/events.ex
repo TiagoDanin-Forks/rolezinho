@@ -430,10 +430,23 @@ defmodule Rolezinho.Events do
       |> Map.merge(%{
         slug: clone_slug,
         title: source.title <> " Clonado",
-        status: :active
+        status: :active,
+        # RN-52: a repeat copies the setup, not the people. Carrying the list
+        # over would open next week's rolê with last week's names already
+        # confirmed — and the payment checks with them.
+        main_list: empty_slots(source.main_capacity),
+        wait_list: []
       })
 
-    case %Event{} |> Event.changeset(attrs) |> Repo.insert() do
+    changeset =
+      %Event{}
+      |> Event.changeset(attrs)
+      # The copy is its own event, so it gets its own secret: sharing one would
+      # let whoever organized the original administer the repeat, and the other
+      # way round.
+      |> Ecto.Changeset.put_change(:organizer_token, Token.generate_organizer())
+
+    case Repo.insert(changeset) do
       {:ok, clone} ->
         broadcast_home()
         {:ok, clone}
@@ -442,6 +455,12 @@ defmodule Rolezinho.Events do
         {:error, changeset_errors(changeset)}
     end
   end
+
+  defp empty_slots(capacity) when is_integer(capacity) and capacity > 0 do
+    for _ <- 1..capacity, do: %{name: "", paid: false}
+  end
+
+  defp empty_slots(_capacity), do: []
 
   defp unique_clone_slug(source_slug) do
     base = source_slug <> "-clonado"
