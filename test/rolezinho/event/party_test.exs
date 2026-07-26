@@ -89,6 +89,7 @@ defmodule Rolezinho.Event.PartyTest do
       assert {:ok, event, placed} = Event.add_party(full, "Márcia", 2)
 
       assert placed == %{main: 0, wait: 2}
+      assert Enum.map(event.wait_list, & &1.name) == ["Márcia", "Convidado de Márcia"]
     end
   end
 

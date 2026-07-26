@@ -67,21 +67,55 @@ defmodule RolezinhoWeb.EventLiveTest do
       assert render(view) =~ "Waiter"
     end
 
-    test "anyone can promote wait list to main", %{conn: conn, event: event} do
-      # Fill main to leave 2 spots
+    # RN-31: promoting is a decision about who gets in, so it belongs to whoever
+    # runs the rolê. A visitor is not offered it, and cannot send it either — the
+    # button being absent is not what stops them.
+    test "a visitor is not offered promotion", %{conn: conn, event: event} do
       {:ok, _} = Events.add_to_main(event, "A")
       event = Events.find(event.slug)
       {:ok, _} = Events.add_to_wait(event, "W1")
 
       {:ok, view, _html} = live(conn, ~p"/r/#{event.slug}")
 
+      refute has_element?(view, "button[phx-click=\"promote\"]")
+    end
+
+    test "a visitor forging the promote message is refused", %{conn: conn, event: event} do
+      {:ok, _} = Events.add_to_main(event, "A")
+      event = Events.find(event.slug)
+      {:ok, _} = Events.add_to_wait(event, "W1")
+
+      {:ok, view, _html} = live(conn, ~p"/r/#{event.slug}")
+
+      render_click(view, "promote", %{"index" => "1"})
+
+      assert Events.find(event.slug).wait_list |> Enum.map(& &1.name) == ["W1"]
+    end
+
+    test "the admin promotes from the queue", %{conn: conn, event: event} do
+      {:ok, _} = Events.add_to_main(event, "A")
+      event = Events.find(event.slug)
+      {:ok, _} = Events.add_to_wait(event, "W1")
+
+      {:ok, view, _html} = live(admin_conn(conn), ~p"/r/#{event.slug}")
+
       view
       |> element("button[phx-click=\"promote\"][phx-value-index=\"1\"]")
       |> render_click()
 
-      assert render(view) =~ "W1"
-      # No more wait list entries
-      refute render(view) =~ "1 pessoa"
+      reloaded = Events.find(event.slug)
+      assert Enum.map(reloaded.main_list, & &1.name) |> Enum.member?("W1")
+      assert reloaded.wait_list == []
+    end
+
+    # Payment is settled on the main list, so a queued row has no check to offer
+    # and nothing to report.
+    test "the queue has no payment control", %{conn: conn, event: event} do
+      {:ok, _} = Events.add_to_wait(event, "W1")
+
+      {:ok, view, _html} = live(admin_conn(conn), ~p"/r/#{event.slug}")
+
+      refute has_element?(view, "button[phx-click=\"toggle_paid_wait\"]")
     end
 
     test "does not show admin-only controls when not logged in", %{conn: conn, event: event} do

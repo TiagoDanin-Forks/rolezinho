@@ -582,7 +582,10 @@ defmodule Rolezinho.Event do
         {:error, :not_found}
 
       true ->
-        %Attendee{} = person = Enum.at(event.wait_list, index - 1)
+        # `paid` is cleared on the way in: nobody on the queue owes anything, so
+        # a truthy flag there can only be stale, and carrying it over would put
+        # someone on the main list already marked as having paid.
+        %Attendee{} = person = %{Enum.at(event.wait_list, index - 1) | paid: false}
         new_wait = List.delete_at(event.wait_list, index - 1)
         new_main = replace_first_empty(event.main_list, person)
         {:ok, %{event | main_list: new_main, wait_list: new_wait}}

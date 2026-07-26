@@ -116,7 +116,12 @@ defmodule RolezinhoWeb.EventLive do
         is_nil(own_wait_index(event, participant_id)) and
         (not Event.main_full?(event) or event.wait_enabled)
 
+    # RN-31: promoting is the organizer's call. The button used to render for
+    # every visitor, which put a decision that reorders the list in the hands of
+    # anyone who opened the page; `handle_event("promote", ...)` still asks the
+    # policy, so this only stops offering what would be refused.
     socket
+    |> assign(:can_promote?, Policy.can_promote?(event, opts))
     |> assign(:can_join?, can_join?)
     |> assign(:confirmed_names, confirmed_names(event, unlocked?))
     |> assign(:party_room, party_room(event))
@@ -487,8 +492,12 @@ defmodule RolezinhoWeb.EventLive do
     end
   end
 
+  # RN-31. `ensure_can_signup` only reports whether the password was entered, so
+  # it does not answer this: promoting reorders who is in the rolê, and any
+  # unlocked visitor could send this message without ever seeing a button.
   def handle_event("promote", %{"index" => index}, socket) do
     with :ok <- ensure_can_signup(socket),
+         :ok <- ensure_can_promote(socket),
          {:ok, event} <- Events.promote(socket.assigns.event, String.to_integer(index)) do
       {:noreply,
        socket
@@ -504,6 +513,9 @@ defmodule RolezinhoWeb.EventLive do
       {:error, :main_full} ->
         {:noreply, put_flash(socket, :error, "A lista principal está cheia.")}
 
+      {:error, :forbidden} ->
+        {:noreply, put_flash(socket, :error, "Só quem organiza pode promover.")}
+
       {:error, :not_found} ->
         {:noreply, socket}
     end
@@ -517,12 +529,6 @@ defmodule RolezinhoWeb.EventLive do
   def handle_event("toggle_paid_main", %{"index" => index}, socket) do
     authorize_row(socket, :main, index, &Policy.can_toggle_paid?/3, fn event, position ->
       Events.toggle_paid_main(event, position)
-    end)
-  end
-
-  def handle_event("toggle_paid_wait", %{"index" => index}, socket) do
-    authorize_row(socket, :wait, index, &Policy.can_toggle_paid?/3, fn event, position ->
-      Events.toggle_paid_wait(event, position)
     end)
   end
 
@@ -649,6 +655,10 @@ defmodule RolezinhoWeb.EventLive do
   # slug must be in the unlocked-set (or the event must have no password).
   defp ensure_can_signup(socket) do
     if socket.assigns.unlocked?, do: :ok, else: {:error, :locked}
+  end
+
+  defp ensure_can_promote(socket) do
+    if socket.assigns.can_promote?, do: :ok, else: {:error, :forbidden}
   end
 
   # Server-side gate for the "include password in share text" toggle. The
@@ -1008,36 +1018,43 @@ defmodule RolezinhoWeb.EventLive do
                     not @unlocked? && "tracking-widest text-base-content/60"
                   ]}>
                     {display_name(att.name, @unlocked?)}
-                    <span :if={att.paid} class="ml-1 text-success" title="Pago">✅</span>
                   </span>
               <% end %>
 
               <div class="flex items-center gap-1 shrink-0">
+                <!-- No payment check here: somebody on the queue has not got a
+                     place yet, so they owe nothing. Money is settled on the main
+                     list, once they are actually in.
+
+                     Kept visible while the main list is full, only disabled: the
+                     queue exists precisely because it is full, so hiding the one
+                     action the queue has at that moment left the row with nothing
+                     to do.
+
+                     Outlined while unavailable rather than a faded solid: a full
+                     main list is the queue's ordinary state, so every row would
+                     have carried a greyed-out slab and the whole card read as
+                     broken. This reads as waiting for a slot instead. -->
                 <button
-                  :if={not Event.main_full?(@event) and @editing_wait != i}
+                  :if={@can_promote? and @editing_wait != i}
                   type="button"
                   phx-click="promote"
                   phx-value-index={i}
-                  class="rounded-lg bg-ink px-2.5 py-1.5 text-[10px] font-bold text-ink-content"
-                  title="Promover para a lista principal"
-                >
-                  <.icon name="tabler-arrow-up" class="size-3.5" /> Promover
-                </button>
-                <button
-                  :if={@current_admin? and @editing_wait != i}
-                  type="button"
-                  phx-click="toggle_paid_wait"
-                  phx-value-index={i}
+                  disabled={Event.main_full?(@event)}
                   class={[
-                    "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-2 py-1 text-xs",
-                    if(att.paid,
-                      do: "bg-success text-success-content hover:bg-success/90",
-                      else: "border border-base-300 hover:bg-base-200"
+                    "rounded-lg px-2.5 py-1.5 text-[10px] font-bold",
+                    if(Event.main_full?(@event),
+                      do: "cursor-not-allowed border border-hairline text-muted",
+                      else: "bg-ink text-ink-content"
                     )
                   ]}
-                  title="Alternar pago"
+                  title={
+                    if Event.main_full?(@event),
+                      do: "A lista principal está cheia",
+                      else: "Promover para a lista principal"
+                  }
                 >
-                  ✅
+                  <.icon name="tabler-arrow-up" class="size-3.5" /> Promover
                 </button>
                 <button
                   :if={@current_admin? and @editing_wait != i}
