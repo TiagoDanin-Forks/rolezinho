@@ -481,16 +481,16 @@ defmodule Rolezinho.Events do
 
   # ---------- List operations ----------
 
-  def add_to_main(%Event{} = event, name) do
+  def add_to_main(%Event{} = event, name, opts \\ []) do
     with :ok <- ensure_signups_open(event),
-         {:ok, updated} <- Event.add_to_main(event, name) do
+         {:ok, updated} <- Event.add_to_main(event, name, opts) do
       save(updated)
     end
   end
 
-  def add_to_wait(%Event{} = event, name) do
+  def add_to_wait(%Event{} = event, name, opts \\ []) do
     with :ok <- ensure_signups_open(event),
-         {:ok, updated} <- Event.add_to_wait(event, name) do
+         {:ok, updated} <- Event.add_to_wait(event, name, opts) do
       save(updated)
     end
   end

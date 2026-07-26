@@ -378,7 +378,7 @@ defmodule Rolezinho.Event do
 
   @doc "Adds an attendee to the first empty main slot."
   @spec add_to_main(t(), String.t()) :: {:ok, t()} | {:error, atom()}
-  def add_to_main(%Event{} = event, name) do
+  def add_to_main(%Event{} = event, name, opts \\ []) do
     name = clean_name(name)
 
     cond do
@@ -389,14 +389,26 @@ defmodule Rolezinho.Event do
         {:error, :main_full}
 
       true ->
-        list = replace_first_empty(event.main_list, %Attendee{name: name, paid: false})
+        list = replace_first_empty(event.main_list, new_attendee(name, opts))
         {:ok, %{event | main_list: list}}
     end
   end
 
+  # The participant id travels with the row from the moment it is created: it is
+  # what lets the person come back later and act on their own row.
+  defp new_attendee(name, opts) do
+    %Attendee{
+      name: name,
+      paid: false,
+      participant_id: Keyword.get(opts, :participant_id),
+      joined_at: DateTime.utc_now(:second),
+      values: Keyword.get(opts, :values, %{})
+    }
+  end
+
   @doc "Adds an attendee to the end of the wait list."
-  @spec add_to_wait(t(), String.t()) :: {:ok, t()} | {:error, atom()}
-  def add_to_wait(%Event{} = event, name) do
+  @spec add_to_wait(t(), String.t(), keyword()) :: {:ok, t()} | {:error, atom()}
+  def add_to_wait(%Event{} = event, name, opts \\ []) do
     name = clean_name(name)
 
     cond do
@@ -407,7 +419,7 @@ defmodule Rolezinho.Event do
         {:error, :wait_disabled}
 
       true ->
-        {:ok, %{event | wait_list: event.wait_list ++ [%Attendee{name: name, paid: false}]}}
+        {:ok, %{event | wait_list: event.wait_list ++ [new_attendee(name, opts)]}}
     end
   end
 

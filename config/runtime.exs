@@ -28,6 +28,16 @@ if admin_password = System.get_env("ADMIN_PASSWORD") do
 end
 
 if config_env() == :prod do
+  # config.exs ships a development default, so without this a deploy that forgot
+  # the variable would come up with the admin password literally set to "admin"
+  # — working, and wide open. Fail at boot instead, the same way a missing
+  # SECRET_KEY_BASE does.
+  System.get_env("ADMIN_PASSWORD") ||
+    raise """
+    environment variable ADMIN_PASSWORD is missing.
+    It guards every admin surface — the app refuses to boot without it.
+    """
+
   database_url =
     System.get_env("DATABASE_URL") ||
       raise """

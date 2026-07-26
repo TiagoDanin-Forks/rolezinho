@@ -3,6 +3,7 @@ defmodule RolezinhoWeb.Router do
 
   import RolezinhoWeb.Plugs.Admin
   import RolezinhoWeb.Plugs.ContentSecurityPolicy
+  import RolezinhoWeb.Plugs.Participant
 
   pipeline :browser do
     plug :accepts, ["html"]
@@ -13,6 +14,7 @@ defmodule RolezinhoWeb.Router do
     plug :put_secure_browser_headers
     plug :put_content_security_policy
     plug :fetch_admin
+    plug :fetch_participant
   end
 
   pipeline :admin_required do
@@ -23,7 +25,11 @@ defmodule RolezinhoWeb.Router do
   scope "/", RolezinhoWeb do
     pipe_through :browser
 
-    live_session :public, on_mount: [{RolezinhoWeb.Plugs.Admin, :fetch}] do
+    live_session :public,
+      on_mount: [
+        {RolezinhoWeb.Plugs.Admin, :fetch},
+        {RolezinhoWeb.Plugs.Participant, :fetch}
+      ] do
       live "/", HomeLive, :index
       live "/r/:slug", EventLive, :show
     end
