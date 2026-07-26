@@ -119,6 +119,12 @@ defmodule RolezinhoWeb.EventLive do
     |> assign(:can_join?, can_join?)
     |> assign(:confirmed_names, confirmed_names(event, unlocked?))
     |> assign(:party_room, party_room(event))
+    |> assign(:extra_fields, extra_fields(event))
+  end
+
+  # The questions the organizer added, beyond the name the form always asks.
+  defp extra_fields(%Event{} = event) do
+    event |> Events.form_fields() |> Enum.reject(& &1.locked)
   end
 
   # How large a party this event can still take, which is what the stepper is
@@ -1214,6 +1220,22 @@ defmodule RolezinhoWeb.EventLive do
           <!-- RN-04: each companion becomes a row of their own, so the count
                here decides how many rows are created, not a "+2" suffix on one
                of them. -->
+          <!-- RN-60/61/62: the questions this organizer chose to ask. Answers
+               are scoped to this event and never rendered in the public list. -->
+          <label :for={field <- @extra_fields} class="mt-3 block">
+            <span class="mb-1 block text-[11px] font-bold text-ink/50">
+              {field.label}{if field.required, do: " *"}
+            </span>
+            <input
+              type={field.type}
+              name={field.id}
+              required={field.required}
+              maxlength="200"
+              placeholder={field.placeholder}
+              class="w-full rounded-row border border-ink/12 bg-base-100 px-3.5 py-3 text-[13px] font-semibold text-ink outline-none placeholder:font-normal placeholder:text-ink/35 focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+          </label>
+
           <.form_stepper
             :if={@party_room > 1}
             name="qty"

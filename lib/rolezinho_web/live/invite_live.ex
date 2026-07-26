@@ -61,6 +61,11 @@ defmodule RolezinhoWeb.InviteLive do
     |> assign(:amount, Cash.format_amount(event.price_cents))
     |> assign(:can_join?, can_join?(socket, event, participant_id))
     |> assign(:party_room, party_room(event))
+    |> assign(:extra_fields, extra_fields(event))
+  end
+
+  defp extra_fields(%Event{} = event) do
+    event |> Events.form_fields() |> Enum.reject(& &1.locked)
   end
 
   # The password gates this screen exactly as it gates the list: someone without
@@ -210,6 +215,22 @@ defmodule RolezinhoWeb.InviteLive do
               maxlength="60"
               autocomplete="name"
               placeholder="Como te chamam no grupo"
+              class="w-full rounded-row border border-ink/12 bg-base-100 px-3.5 py-3 text-[13px] font-semibold text-ink outline-none placeholder:font-normal placeholder:text-ink/35 focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+          </label>
+
+          <!-- RN-60/61/62: the questions this organizer chose to ask. Answers
+               are scoped to this event and never rendered in the public list. -->
+          <label :for={field <- @extra_fields} class="mt-3 block">
+            <span class="mb-1 block text-[11px] font-bold text-ink/50">
+              {field.label}{if field.required, do: " *"}
+            </span>
+            <input
+              type={field.type}
+              name={field.id}
+              required={field.required}
+              maxlength="200"
+              placeholder={field.placeholder}
               class="w-full rounded-row border border-ink/12 bg-base-100 px-3.5 py-3 text-[13px] font-semibold text-ink outline-none placeholder:font-normal placeholder:text-ink/35 focus:border-accent focus:ring-2 focus:ring-accent/20"
             />
           </label>

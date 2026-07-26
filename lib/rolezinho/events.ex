@@ -12,6 +12,7 @@ defmodule Rolezinho.Events do
   alias Ecto.Multi
   alias Phoenix.PubSub
   alias Rolezinho.Event
+  alias Rolezinho.Event.FormField
   alias Rolezinho.Event.Meta
   alias Rolezinho.Event.Parser
   alias Rolezinho.Event.Token
@@ -574,6 +575,96 @@ defmodule Rolezinho.Events do
       save(updated)
     end
   end
+
+  @doc """
+  The questions this event's join form asks (RN-61).
+
+  Falls back to the default form, so an event that predates custom forms — or
+  one nobody configured — still asks for a name.
+  """
+  @spec form_fields(Event.t()) :: [FormField.t()]
+  def form_fields(%Event{form_fields: fields}), do: FormField.for_event(fields)
+
+  @doc """
+  Adds a question to the join form.
+
+  The id is derived from the label and kept unique, since it becomes both a form
+  field name and a key in the attendee's answers.
+  """
+  @spec add_form_field(Event.t(), map()) :: {:ok, Event.t()} | {:error, term()}
+  def add_form_field(%Event{} = event, params) do
+    fields = form_fields(event)
+    label = params |> Map.get("label", "") |> to_string() |> String.trim()
+    type = params |> Map.get("type", "text") |> to_string()
+
+    cond do
+      label == "" ->
+        {:error, :empty_label}
+
+      type not in FormField.types() ->
+        {:error, :invalid_type}
+
+      length(fields) >= max_form_fields() ->
+        {:error, :too_many_fields}
+
+      true ->
+        field = %FormField{
+          id: FormField.build_id(label, Enum.map(fields, & &1.id)),
+          label: label,
+          type: type,
+          required: Map.get(params, "required") in [true, "true", "on"],
+          locked: false
+        }
+
+        save(%{event | form_fields: fields ++ [field]})
+    end
+  end
+
+  @doc """
+  Removes a question from the join form.
+
+  Locked fields stay: the name identifies the row, so a list without it would
+  have nothing to display (RN-60).
+  """
+  @spec remove_form_field(Event.t(), String.t()) :: {:ok, Event.t()} | {:error, term()}
+  def remove_form_field(%Event{} = event, id) do
+    fields = form_fields(event)
+
+    case Enum.find(fields, &(&1.id == id)) do
+      nil -> {:error, :not_found}
+      %FormField{locked: true} -> {:error, :locked_field}
+      _ -> save(%{event | form_fields: Enum.reject(fields, &(&1.id == id))})
+    end
+  end
+
+  @doc """
+  Flips whether a question must be answered.
+
+  A locked field cannot become optional — a row with no name is not a row.
+  """
+  @spec toggle_form_field_required(Event.t(), String.t()) :: {:ok, Event.t()} | {:error, term()}
+  def toggle_form_field_required(%Event{} = event, id) do
+    fields = form_fields(event)
+
+    case Enum.find(fields, &(&1.id == id)) do
+      nil ->
+        {:error, :not_found}
+
+      %FormField{locked: true} ->
+        {:error, :locked_field}
+
+      _ ->
+        updated =
+          Enum.map(fields, fn field ->
+            if field.id == id, do: %{field | required: not field.required}, else: field
+          end)
+
+        save(%{event | form_fields: updated})
+    end
+  end
+
+  # Past this, the form stops being a form and becomes a survey nobody finishes.
+  defp max_form_fields, do: 8
 
   @doc """
   Adds someone plus their companions in one action (RN-04).

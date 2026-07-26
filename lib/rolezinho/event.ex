@@ -13,6 +13,7 @@ defmodule Rolezinho.Event do
 
   alias Rolezinho.Event
   alias Rolezinho.Event.Attendee
+  alias Rolezinho.Event.FormField
 
   @statuses [:active, :payments_only, :hidden, :done]
 
@@ -52,6 +53,10 @@ defmodule Rolezinho.Event do
     embeds_many :main_list, Attendee, on_replace: :delete
     embeds_many :wait_list, Attendee, on_replace: :delete
 
+    # What the join form asks. Left nil until the organizer configures it, so
+    # `FormField.for_event/1` can tell "never set up" from "asks nothing".
+    embeds_many :form_fields, FormField, on_replace: :delete
+
     timestamps(type: :utc_datetime)
   end
 
@@ -76,7 +81,8 @@ defmodule Rolezinho.Event do
           ends_at: DateTime.t() | nil,
           price_cents: non_neg_integer() | nil,
           pix_key: String.t() | nil,
-          organizer_token: String.t() | nil
+          organizer_token: String.t() | nil,
+          form_fields: [FormField.t()]
         }
 
   @doc """
@@ -105,6 +111,7 @@ defmodule Rolezinho.Event do
     |> update_change(:password, &normalize_password/1)
     |> cast_embed(:main_list, with: &Attendee.changeset/2)
     |> cast_embed(:wait_list, with: &Attendee.changeset/2)
+    |> cast_embed(:form_fields, with: &FormField.changeset/2)
     |> validate_required([:slug, :title, :status])
     |> update_change(:slug, &String.downcase(String.trim(&1 || "")))
     |> validate_format(:slug, @slug_regex, message: "use letras minúsculas, números e traços")
@@ -456,8 +463,13 @@ defmodule Rolezinho.Event do
         {:error, :party_does_not_fit}
 
       true ->
+        # The answers belong to whoever filled in the form, and they are the
+        # first row placed — which is in the waiting list when the main one was
+        # already full.
+        wait_opts = if for_main == [], do: opts, else: Keyword.delete(opts, :values)
+
         with {:ok, event} <- add_each(event, for_main, opts, &add_to_main/3),
-             {:ok, event} <- add_each(event, for_wait, opts, &add_to_wait/3) do
+             {:ok, event} <- add_each(event, for_wait, wait_opts, &add_to_wait/3) do
           {:ok, event, %{main: length(for_main), wait: length(for_wait)}}
         end
     end
@@ -474,13 +486,21 @@ defmodule Rolezinho.Event do
   # The whole party shares one participant_id: it came from one browser, and the
   # person who joined is the one who can act on all of those rows.
   defp add_each(event, names, opts, add) do
-    Enum.reduce_while(names, {:ok, event}, fn name, {:ok, acc} ->
-      case add.(acc, name, opts) do
+    names
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, event}, fn {name, index}, {:ok, acc} ->
+      case add.(acc, name, row_opts(opts, index)) do
         {:ok, updated} -> {:cont, {:ok, updated}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
   end
+
+  # Only the person who filled in the form carries the answers. Copying them
+  # onto the companions would invent data nobody gave — the guests never
+  # answered a shirt size.
+  defp row_opts(opts, 0), do: opts
+  defp row_opts(opts, _index), do: Keyword.delete(opts, :values)
 
   defp free_main_slots(%Event{main_list: list}) do
     Enum.count(list, &(String.trim(&1.name) == ""))
@@ -615,7 +635,8 @@ defmodule Rolezinho.Event do
       price_cents: event.price_cents,
       pix_key: event.pix_key,
       main_list: Enum.map(event.main_list, &attendee_to_map/1),
-      wait_list: Enum.map(event.wait_list, &attendee_to_map/1)
+      wait_list: Enum.map(event.wait_list, &attendee_to_map/1),
+      form_fields: Enum.map(event.form_fields, &Map.from_struct/1)
     }
   end
 

@@ -24,17 +24,21 @@ defmodule RolezinhoWeb.JoinController do
     size = params |> Map.get("qty") |> parse_size()
 
     case Events.find(slug, visibility: :public) do
-      %Event{} = event -> join(conn, event, name, size)
+      %Event{} = event -> join(conn, event, name, size, params)
       nil -> not_found(conn)
     end
   end
 
-  defp join(conn, %Event{} = event, name, size) do
+  defp join(conn, %Event{} = event, name, size, params) do
     with :ok <- ensure_unlocked(conn, event),
          :ok <- ensure_open(conn, event),
+         {:ok, values} <- collect_answers(event, params),
          participant_id <- Token.generate_participant(),
          {:ok, _updated, placed} <-
-           Events.add_party(event, name, size, participant_id: participant_id) do
+           Events.add_party(event, name, size,
+             participant_id: participant_id,
+             values: values
+           ) do
       conn
       |> Participant.put_participant(event.slug, participant_id)
       |> put_flash(:info, placement_message(placed))
@@ -68,6 +72,25 @@ defmodule RolezinhoWeb.JoinController do
 
   defp payable?(%Event{price_cents: cents, pix_key: key}) do
     is_integer(cents) and cents > 0 and is_binary(key) and key != ""
+  end
+
+  # Answers to the organizer's questions (RN-62). Only the fields this event
+  # actually asks for are read: anything else in the body is somebody sending
+  # keys nobody asked about, and it does not get stored.
+  defp collect_answers(%Event{} = event, params) do
+    fields = event |> Events.form_fields() |> Enum.reject(& &1.locked)
+
+    Enum.reduce_while(fields, {:ok, %{}}, fn field, {:ok, acc} ->
+      value = params |> Map.get(field.id, "") |> to_string() |> String.trim()
+
+      cond do
+        value == "" and field.required -> {:halt, {:error, {:missing_field, field.label}}}
+        value == "" -> {:cont, {:ok, acc}}
+        # Bounded like every other anonymous write: an unbounded answer is a way
+        # to fill the column.
+        true -> {:cont, {:ok, Map.put(acc, field.id, String.slice(value, 0, 200))}}
+      end
+    end)
   end
 
   # A party size arriving from the client is bounded here, not trusted: the
@@ -118,6 +141,8 @@ defmodule RolezinhoWeb.JoinController do
 
   defp message_for(:party_does_not_fit),
     do: "Não tem vaga pra todo mundo, e esse rolê não tem lista de espera."
+
+  defp message_for({:missing_field, label}), do: "Preencha #{label}."
 
   defp message_for(_), do: "Não deu pra entrar na lista."
 end

@@ -55,6 +55,7 @@ defmodule RolezinhoWeb.Router do
       live "/", AdminHomeLive, :index
       live "/new", EventNewLive, :new
       live "/r/:slug/edit", EventEditLive, :edit
+      live "/r/:slug/formulario", FormConfigLive, :show
     end
   end
 

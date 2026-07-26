@@ -333,6 +333,17 @@ defmodule RolezinhoWeb.EventEditLive do
         </p>
       </section>
 
+      <.link
+        navigate={~p"/admin/r/#{@event.slug}/formulario"}
+        class="mb-3 flex items-center gap-2.5 rounded-card border border-hairline bg-base-100 p-4 shadow-card"
+      >
+        <div class="min-w-0 flex-1">
+          <div class="text-[13px] font-bold">Formulário de entrada</div>
+          <div class="mt-0.5 text-[11px] text-ink/45">O que a pessoa preenche pra entrar</div>
+        </div>
+        <.icon name="tabler-chevron-right" class="size-4 shrink-0 text-ink/30" />
+      </.link>
+
       <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
         <h2 class="text-[13px] font-extrabold mb-3">Status</h2>
         <!-- Current state lives in aria-checked rather than a conditional class,
