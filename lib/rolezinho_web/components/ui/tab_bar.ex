@@ -37,35 +37,40 @@ defmodule RolezinhoWeb.Components.UI.TabBar do
 
   def tab_bar(assigns) do
     ~H"""
+    <!-- The bar spans the window so the surface reads as one edge; the tabs
+         inside are capped, because two of them spread across a desktop width
+         would sit at opposite corners with nothing between. -->
     <nav
       class={[
-        "flex border-t border-hairline bg-base-100 px-2 pt-2.5",
+        "border-t border-hairline bg-base-100 px-2 pt-2.5",
         "pb-[max(0.75rem,env(safe-area-inset-bottom))]",
         @class
       ]}
       aria-label="Main sections"
     >
-      <.link
-        :for={tab <- @tab}
-        navigate={tab[:navigate]}
-        aria-current={tab.id == @active && "page"}
-        class={[
-          "relative flex-1 py-1 text-center text-ink/35",
-          "aria-[current=page]:text-accent",
-          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-        ]}
-      >
-        <span class="relative inline-block">
-          <.icon name={tab.icon} class="size-[22px]" />
-          <span
-            :if={tab[:badge] && tab[:badge] > 0}
-            class="absolute -right-2 -top-1 grid min-w-4 place-items-center rounded-full bg-accent px-1 text-[9px] font-bold text-accent-content"
-          >
-            {tab[:badge]}
+      <div class="mx-auto flex w-full max-w-[420px]">
+        <.link
+          :for={tab <- @tab}
+          navigate={tab[:navigate]}
+          aria-current={tab.id == @active && "page"}
+          class={[
+            "relative flex-1 py-1 text-center text-ink/35",
+            "aria-[current=page]:text-accent",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          ]}
+        >
+          <span class="relative inline-block">
+            <.icon name={tab.icon} class="size-[22px]" />
+            <span
+              :if={tab[:badge] && tab[:badge] > 0}
+              class="absolute -right-2 -top-1 grid min-w-4 place-items-center rounded-full bg-accent px-1 text-[9px] font-bold text-accent-content"
+            >
+              {tab[:badge]}
+            </span>
           </span>
-        </span>
-        <span class="mt-0.5 block text-[10px] font-bold">{tab.label}</span>
-      </.link>
+          <span class="mt-0.5 block text-[10px] font-bold">{tab.label}</span>
+        </.link>
+      </div>
     </nav>
     """
   end

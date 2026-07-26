@@ -74,7 +74,7 @@ defmodule RolezinhoWeb.Components.UI.RoleCard do
       <div :if={@names != [] || @filled} class="mt-3 flex items-center justify-between gap-3">
         <.avatar_stack :if={@names != []} names={@names} size="xs" max={4} ring_class="ring-base-100" />
         <span :if={@filled && @capacity} class="ml-auto text-[11px] font-semibold text-ink/50">
-          {@filled}/{@capacity} confirmed
+          {@filled}/{@capacity} confirmados
         </span>
       </div>
 
@@ -83,9 +83,9 @@ defmodule RolezinhoWeb.Components.UI.RoleCard do
     """
   end
 
-  defp default_status_label("open"), do: "Slots open"
-  defp default_status_label("full"), do: "List full"
-  defp default_status_label("done"), do: "Closed"
-  defp default_status_label("debt"), do: "Pix pending"
-  defp default_status_label("payments_only"), do: "Payments only"
+  defp default_status_label("open"), do: "Vagas abertas"
+  defp default_status_label("full"), do: "Lista cheia"
+  defp default_status_label("done"), do: "Encerrado"
+  defp default_status_label("debt"), do: "Pix pendente"
+  defp default_status_label("payments_only"), do: "Só pagamentos"
 end

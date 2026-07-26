@@ -717,20 +717,6 @@ defmodule RolezinhoWeb.EventLive do
 
           <.payments_only_notice :if={@signups_locked?} />
 
-          <div :if={@cash} class="mt-4">
-            <.alert_banner tone="warn">{debt_summary(@cash)}</.alert_banner>
-            <a
-              :if={@reminder_text}
-              href={"https://wa.me/?text=" <> URI.encode(@reminder_text)}
-              target="_blank"
-              rel="noopener"
-              class="mt-2 flex w-full items-center justify-center gap-1.5 rounded-cta bg-ink px-4 py-3 text-[13px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-            >
-              <.icon name="tabler-brand-whatsapp" class="size-4" />
-              {charge_label(@cash)}
-            </a>
-          </div>
-
           <.unlock_panel
             :if={@password_protected? and not @unlocked?}
             slug={@event.slug}
@@ -739,13 +725,17 @@ defmodule RolezinhoWeb.EventLive do
 
           <%= cond do %>
             <% Meta.any?(@meta) and @pix -> %>
-              <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
+              <div class="space-y-3">
                 <.when_where_panel
                   meta={@meta}
                   slug={@event.slug}
                   google_calendar_url={@google_calendar_url}
                 />
-                <.pix_panel pix={@pix} amount={Cash.format_amount(@event.price_cents)} full_width />
+                <.pix_summary
+                  pix={@pix}
+                  amount={Cash.format_amount(@event.price_cents)}
+                  slug={@event.slug}
+                />
               </div>
 
               <div
@@ -768,14 +758,18 @@ defmodule RolezinhoWeb.EventLive do
                 {raw(render_markdown(@stripped_header))}
               </div>
             <% @pix -> %>
-              <div class="grid sm:grid-cols-[minmax(0,1fr)_auto] gap-6 items-start">
+              <div class="space-y-4">
                 <div
                   :if={@stripped_header != ""}
                   class="prose prose-sm sm:prose-base max-w-none prose-p:my-2 leading-relaxed"
                 >
                   {raw(render_markdown(@stripped_header))}
                 </div>
-                <.pix_panel pix={@pix} amount={Cash.format_amount(@event.price_cents)} />
+                <.pix_summary
+                  pix={@pix}
+                  amount={Cash.format_amount(@event.price_cents)}
+                  slug={@event.slug}
+                />
               </div>
             <% true -> %>
               <div
@@ -1092,7 +1086,24 @@ defmodule RolezinhoWeb.EventLive do
       <!-- One primary action per screen, at the bottom where the thumb is.
            The label follows what tapping it will actually do: with the main
            list full, joining means joining the queue (RN-03). -->
-      <div :if={@can_join?} class="sticky bottom-0 -mx-5 mt-6 bg-canvas px-5 pb-2 pt-3">
+      <div :if={@cash} class="mt-6">
+        <.alert_banner tone="warn">{debt_summary(@cash)}</.alert_banner>
+        <a
+          :if={@reminder_text}
+          href={"https://wa.me/?text=" <> URI.encode(@reminder_text)}
+          target="_blank"
+          rel="noopener"
+          class="mt-2 flex w-full items-center justify-center gap-1.5 rounded-cta bg-ink px-4 py-3 text-[13px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
+          <.icon name="tabler-brand-whatsapp" class="size-4" />
+          {charge_label(@cash)}
+        </a>
+      </div>
+
+      <!-- In the flow rather than pinned: this page is a list someone scrolls,
+           and a sticky bar would cover the rows for the whole scroll. It closes
+           the page, right after what it acts on. -->
+      <div :if={@can_join?} class="mt-6">
         <button
           type="button"
           phx-click={BottomSheet.show("join-sheet")}
@@ -1469,39 +1480,47 @@ defmodule RolezinhoWeb.EventLive do
 
   # ---------- PIX panel ----------
 
+  # The amount and the key, compact. The QR code lives on the payment screen,
+  # which someone reaches right after joining: putting it here pushed the list
+  # itself — the reason this page exists — below the fold.
   attr :pix, :map, required: true
   attr :amount, :string, default: nil
-  attr :full_width, :boolean, default: false
+  attr :slug, :string, required: true
 
-  defp pix_panel(assigns) do
-    assigns = assign(assigns, :svg, Rolezinho.Pix.qr_svg(assigns.pix.key, width: 180))
-
+  defp pix_summary(assigns) do
     ~H"""
-    <aside class={[
-      "flex flex-col items-center gap-2 rounded-2xl border border-base-300 bg-base-100 p-3",
-      if(@full_width, do: "w-full h-full justify-center", else: "shrink-0 sm:w-52")
-    ]}>
-      <!-- The amount reads before the code: someone opening this wants to know
-           how much before they scan anything. -->
-      <p :if={@amount} class="text-2xl font-extrabold tracking-tight">{@amount}</p>
-      <div class="bg-white rounded-lg p-2 w-full flex items-center justify-center">
-        {raw(@svg)}
+    <div class="space-y-2">
+      <div :if={@amount} class="rounded-[14px] bg-tint px-3 py-2.5">
+        <div class="text-[10px] font-semibold uppercase text-ink/50">Valor</div>
+        <div class="mt-0.5 text-[15px] font-extrabold">{@amount}</div>
       </div>
-      <div class="flex items-center gap-2">
-        <p class="text-sm font-mono tabular-nums text-center break-all">{@pix.display}</p>
-        <button
-          type="button"
-          id={"copy-pix-" <> String.replace(@pix.raw, ~r/\D/, "")}
-          phx-hook=".CopyText"
-          data-text={@pix.raw}
-          data-copied-label="Copiado!"
-          class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-2 py-1 text-xs border border-base-300 hover:bg-base-200"
-          title="Copiar chave Pix"
-        >
-          <.icon name="tabler-clipboard" class="size-3.5" /> Copiar
-        </button>
+
+      <div class="rounded-[14px] bg-tint px-3 py-2.5">
+        <div class="text-[10px] font-semibold uppercase text-ink/50">Chave Pix</div>
+        <div class="mt-0.5 flex items-center gap-2">
+          <span class="min-w-0 flex-1 truncate font-mono text-sm font-extrabold">
+            {@pix.display}
+          </span>
+          <button
+            type="button"
+            id={"copy-pix-" <> @slug}
+            phx-hook=".CopyText"
+            data-text={@pix.key}
+            data-copied-label="Copiado!"
+            class="shrink-0 text-[11px] font-bold text-accent"
+          >
+            Copiar
+          </button>
+        </div>
       </div>
-    </aside>
+
+      <.link
+        navigate={~p"/r/#{@slug}/pagamento"}
+        class="block text-center text-[11px] font-bold text-accent"
+      >
+        Ver o QR Code
+      </.link>
+    </div>
     """
   end
 

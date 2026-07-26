@@ -69,13 +69,14 @@ defmodule RolezinhoWeb.Components.UI.Avatar do
         :for={name <- @shown}
         name={name}
         size={@size}
-        class={["ring-2 not-first:-ml-2", @ring_class]}
+        class={["ring-2", overlap_class(@size), @ring_class]}
       />
       <span
         :if={@overflow > 0}
         class={[
           "inline-flex shrink-0 items-center justify-center rounded-full",
-          "bg-ink/[0.12] font-bold text-ink/60 ring-2 -ml-2",
+          "bg-ink/[0.12] font-bold text-ink/60 ring-2",
+          String.replace(overlap_class(@size), "not-first:", ""),
           size_classes(@size),
           @ring_class
         ]}
@@ -85,6 +86,13 @@ defmodule RolezinhoWeb.Components.UI.Avatar do
     </div>
     """
   end
+
+  # The overlap scales with the avatar: a fixed 8px eats a third of a 24px
+  # circle and the initials stop being readable, which defeats the point of
+  # showing faces at all.
+  defp overlap_class("xs"), do: "not-first:-ml-1"
+  defp overlap_class("sm"), do: "not-first:-ml-1.5"
+  defp overlap_class(_size), do: "not-first:-ml-2"
 
   defp size_classes("xs"), do: "size-6 text-[10px]"
   defp size_classes("sm"), do: "size-8 text-[13px]"

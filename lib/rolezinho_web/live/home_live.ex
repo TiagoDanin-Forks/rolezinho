@@ -149,8 +149,13 @@ defmodule RolezinhoWeb.HomeLive do
 
   defp when_text(%Event{starts_at: nil}), do: nil
 
+  # Stored in UTC, read in Brasília: rendering the raw timestamp turns a 21h
+  # event into "00h" of the following day, which is the wrong day and the wrong
+  # hour to whoever is deciding whether to go.
   defp when_text(%Event{starts_at: starts_at}) do
-    Calendar.strftime(starts_at, "%d/%m · %Hh")
+    starts_at
+    |> DateTime.add(-3 * 3600, :second)
+    |> Calendar.strftime("%d/%m · %Hh")
   end
 
   defp filled_count(%Event{main_list: list}) do

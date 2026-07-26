@@ -234,7 +234,7 @@ defmodule RolezinhoWeb.EventLiveTest do
   end
 
   describe "pix panel" do
-    test "renders a QR code and phone when the description has a Pix key", %{conn: conn} do
+    test "renders the key and a way to the QR when the description has a Pix key", %{conn: conn} do
       {:ok, _} =
         Rolezinho.Events.create(%{
           "title" => "Com Pix",
@@ -244,11 +244,13 @@ defmodule RolezinhoWeb.EventLiveTest do
           "wait_size" => "0"
         })
 
-      {:ok, _view, html} = live(conn, ~p"/r/com-pix")
+      {:ok, view, html} = live(conn, ~p"/r/com-pix")
 
-      assert html =~ "<svg"
+      # The key is here; the QR code itself lives on the payment screen, so the
+      # list — the reason this page exists — is not pushed below the fold.
       assert html =~ "(91) 98560-9019"
-      assert html =~ "Copiar chave"
+      assert has_element?(view, "#copy-pix-com-pix")
+      assert has_element?(view, ~s{a[href="/r/com-pix/pagamento"]}, "Ver o QR Code")
     end
 
     test "omits the pix panel when no key is detected", %{conn: conn} do

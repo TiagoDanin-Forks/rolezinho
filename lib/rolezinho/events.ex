@@ -33,11 +33,18 @@ defmodule Rolezinho.Events do
 
   # ---------- Listing ----------
 
-  @doc "Lists events shown on the public home page (active + payments_only)."
+  @doc """
+  Lists events shown on the public home page (active + payments_only).
+
+  Ordered by when they happen, not by name: someone opening the home screen
+  wants to know what is next, and alphabetical order puts tomorrow's event
+  below one three weeks away. Events with no date sort last — they cannot be
+  next if nobody has said when.
+  """
   def list_open do
     from(e in Event,
       where: e.status in ^Event.open_statuses(),
-      order_by: [asc: e.title]
+      order_by: [asc_nulls_last: e.starts_at, asc: e.title]
     )
     |> Repo.all()
   end
