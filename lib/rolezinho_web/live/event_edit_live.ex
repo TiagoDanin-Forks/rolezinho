@@ -163,22 +163,25 @@ defmodule RolezinhoWeb.EventEditLive do
       page_title={@page_title}
       tabs?={false}
     >
-      <div class="mb-6 flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <p class="text-xs text-base-content/50">/r/{@event.slug} · status: {@event.status}</p>
-          <h1 class="text-3xl font-bold tracking-tight">Editar rolezinho</h1>
-        </div>
+      <header class="mb-5 flex items-center gap-2">
         <.link
           navigate={~p"/r/#{@event.slug}"}
-          class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 hover:bg-base-200"
+          class="grid size-11 shrink-0 place-items-center rounded-full bg-ink/[0.06] text-ink"
+          aria-label="Voltar pro rolê"
         >
-          <.icon name="tabler-arrow-left" class="size-4" /> Voltar
+          <.icon name="tabler-arrow-left" class="size-[18px]" />
         </.link>
-      </div>
+        <div class="min-w-0">
+          <h1 class="text-2xl font-extrabold tracking-tight">Editar</h1>
+          <p class="truncate font-mono text-[11px] text-ink/45">
+            /r/{@event.slug} · {@event.status}
+          </p>
+        </div>
+      </header>
 
-      <section class="rounded-2xl border border-base-300 bg-base-100 p-5 mb-6">
-        <h2 class="font-semibold mb-3">Slug (URL)</h2>
-        <p class="text-xs text-base-content/60 mb-3">
+      <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
+        <h2 class="text-[13px] font-extrabold mb-3">Slug (URL)</h2>
+        <p class="text-[11px] text-ink/45 mb-3">
           Trocar o slug muda a URL do rolezinho. Links antigos deixam de funcionar.
         </p>
 
@@ -208,7 +211,7 @@ defmodule RolezinhoWeb.EventEditLive do
           </label>
           <button
             type="submit"
-            class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm bg-primary text-primary-content hover:bg-primary/90"
+            class="rounded-row bg-ink px-4 py-2.5 text-xs font-bold text-ink-content transition-transform active:scale-[.97] disabled:opacity-40 disabled:pointer-events-none"
             disabled={@slug_input == @event.slug}
           >
             Salvar slug
@@ -216,8 +219,8 @@ defmodule RolezinhoWeb.EventEditLive do
         </form>
       </section>
 
-      <section class="rounded-2xl border border-base-300 bg-base-100 p-5 mb-6">
-        <h2 class="font-semibold mb-3">Quando &amp; onde</h2>
+      <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
+        <h2 class="text-[13px] font-extrabold mb-3">Quando &amp; onde</h2>
         <p class="text-xs text-base-content/60 mb-4">
           Data e horário no fuso de Brasília (BRT). Todos os campos são opcionais.
         </p>
@@ -233,15 +236,15 @@ defmodule RolezinhoWeb.EventEditLive do
           <div>
             <button
               type="submit"
-              class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm bg-primary text-primary-content hover:bg-primary/90"
+              class="rounded-row bg-ink px-4 py-2.5 text-xs font-bold text-ink-content transition-transform active:scale-[.97] disabled:opacity-40 disabled:pointer-events-none"
             >Salvar quando &amp; onde</button>
           </div>
         </.form>
       </section>
 
-      <section class="rounded-2xl border border-base-300 bg-base-100 p-5 mb-6">
-        <h2 class="font-semibold mb-3">Texto do rolezinho</h2>
-        <p class="text-xs text-base-content/60 mb-3">
+      <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
+        <h2 class="text-[13px] font-extrabold mb-3">Texto do rolezinho</h2>
+        <p class="text-[11px] text-ink/45 mb-3">
           Edite livremente. O parser reconhece o título (# ...), a lista principal (linhas numeradas), a lista de reserva
           (segunda lista numerada) e o marcador ✅ para pagamentos.
         </p>
@@ -257,14 +260,14 @@ defmodule RolezinhoWeb.EventEditLive do
           <div class="mt-3 flex gap-3">
             <button
               type="submit"
-              class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm bg-primary text-primary-content hover:bg-primary/90"
+              class="rounded-row bg-ink px-4 py-2.5 text-xs font-bold text-ink-content transition-transform active:scale-[.97] disabled:opacity-40 disabled:pointer-events-none"
             >Salvar texto</button>
           </div>
         </form>
       </section>
 
-      <section class="rounded-2xl border border-base-300 bg-base-100 p-5 mb-6">
-        <h2 class="font-semibold mb-3">Tamanho da lista principal</h2>
+      <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
+        <h2 class="text-[13px] font-extrabold mb-3">Tamanho da lista principal</h2>
         <form phx-submit="resize_main" class="flex items-end gap-3">
           <div class="flex-1 max-w-40">
             <.input
@@ -289,9 +292,9 @@ defmodule RolezinhoWeb.EventEditLive do
         </p>
       </section>
 
-      <section class="rounded-2xl border border-base-300 bg-base-100 p-5 mb-6">
-        <h2 class="font-semibold mb-3">Senha (opcional)</h2>
-        <p class="text-xs text-base-content/60 mb-3">
+      <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
+        <h2 class="text-[13px] font-extrabold mb-3">Senha (opcional)</h2>
+        <p class="text-[11px] text-ink/45 mb-3">
           Se preenchida, quem quiser ver o local ou entrar na lista precisa digitar
           a senha. Serve pra bloquear bots e curiosos — não precisa ser forte.
           Deixe em branco para remover.
@@ -317,40 +320,42 @@ defmodule RolezinhoWeb.EventEditLive do
           </label>
           <button
             type="submit"
-            class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm bg-primary text-primary-content hover:bg-primary/90"
+            class="rounded-row bg-ink px-4 py-2.5 text-xs font-bold text-ink-content transition-transform active:scale-[.97] disabled:opacity-40 disabled:pointer-events-none"
             disabled={@password_input == (@event.password || "")}
           >
             Salvar senha
           </button>
         </form>
 
-        <p :if={@event.password} class="text-xs text-base-content/60 mt-3">
+        <p :if={@event.password} class="text-[11px] leading-relaxed text-ink/45 mt-3">
           Senha atual:
           <code class="font-mono text-base-content bg-base-200 px-1 py-0.5 rounded">{@event.password}</code>
         </p>
       </section>
 
-      <section class="rounded-2xl border border-base-300 bg-base-100 p-5 mb-6">
-        <h2 class="font-semibold mb-3">Status</h2>
-        <div class="flex flex-wrap gap-2">
+      <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
+        <h2 class="text-[13px] font-extrabold mb-3">Status</h2>
+        <!-- Current state lives in aria-checked rather than a conditional class,
+             so the styling follows the attribute and a screen reader hears which
+             one is selected. -->
+        <div class="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Status do rolê">
           <button
             :for={status <- [:active, :payments_only, :hidden, :done]}
             type="button"
+            role="radio"
+            aria-checked={to_string(@event.status == status)}
             phx-click="set_status"
             phx-value-status={to_string(status)}
-            disabled={@event.status == status}
             class={[
-              "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5",
-              if(@event.status == status,
-                do: "bg-primary text-primary-content hover:bg-primary/90",
-                else: "border border-base-300 hover:bg-base-200"
-              )
+              "rounded-row bg-ink/[0.08] px-3.5 py-2.5 text-xs font-bold text-ink/55",
+              "aria-checked:bg-ink aria-checked:text-ink-content",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             ]}
           >
             {status_label(status)}
           </button>
         </div>
-        <p class="text-xs text-base-content/60 mt-3">
+        <p class="text-[11px] leading-relaxed text-ink/45 mt-3">
           <strong>Ativo:</strong>
           aparece na página inicial e aceita novas inscrições. <strong>Só pagamentos:</strong>
           aparece na home, mas ninguém consegue entrar em novas listas —
