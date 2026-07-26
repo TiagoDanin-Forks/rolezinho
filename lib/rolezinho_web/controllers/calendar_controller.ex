@@ -11,7 +11,7 @@ defmodule RolezinhoWeb.CalendarController do
   def show(conn, %{"slug" => slug}) do
     with %Event{} = event <- Events.find(slug, visibility: :public),
          :ok <- ensure_unlocked(conn, event),
-         {meta, _rest} <- Meta.extract(event.header),
+         %Meta{} = meta <- calendar_meta(event),
          true <- Meta.has_date?(meta) do
       url = RolezinhoWeb.Endpoint.url() <> "/r/" <> slug
       ics = Meta.ics(meta, %{title: event.title, slug: slug, url: url, description: event.header})
@@ -37,6 +37,31 @@ defmodule RolezinhoWeb.CalendarController do
         |> text("Calendário não disponível para esse rolezinho.")
     end
   end
+
+  # Prefers the real timestamp over the one recovered from the description.
+  # "Quarta 19h" cannot say which Wednesday, so a calendar built from it is a
+  # guess; starts_at is the actual moment, and an event that has one gets an
+  # .ics that is right rather than plausible.
+  defp calendar_meta(%Event{starts_at: %DateTime{} = starts_at} = event) do
+    {parsed, _rest} = Meta.extract(event.header)
+    local_time = shift_to_brt(starts_at)
+
+    %Meta{
+      local: event.local || parsed.local,
+      date: DateTime.to_date(local_time),
+      time: DateTime.to_time(local_time)
+    }
+  end
+
+  defp calendar_meta(%Event{} = event) do
+    {meta, _rest} = Meta.extract(event.header)
+    meta
+  end
+
+  # Meta stores wall-clock time in BRT and converts back on the way out, so a
+  # UTC timestamp has to be shifted before it goes in — otherwise the round trip
+  # adds three hours to every event.
+  defp shift_to_brt(%DateTime{} = utc), do: DateTime.add(utc, -3 * 3600, :second)
 
   defp ensure_unlocked(conn, %Event{} = event) do
     admin? = conn.assigns[:current_admin?] == true
