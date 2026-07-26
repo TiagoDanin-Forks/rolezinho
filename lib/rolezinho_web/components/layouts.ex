@@ -7,61 +7,39 @@ defmodule RolezinhoWeb.Layouts do
   embed_templates "layouts/*"
 
   @doc """
-  Renders the app layout.
+  Renders the app shell.
+
+  Shaped for the one context this product actually has: a phone, held in one
+  hand, opened from a link someone pasted into a group chat. So the frame is a
+  single column, the content scrolls inside a viewport pinned to `dvh` — `vh`
+  would put the bottom of the page under Safari's toolbar — and the tab bar
+  clears the home indicator through the safe-area inset.
+
+  On a desktop the same column simply centres. There is no wide layout, because
+  a second column would be built for a reader this product does not have.
   """
   attr :flash, :map, required: true
   attr :current_admin?, :boolean, default: false
   attr :page_title, :string, default: nil
+  attr :active_tab, :string, default: "events"
+  attr :tabs?, :boolean, default: true, doc: "false on screens that own the whole viewport"
 
   slot :inner_block, required: true
 
   def app(assigns) do
     ~H"""
-    <header class="border-b border-base-300 bg-base-100/70 backdrop-blur sticky top-0 z-30">
-      <div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        <a href={~p"/"} class="flex items-center gap-2 group">
-          <span class="text-2xl">🎉</span>
-          <span class="text-lg font-bold tracking-tight group-hover:text-primary transition-colors">
-            Rolezinho
-          </span>
-        </a>
-
-        <div class="flex items-center gap-2 sm:gap-3">
-          <.theme_toggle />
-
-          <%= if @current_admin? do %>
-            <.link
-              navigate={~p"/admin"}
-              class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 hover:bg-base-200 hidden sm:inline-flex"
-            >
-              Painel
-            </.link>
-            <.link
-              href={~p"/admin/logout"}
-              method="delete"
-              class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 border border-base-300 hover:bg-base-200"
-            >
-              Sair
-            </.link>
-          <% else %>
-            <.link
-              href={~p"/admin/login"}
-              class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 hover:bg-base-200"
-            >
-              Admin
-            </.link>
-          <% end %>
+    <div class="flex h-dvh flex-col bg-canvas">
+      <main class="flex-1 overflow-y-auto overscroll-contain px-5 pb-6 pt-[max(2rem,env(safe-area-inset-top))]">
+        <div class="mx-auto max-w-[420px]">
+          {render_slot(@inner_block)}
         </div>
-      </div>
-    </header>
+      </main>
 
-    <main class="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-      {render_slot(@inner_block)}
-    </main>
-
-    <footer class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-10 text-center text-sm text-base-content/50">
-      <p>Feito com carinho por lubien · rolezinho</p>
-    </footer>
+      <.tab_bar :if={@tabs?} active={@active_tab} class="shrink-0">
+        <:tab id="events" icon="tabler-diamond" label="Rolês" navigate={~p"/"} />
+        <:tab id="me" icon="tabler-user-circle" label="Eu" navigate={~p"/me"} />
+      </.tab_bar>
+    </div>
 
     <.flash_group flash={@flash} />
     """

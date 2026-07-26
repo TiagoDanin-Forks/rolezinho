@@ -42,7 +42,12 @@ defmodule RolezinhoWeb.AdminHomeLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_admin?={@current_admin?} page_title={@page_title}>
+    <Layouts.app
+      flash={@flash}
+      current_admin?={@current_admin?}
+      page_title={@page_title}
+      tabs?={false}
+    >
       <div class="flex items-end justify-between gap-4 flex-wrap mb-8">
         <div>
           <h1 class="text-3xl sm:text-4xl font-bold tracking-tight">Painel do admin</h1>

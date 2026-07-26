@@ -23,7 +23,12 @@ defmodule RolezinhoWeb.SettingsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_admin?={@current_admin?} page_title={@page_title}>
+    <Layouts.app
+      flash={@flash}
+      current_admin?={@current_admin?}
+      page_title={@page_title}
+      active_tab="me"
+    >
       <div id="settings" phx-hook=".Settings" class="mx-auto max-w-[560px]">
         <header>
           <h1 class="text-2xl font-extrabold tracking-tight">Suas preferências</h1>
@@ -98,6 +103,28 @@ defmodule RolezinhoWeb.SettingsLive do
           Limpar os dados do navegador apaga tudo isso — e também faz você perder o
           controle das listas em que já entrou.
         </p>
+
+        <div class="mt-5 border-t border-hairline pt-4 text-center">
+          <.link
+            :if={!@current_admin?}
+            href={~p"/admin/login"}
+            class="text-[11px] font-bold text-ink/45 hover:text-ink"
+          >
+            Entrar como admin
+          </.link>
+          <div :if={@current_admin?} class="flex items-center justify-center gap-4">
+            <.link navigate={~p"/admin"} class="text-[11px] font-bold text-ink/55 hover:text-ink">
+              Painel do admin
+            </.link>
+            <.link
+              href={~p"/admin/logout"}
+              method="delete"
+              class="text-[11px] font-bold text-ink/45 hover:text-ink"
+            >
+              Sair
+            </.link>
+          </div>
+        </div>
       </div>
 
       <script :type={Phoenix.LiveView.ColocatedHook} name=".Settings">

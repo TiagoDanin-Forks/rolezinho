@@ -61,7 +61,12 @@ defmodule RolezinhoWeb.EventNewLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_admin?={@current_admin?} page_title={@page_title}>
+    <Layouts.app
+      flash={@flash}
+      current_admin?={@current_admin?}
+      page_title={@page_title}
+      tabs?={false}
+    >
       <div class="max-w-xl mx-auto">
         <h1 class="text-3xl font-bold tracking-tight mb-2">Criar rolezinho</h1>
         <p class="text-base-content/70 mb-8">

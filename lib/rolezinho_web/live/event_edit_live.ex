@@ -157,7 +157,12 @@ defmodule RolezinhoWeb.EventEditLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_admin?={@current_admin?} page_title={@page_title}>
+    <Layouts.app
+      flash={@flash}
+      current_admin?={@current_admin?}
+      page_title={@page_title}
+      tabs?={false}
+    >
       <div class="mb-6 flex items-center justify-between gap-3 flex-wrap">
         <div>
           <p class="text-xs text-base-content/50">/r/{@event.slug} · status: {@event.status}</p>
