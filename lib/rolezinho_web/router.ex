@@ -31,6 +31,7 @@ defmodule RolezinhoWeb.Router do
         {RolezinhoWeb.Plugs.Participant, :fetch}
       ] do
       live "/", HomeLive, :index
+      live "/me", SettingsLive, :show
       live "/r/:slug", EventLive, :show
     end
 
