@@ -40,9 +40,10 @@ defmodule RolezinhoWeb.EventLiveTest do
 
       {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
 
-      # The 2 empty slots are still rendered as "vaga aberta" rows in the UI.
+      # The 2 empty slots are still rendered as their own rows in the UI, since a
+      # slot is a position that exists whether or not anyone is in it.
       # The compact "N vagas: URL" summary lives in the shareable text only.
-      assert html =~ "vaga aberta"
+      assert html =~ "Vaga livre"
       # The shareable text (data-text) does have the compact summary.
       assert html =~ "2 vagas: http"
     end

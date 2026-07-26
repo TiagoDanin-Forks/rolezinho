@@ -46,6 +46,11 @@ defmodule RolezinhoWeb.Components.UI.ParticipantRow do
   attr :join_label, :string, default: "Join"
   attr :class, :any, default: nil
 
+  # The row's own buttons carry whatever identifies it to the caller's handlers
+  # (typically phx-value-index): the component knows the position, the caller
+  # knows what to do with it.
+  attr :rest, :global, include: ~w(phx-value-index phx-value-id)
+
   slot :actions, doc: "trailing admin actions (remove, promote)"
 
   def participant_row(assigns) do
@@ -72,11 +77,18 @@ defmodule RolezinhoWeb.Components.UI.ParticipantRow do
         type="button"
         phx-click={@join_click}
         class="shrink-0 cursor-pointer text-[11px] font-bold text-accent hover:underline"
+        {@rest}
       >
         {@join_label}
       </button>
 
-      <.check :if={not @empty?} paid={@paid} highlighted={@highlighted} click={@paid_click} />
+      <.check
+        :if={not @empty?}
+        paid={@paid}
+        highlighted={@highlighted}
+        click={@paid_click}
+        rest={@rest}
+      />
 
       {render_slot(@actions)}
     </div>
@@ -86,6 +98,7 @@ defmodule RolezinhoWeb.Components.UI.ParticipantRow do
   attr :paid, :boolean, required: true
   attr :highlighted, :boolean, required: true
   attr :click, :any, required: true
+  attr :rest, :map, default: %{}
 
   defp check(assigns) do
     ~H"""
@@ -99,13 +112,14 @@ defmodule RolezinhoWeb.Components.UI.ParticipantRow do
         "-m-3 grid shrink-0 cursor-pointer place-items-center p-3",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       ]}
+      {@rest}
     >
       <span class={["transition", check_classes(@paid, @highlighted)]}>
         <.icon :if={@paid} name="tabler-check" class="size-3.5" />
       </span>
     </button>
     <span
-      :if={is_nil(@click)}
+      :if={!@click}
       role="img"
       aria-label={if @paid, do: "Paid", else: "Not paid yet"}
       class={["shrink-0", check_classes(@paid, @highlighted)]}

@@ -90,7 +90,35 @@ defmodule RolezinhoWeb.EventLive do
     socket
     |> assign(:participant_id, participant_id)
     |> assign(:organizer?, organizer?)
+    |> assign(:mine_index, own_row_index(event, participant_id))
   end
+
+  # The 1-based position of this browser's own row, or nil. Used to highlight it
+  # and to decide which check is interactive — everyone else's is read-only.
+  defp own_row_index(%Event{main_list: list}, participant_id) do
+    case Enum.find_index(list, &Attendee.owned_by?(&1, participant_id)) do
+      nil -> nil
+      index -> index + 1
+    end
+  end
+
+  # Mirrors Event.Policy for the template. The handler asks the policy again on
+  # every action: this only decides what to draw, and drawing nothing is not a
+  # gate.
+  defp can_toggle?(_event, %Attendee{name: ""}, _mine?, _admin?, _organizer?), do: false
+  defp can_toggle?(_event, _attendee, _mine?, true, _organizer?), do: true
+  defp can_toggle?(_event, _attendee, _mine?, _admin?, true), do: true
+  defp can_toggle?(_event, _attendee, mine?, _admin?, _organizer?), do: mine?
+
+  defp can_remove?(%Attendee{name: ""}, _mine?, _admin?, _organizer?), do: false
+  defp can_remove?(_attendee, _mine?, true, _organizer?), do: true
+  defp can_remove?(_attendee, _mine?, _admin?, true), do: true
+  defp can_remove?(_attendee, mine?, _admin?, _organizer?), do: mine?
+
+  # RN-22: removal always confirms, naming who is being removed so a mistap in a
+  # dense list is caught before it happens.
+  defp remove_confirm(true, _name), do: "Sair da lista?"
+  defp remove_confirm(false, name), do: "Remover #{name} da lista?"
 
   # Stamps the joining row with whatever identity this browser already holds for
   # the event. A visitor joining for the first time has none yet: a LiveView
@@ -645,96 +673,94 @@ defmodule RolezinhoWeb.EventLive do
             </div>
           </div>
 
-          <ol class="space-y-2">
-            <li
-              :for={{%Attendee{} = att, i} <- Enum.with_index(@event.main_list, 1)}
-              class={[
-                "flex items-center gap-3 rounded-xl px-3 py-2 transition-colors",
-                if(String.trim(att.name) == "",
-                  do: "bg-base-200/50 border border-dashed border-base-300",
-                  else: "bg-base-200"
-                )
-              ]}
-            >
-              <span class="text-sm font-mono w-8 text-right text-base-content/50">{i}.</span>
+          <!-- RN-14: a check on its own does not say whether it means paid or
+               confirmed, so the legend is not optional. -->
+          <.payment_legend
+            :if={@unlocked?}
+            paid_label="já pagou o Pix"
+            unpaid_label="ainda não pagou"
+            class="mb-2"
+          />
 
-              <%= cond do %>
-                <% @editing_main == i -> %>
-                  <form
-                    phx-submit="rename_main"
-                    phx-value-index={i}
-                    class="flex-1 flex items-center gap-2"
+          <.coachmark :if={@mine_index} seen_key="paid-check" class="mb-2">
+            Toque no check quando fizer o Pix. Só você marca o seu.
+          </.coachmark>
+
+          <ol class="overflow-hidden rounded-row border border-hairline bg-base-100">
+            <li :for={{%Attendee{} = att, i} <- Enum.with_index(@event.main_list, 1)}>
+              <%= if @editing_main == i do %>
+                <form
+                  phx-submit="rename_main"
+                  phx-value-index={i}
+                  class="flex items-center gap-2 border-b border-ink/6 px-3.5 py-2.5"
+                >
+                  <input
+                    type="text"
+                    name="name"
+                    value={att.name}
+                    class={[field_class(), "flex-1"]}
+                    autofocus
+                  />
+                  <button
+                    type="submit"
+                    class="shrink-0 rounded-lg bg-ink px-2.5 py-1.5 text-[11px] font-bold text-ink-content"
                   >
-                    <input
-                      type="text"
-                      name="name"
-                      value={att.name}
-                      class={[field_class(), "px-2 py-1 flex-1"]}
-                      autofocus
-                    />
+                    Salvar
+                  </button>
+                  <button
+                    type="button"
+                    phx-click="cancel_edit"
+                    class="shrink-0 px-2 py-1.5 text-[11px] font-bold text-ink/55"
+                  >
+                    Cancelar
+                  </button>
+                </form>
+              <% else %>
+                <.participant_row
+                  number={i}
+                  name={display_name(att.name, @unlocked?)}
+                  paid={att.paid}
+                  highlighted={@mine_index == i}
+                  divider={i < length(@event.main_list)}
+                  paid_click={
+                    can_toggle?(@event, att, @mine_index == i, @current_admin?, @organizer?) &&
+                      "toggle_paid_main"
+                  }
+                  join_click={
+                    @unlocked? and not @signups_locked? and
+                      JS.focus(to: "#add-main-form input[name=name]")
+                  }
+                  empty_label="Vaga livre"
+                  join_label="Entrar"
+                  phx-value-index={i}
+                >
+                  <:actions>
                     <button
-                      type="submit"
-                      class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 bg-primary text-primary-content hover:bg-primary/90"
-                    >Salvar</button>
-                    <button
+                      :if={@current_admin? and String.trim(att.name) != ""}
                       type="button"
-                      phx-click="cancel_edit"
-                      class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 hover:bg-base-200"
+                      phx-click="start_edit_main"
+                      phx-value-index={i}
+                      class="grid size-11 shrink-0 place-items-center text-ink/35"
+                      aria-label={"Editar #{att.name}"}
                     >
-                      Cancelar
+                      <.icon name="tabler-pencil" class="size-4" />
                     </button>
-                  </form>
-                <% String.trim(att.name) == "" -> %>
-                  <span class="flex-1 text-sm text-base-content/40 italic">vaga aberta</span>
-                <% true -> %>
-                  <span class={[
-                    "flex-1 truncate font-medium",
-                    not @unlocked? && "tracking-widest text-base-content/60"
-                  ]}>
-                    {display_name(att.name, @unlocked?)}
-                    <span :if={att.paid} class="ml-1 text-success" title="Pago">✅</span>
-                  </span>
+                    <button
+                      :if={can_remove?(att, @mine_index == i, @current_admin?, @organizer?)}
+                      type="button"
+                      phx-click="remove_main"
+                      phx-value-index={i}
+                      data-confirm={remove_confirm(@mine_index == i, att.name)}
+                      class="grid size-11 shrink-0 place-items-center text-ink/35"
+                      aria-label={
+                        if @mine_index == i, do: "Sair da lista", else: "Remover #{att.name}"
+                      }
+                    >
+                      <.icon name="tabler-x" class="size-4" />
+                    </button>
+                  </:actions>
+                </.participant_row>
               <% end %>
-
-              <div class="flex items-center gap-1 shrink-0">
-                <button
-                  :if={@current_admin? and String.trim(att.name) != "" and @editing_main != i}
-                  type="button"
-                  phx-click="toggle_paid_main"
-                  phx-value-index={i}
-                  class={[
-                    "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-2 py-1 text-xs",
-                    if(att.paid,
-                      do: "bg-success text-success-content hover:bg-success/90",
-                      else: "border border-base-300 hover:bg-base-200"
-                    )
-                  ]}
-                  title="Alternar pago"
-                >
-                  ✅
-                </button>
-                <button
-                  :if={@current_admin? and String.trim(att.name) != "" and @editing_main != i}
-                  type="button"
-                  phx-click="start_edit_main"
-                  phx-value-index={i}
-                  class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-2 py-1 text-xs hover:bg-base-200"
-                  title="Editar nome"
-                >
-                  <.icon name="tabler-pencil" class="size-3.5" />
-                </button>
-                <button
-                  :if={@current_admin? and String.trim(att.name) != "" and @editing_main != i}
-                  type="button"
-                  phx-click="remove_main"
-                  phx-value-index={i}
-                  data-confirm="Remover essa pessoa?"
-                  class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-2 py-1 text-xs hover:bg-base-200 text-error"
-                  title="Remover"
-                >
-                  <.icon name="tabler-x" class="size-3.5" />
-                </button>
-              </div>
             </li>
           </ol>
 
