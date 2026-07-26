@@ -14,6 +14,7 @@ defmodule Rolezinho.Events do
   alias Rolezinho.Event
   alias Rolezinho.Event.Meta
   alias Rolezinho.Event.Parser
+  alias Rolezinho.Event.Token
   alias Rolezinho.Repo
 
   @pubsub Rolezinho.PubSub
@@ -80,6 +81,19 @@ defmodule Rolezinho.Events do
     |> Repo.one()
   end
 
+  @doc """
+  Finds the event a given organizer token administers.
+
+  Returns `nil` for a blank token so that a browser sending no secret never
+  resolves to an event.
+  """
+  @spec get_by_organizer_token(String.t() | nil) :: Event.t() | nil
+  def get_by_organizer_token(token) when is_binary(token) and token != "" do
+    Repo.get_by(Event, organizer_token: token)
+  end
+
+  def get_by_organizer_token(_), do: nil
+
   @doc "Returns true when a slug already exists in any status."
   def slug_taken?(slug) do
     from(e in Event, where: e.slug == ^slug, select: 1)
@@ -96,7 +110,14 @@ defmodule Rolezinho.Events do
   """
   def create(params) when is_map(params) do
     with {:ok, attrs} <- validate_create_params(params) do
-      case %Event{} |> Event.changeset(build_attrs(attrs)) |> Repo.insert() do
+      changeset =
+        %Event{}
+        |> Event.changeset(build_attrs(attrs))
+        # Set here rather than cast from params: accepting it as input would let
+        # a visitor choose the secret that administers the event.
+        |> Ecto.Changeset.put_change(:organizer_token, Token.generate_organizer())
+
+      case Repo.insert(changeset) do
         {:ok, event} ->
           broadcast_home()
           {:ok, event}

@@ -35,6 +35,20 @@ defmodule Rolezinho.Event do
     field :wait_intro, :string, default: "Lista de reserva"
     field :password, :string
 
+    # Structured replacements for what used to be parsed out of the markdown
+    # header. `header`/`footer` above are on their way out, once the v2 screens
+    # stop rendering them.
+    field :category, :string
+    field :local, :string
+    field :starts_at, :utc_datetime
+    field :ends_at, :utc_datetime
+    field :price_cents, :integer
+    field :pix_key, :string
+
+    # The organizer's secret for this event: whoever holds it administers this
+    # event and no other.
+    field :organizer_token, :string
+
     embeds_many :main_list, Attendee, on_replace: :delete
     embeds_many :wait_list, Attendee, on_replace: :delete
 
@@ -55,7 +69,14 @@ defmodule Rolezinho.Event do
           wait_intro: String.t(),
           wait_list: [Attendee.t()],
           footer: String.t(),
-          password: String.t() | nil
+          password: String.t() | nil,
+          category: String.t() | nil,
+          local: String.t() | nil,
+          starts_at: DateTime.t() | nil,
+          ends_at: DateTime.t() | nil,
+          price_cents: non_neg_integer() | nil,
+          pix_key: String.t() | nil,
+          organizer_token: String.t() | nil
         }
 
   @doc """
@@ -73,7 +94,13 @@ defmodule Rolezinho.Event do
       :main_capacity,
       :wait_enabled,
       :wait_intro,
-      :password
+      :password,
+      :category,
+      :local,
+      :starts_at,
+      :ends_at,
+      :price_cents,
+      :pix_key
     ])
     |> update_change(:password, &normalize_password/1)
     |> cast_embed(:main_list, with: &Attendee.changeset/2)
@@ -82,7 +109,37 @@ defmodule Rolezinho.Event do
     |> update_change(:slug, &String.downcase(String.trim(&1 || "")))
     |> validate_format(:slug, @slug_regex, message: "use letras minúsculas, números e traços")
     |> validate_number(:main_capacity, greater_than_or_equal_to: 0)
+    # Upper bounds only: anonymous writes make an unbounded column a way to fill
+    # the page, but a minimum here would reject events that already exist. The
+    # 3-character floor the spec asks for belongs to the create form, which is
+    # the only place a title is authored from scratch.
+    |> validate_length(:title, max: 80)
+    |> validate_length(:local, max: 200)
+    |> validate_length(:category, max: 40)
+    |> validate_length(:pix_key, max: 100)
+    |> validate_number(:price_cents, greater_than_or_equal_to: 0)
+    |> validate_ends_after_starts()
     |> unique_constraint(:slug, message: "já está em uso")
+  end
+
+  # `organizer_token` is deliberately absent from the cast above: it is what
+  # authorizes administering this event, so accepting it from params would let a
+  # visitor hand themselves the secret. It is set once, at creation, by the
+  # context.
+  @doc false
+  def put_organizer_token(%Event{} = event, token) when is_binary(token) do
+    change(event, organizer_token: token)
+  end
+
+  defp validate_ends_after_starts(changeset) do
+    starts_at = get_field(changeset, :starts_at)
+    ends_at = get_field(changeset, :ends_at)
+
+    if starts_at && ends_at && DateTime.compare(ends_at, starts_at) != :gt do
+      add_error(changeset, :ends_at, "precisa ser depois do início")
+    else
+      changeset
+    end
   end
 
   @doc "Valid values for the `status` enum."
