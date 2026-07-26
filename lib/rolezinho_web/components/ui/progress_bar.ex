@@ -1,11 +1,10 @@
 defmodule RolezinhoWeb.Components.UI.ProgressBar do
   @moduledoc """
-  How full a list is (`progress_bar/1`) and how to read the checks
-  (`payment_legend/1`).
+  How full a list is.
 
-  The legend is not optional: any screen showing the paid check needs it above
-  the first list. A check on its own does not communicate whether it means
-  "paid" or "confirmed".
+  What the paid check means is said by the count beside the list title ("4 de 6
+  já pagaram") rather than by a legend. A legend of circle-plus-label pairs
+  borrows the grammar of a filter, so it read as options to choose between.
   """
   use Phoenix.Component
 
@@ -41,33 +40,6 @@ defmodule RolezinhoWeb.Components.UI.ProgressBar do
       >
         <div class="h-full rounded-full bg-accent transition-[width]" style={"width: #{@percent}%"} />
       </div>
-    </div>
-    """
-  end
-
-  @doc """
-  Renders the legend that explains the paid check.
-
-  ## Examples
-
-      <.payment_legend />
-  """
-  attr :paid_label, :string, default: "already paid"
-  attr :unpaid_label, :string, default: "has not paid yet"
-  attr :class, :any, default: nil
-
-  def payment_legend(assigns) do
-    ~H"""
-    <div class={[
-      "flex flex-wrap items-center gap-2 text-[11px] font-semibold text-muted",
-      @class
-    ]}>
-      <span class="inline-flex size-4 items-center justify-center rounded-full bg-accent text-[9px] text-accent-content">
-        ✓
-      </span>
-      <span>{@paid_label}</span>
-      <span class="ml-1.5 inline-block size-4 rounded-full border-[1.5px] border-ink/15" />
-      <span>{@unpaid_label}</span>
     </div>
     """
   end

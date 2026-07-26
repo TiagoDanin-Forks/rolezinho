@@ -30,14 +30,59 @@ defmodule RolezinhoWeb.ListScreenTest do
     post(conn, ~p"/r/#{slug}/join", %{"name" => name})
   end
 
-  describe "the payment legend (RN-14)" do
-    test "is always above the list", %{conn: conn} do
+  describe "what the check means (RN-14)" do
+    test "the count next to the list says it", %{conn: conn} do
+      # A check cannot stand alone, and the count is what explains it: read the
+      # number and the marks below it tell the same story. A legend of
+      # circle-plus-label pairs said the same thing in the grammar of a filter,
+      # which is why it read as two things to choose between.
+      {:ok, event} =
+        Events.create(%{
+          "title" => "Vôlei",
+          "slug" => "volei-count-#{System.unique_integer([:positive])}",
+          "description" => "End: Praia",
+          "main_size" => "4",
+          "wait_size" => "0",
+          "price" => "20",
+          "pix_key" => "(91) 98493-3238"
+        })
+
+      {:ok, event} = Events.add_to_main(event, "Ana", participant_id: "a")
+      {:ok, event} = Events.add_to_main(event, "Bruno", participant_id: "b")
+      {:ok, _} = Events.toggle_paid_main(event, 1)
+
+      {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
+
+      assert html =~ "1 de 2 já pagaram"
+    end
+
+    test "reads plainly once everybody has paid", %{conn: conn} do
+      {:ok, event} =
+        Events.create(%{
+          "title" => "Vôlei",
+          "slug" => "volei-all-#{System.unique_integer([:positive])}",
+          "description" => "End: Praia",
+          "main_size" => "4",
+          "wait_size" => "0",
+          "price" => "20",
+          "pix_key" => "(91) 98493-3238"
+        })
+
+      {:ok, event} = Events.add_to_main(event, "Ana", participant_id: "a")
+      {:ok, _} = Events.toggle_paid_main(event, 1)
+
+      {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
+
+      assert html =~ "todos pagaram"
+    end
+
+    test "stays quiet on a free event, where the check reports on nothing", %{conn: conn} do
       event = seed()
 
       {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
 
-      assert html =~ "já pagou o Pix"
-      assert html =~ "ainda não pagou"
+      refute html =~ "já pagaram"
+      refute html =~ "todos pagaram"
     end
   end
 

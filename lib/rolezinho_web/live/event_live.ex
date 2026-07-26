@@ -203,6 +203,21 @@ defmodule RolezinhoWeb.EventLive do
     "Faltam #{Cash.format_amount(missing)} · #{length(debtors)} pessoas não pagaram o Pix."
   end
 
+  # How many of the people on the list have declared payment. Returns nil when
+  # there is nothing to count — an empty list, or a free event where the check
+  # would be reporting on money nobody owes.
+  defp paid_summary(%Event{price_cents: cents}) when is_nil(cents) or cents == 0, do: nil
+
+  defp paid_summary(%Event{main_list: list}) do
+    people = Enum.filter(list, &(String.trim(&1.name) != ""))
+
+    case {Enum.count(people, & &1.paid), length(people)} do
+      {_paid, 0} -> nil
+      {paid, total} when paid == total -> "todos pagaram"
+      {paid, total} -> "#{paid} de #{total} já pagaram"
+    end
+  end
+
   defp charge_label(%{debtors: [_one]}), do: "Cobrar no WhatsApp"
   defp charge_label(%{debtors: debtors}), do: "Cobrar os #{length(debtors)} no WhatsApp"
 
@@ -803,8 +818,17 @@ defmodule RolezinhoWeb.EventLive do
           <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
             <div>
               <h2 class="text-xl font-semibold">Lista principal</h2>
+              <!-- RN-14 says a check cannot stand alone, and this is what says
+                   what it means: the count and the marks tell the same story, so
+                   reading one explains the other. A legend of circle-plus-label
+                   pairs said it in the grammar of a filter, which is why it read
+                   as two things to choose between. -->
               <p class="text-sm text-base-content/60">
-                {filled_count(@event.main_list)} / {@event.main_capacity} vagas preenchidas
+                {filled_count(@event.main_list)} / {@event.main_capacity} vagas<span :if={
+                  @unlocked? and paid_summary(@event)
+                }>
+                  · {paid_summary(@event)}
+                </span>
               </p>
             </div>
             <div :if={@current_admin?} class="inline-flex -space-x-px">
@@ -828,15 +852,6 @@ defmodule RolezinhoWeb.EventLive do
               </button>
             </div>
           </div>
-
-          <!-- RN-14: a check on its own does not say whether it means paid or
-               confirmed, so the legend is not optional. -->
-          <.payment_legend
-            :if={@unlocked?}
-            paid_label="já pagou o Pix"
-            unpaid_label="ainda não pagou"
-            class="mb-2"
-          />
 
           <.coachmark :if={@mine_index} seen_key="paid-check" class="mb-2">
             Toque no check quando fizer o Pix. Só você marca o seu.

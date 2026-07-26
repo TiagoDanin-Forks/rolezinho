@@ -11,7 +11,6 @@ defmodule Storybook.UI do
   def entry("avatar"), do: [icon: {:fa, "circle-user", :thin}]
   def entry("avatar_stack"), do: [icon: {:fa, "users-line", :thin}]
   def entry("progress_bar"), do: [icon: {:fa, "bars-progress", :thin}]
-  def entry("payment_legend"), do: [icon: {:fa, "circle-check", :thin}]
   def entry("status_pill"), do: [icon: {:fa, "certificate", :thin}]
   def entry("info_tile"), do: [icon: {:fa, "receipt", :thin}]
   def entry("detail_row"), do: [icon: {:fa, "location-dot", :thin}]
