@@ -10,11 +10,11 @@ defmodule Rolezinho.Events do
   import Ecto.Query, warn: false
 
   alias Ecto.Multi
+  alias Phoenix.PubSub
   alias Rolezinho.Event
   alias Rolezinho.Event.Meta
   alias Rolezinho.Event.Parser
   alias Rolezinho.Repo
-  alias Phoenix.PubSub
 
   @pubsub Rolezinho.PubSub
 
@@ -118,33 +118,13 @@ defmodule Rolezinho.Events do
 
     errors = %{}
     errors = if title == "", do: put_error(errors, :title, "obrigatório"), else: errors
-
-    errors =
-      cond do
-        slug == "" ->
-          put_error(errors, :slug, "obrigatório")
-
-        not Regex.match?(Event.slug_regex(), slug) ->
-          put_error(errors, :slug, "use letras minúsculas, números e traços")
-
-        slug_taken?(slug) ->
-          put_error(errors, :slug, "já está em uso")
-
-        true ->
-          errors
-      end
+    errors = validate_slug(errors, slug)
 
     {main_size, errors} =
-      case parse_int(main_size_raw) do
-        {:ok, n} when n >= 1 and n <= 500 -> {n, errors}
-        _ -> {0, put_error(errors, :main_size, "número inteiro entre 1 e 500")}
-      end
+      validate_size(errors, main_size_raw, :main_size, 1, 500, "número inteiro entre 1 e 500")
 
     {wait_size, errors} =
-      case parse_int(wait_size_raw) do
-        {:ok, n} when n >= 0 and n <= 100 -> {n, errors}
-        _ -> {0, put_error(errors, :wait_size, "número inteiro entre 0 e 100")}
-      end
+      validate_size(errors, wait_size_raw, :wait_size, 0, 100, "número inteiro entre 0 e 100")
 
     if errors == %{} do
       {:ok,
@@ -159,6 +139,28 @@ defmodule Rolezinho.Events do
        }}
     else
       {:error, errors}
+    end
+  end
+
+  defp validate_slug(errors, ""), do: put_error(errors, :slug, "obrigatório")
+
+  defp validate_slug(errors, slug) do
+    cond do
+      not Regex.match?(Event.slug_regex(), slug) ->
+        put_error(errors, :slug, "use letras minúsculas, números e traços")
+
+      slug_taken?(slug) ->
+        put_error(errors, :slug, "já está em uso")
+
+      true ->
+        errors
+    end
+  end
+
+  defp validate_size(errors, raw, field, min, max, message) do
+    case parse_int(raw) do
+      {:ok, n} when n >= min and n <= max -> {n, errors}
+      _ -> {0, put_error(errors, field, message)}
     end
   end
 

@@ -101,11 +101,11 @@ defmodule Rolezinho.Event.Parser do
   end
 
   defp split_sections(lines) do
-    {header, after_header} = Enum.split_while(lines, fn line -> not is_list_item?(line) end)
+    {header, after_header} = Enum.split_while(lines, fn line -> not list_item?(line) end)
     {list1, after_list1} = take_list(after_header)
 
     {between, after_between} =
-      Enum.split_while(after_list1, fn line -> not is_list_item?(line) end)
+      Enum.split_while(after_list1, fn line -> not list_item?(line) end)
 
     case take_list(after_between) do
       {[], _} ->
@@ -116,9 +116,9 @@ defmodule Rolezinho.Event.Parser do
     end
   end
 
-  defp take_list(lines), do: Enum.split_while(lines, &is_list_item?/1)
+  defp take_list(lines), do: Enum.split_while(lines, &list_item?/1)
 
-  defp is_list_item?(line), do: String.match?(line, @item_regex)
+  defp list_item?(line), do: String.match?(line, @item_regex)
 
   defp trim_edges(lines) do
     lines

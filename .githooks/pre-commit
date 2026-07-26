@@ -1,0 +1,19 @@
+#!/bin/sh
+#
+# Versioned pre-commit hook.
+#
+# The `precommit` alias lives in mix.exs (with preferred_envs: [precommit: :test] in
+# cli/0) and runs:
+#   compile --warnings-as-errors + deps.unlock --unused + format --check-formatted +
+#   sobelow + test
+#
+# To enable this hook, each developer runs once at the repo root:
+#   git config core.hooksPath .githooks
+
+set -eu
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+echo "==> mix precommit"
+mix precommit

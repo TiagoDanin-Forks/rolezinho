@@ -12,10 +12,17 @@ In production the app runs at [roles.lubien.me](https://roles.lubien.me).
 mix setup         # install deps, create the DB, migrate, and build assets
 mix phx.server    # http://localhost:4000
 mix test          # run the test suite
-mix precommit     # compile, format, and run the tests
+mix precommit     # compile, check formatting, run sobelow and the tests
 ```
 
 Requires PostgreSQL running at `localhost:5432` with user/password `postgres`.
+
+To run `mix precommit` automatically before each commit, enable the versioned hook
+once:
+
+```sh
+git config core.hooksPath .githooks
+```
 
 ## Self-hosting
 

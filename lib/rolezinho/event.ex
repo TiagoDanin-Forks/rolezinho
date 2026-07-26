@@ -473,8 +473,7 @@ defmodule Rolezinho.Event do
 
     slots
     |> Enum.with_index(1)
-    |> Enum.map(fn {%Attendee{} = att, i} -> render_attendee_line(i, att) end)
-    |> Enum.join("\n")
+    |> Enum.map_join("\n", fn {%Attendee{} = att, i} -> render_attendee_line(i, att) end)
   end
 
   defp render_wait_list([]), do: "1-"
@@ -482,8 +481,7 @@ defmodule Rolezinho.Event do
   defp render_wait_list(list) do
     list
     |> Enum.with_index(1)
-    |> Enum.map(fn {%Attendee{} = att, i} -> render_attendee_line(i, att) end)
-    |> Enum.join("\n")
+    |> Enum.map_join("\n", fn {%Attendee{} = att, i} -> render_attendee_line(i, att) end)
   end
 
   @hidden_name_placeholder "•••"
