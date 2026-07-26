@@ -1,0 +1,285 @@
+# Security: Rolezinho
+
+The single source of truth for this project's security decisions. Just as
+`DESIGN.md` governs the UI and `PRODUCT.md` the product, this document governs
+every decision that affects security: what is trusted, what must be escaped, who
+may do what.
+
+## The access model (read this first)
+
+Rolezinho has **no user accounts**. There is no sign-up, no guest login, no
+identity session, and no per-record owner. This changes the nature of security work
+here, and ignoring the difference is the easiest way to write wrong code in this
+project.
+
+There are exactly three access levels:
+
+| Level | How it's obtained | What it can do |
+| --- | --- | --- |
+| **Anonymous visitor** | open the URL | view public events; join/leave a list; mark payment |
+| **Session with an unlocked event** | enter the correct password for a specific event (`POST /r/:slug/unlock`) | everything a visitor can, on the protected event whose password they entered |
+| **Admin** | enter `ADMIN_PASSWORD` at `/admin/login` | create, edit, clone, rename, change status, and delete any event |
+
+Direct consequences, which hold as rules:
+
+- **There is no per-user ownership.** There is no `current_scope`, no
+  `current_user`, and no `user_id` to scope a query by. Writing a "this record
+  belongs to the signed-in user" check here is a modeling error — there is no
+  signed-in user.
+- **Anonymous writes are intentional.** Any visitor can write to a public event's
+  list. That is the core feature (see `PRODUCT.md`), not a flaw to be fixed.
+- **The privileged surface is admin, and only admin.** Every route that creates,
+  alters, or destroys an event goes through the admin pipeline. Every route that
+  merely reads or touches a list is public by design.
+- **The identifier is the slug, chosen by the admin, and it is public.** It appears
+  in the URL pasted into the group. There is nothing to hide in it, and it
+  authorizes nothing.
+
+## Principles
+
+1. **All external input is hostile.** Params, form bodies, LiveView event messages,
+   and text pasted by anyone are untrusted until validated and escaped at the point
+   of use. "Anonymous users can write" does not mean "accept anything".
+2. **The boundary is admin vs. public.** If an action changes an event's structure,
+   it's admin. If an action touches one's own attendance or payment, it's public.
+   There is no third case — and new actions must be explicitly classified into one
+   of the two.
+3. **Deny by default on the admin surface.** A new route under `/admin` goes into
+   the admin pipeline; privileged routes are not created outside it.
+4. **Defense in depth.** Escaping in the template doesn't excuse validating input;
+   gating in the UI doesn't excuse gating on the server.
+5. **A secret is a secret.** `SECRET_KEY_BASE`, `ADMIN_PASSWORD`, and database
+   credentials never enter the code, the logs, or the repository.
+6. **Be honest about what protects what.** An event password is friction, not
+   cryptography (section 3). Never present it to the user as a privacy guarantee.
+
+## 1. XSS and content injection
+
+This is the project's most important risk surface, because **content written by any
+visitor is rendered as markdown** on the event page.
+
+**HEEx escapes by default — do not turn that escaping off for user content.**
+
+- Normal HEEx interpolation (`{@value}`) is HTML-escaped automatically. That is the
+  correct behavior: keep it.
+- **`raw/1` turns escaping off.** Only use it with content you generated and control
+  yourself.
+
+### The markdown invariant (critical)
+
+An event's description, header, and footer are markdown written by people and
+rendered via `raw(...)` in `RolezinhoWeb.EventLive`. What makes that safe is a
+single option in the Earmark call:
+
+```elixir
+Earmark.as_html(text, breaks: true, escape: true, compact_output: false)
+```
+
+**`escape: true` is the invariant that holds up every `raw(...)` in the project.**
+It makes Earmark escape HTML embedded in the markdown, so a `<script>` pasted into
+an event description comes out as text, not as a script. Switching it to
+`escape: false` — or rendering user markdown through another path without that
+option — opens stored XSS across every event page at once.
+
+Rules:
+
+- Never change `escape: true` to `false`.
+- Do not introduce a second markdown rendering path. If you need one, reuse the
+  existing function instead of calling Earmark directly.
+- When adding a new `raw(...)`, its content must come from one of two origins:
+  markdown passed through the renderer with `escape: true`, or markup generated
+  entirely by our own code (e.g. the Pix QR code SVG, produced by `Rolezinho.Pix`,
+  with no user-supplied fragment).
+- If real HTML ever needs to be allowed in a description, sanitize with an allowlist
+  (e.g. `HtmlSanitizeEx`) — never trust the raw content.
+
+### Remaining rendering rules
+
+- **Dynamic attributes:** use HEEx attribute syntax (`<a href={@url}>`), which
+  escapes the value. Never assemble HTML by string concatenation.
+- **URLs originating from user text:** validate the scheme (`http`, `https`,
+  `mailto`). Reject `javascript:` and `data:` — an `href="javascript:..."` executes
+  even when the value is escaped.
+- **Do not force `{:safe, ...}`** over an externally-sourced string to silence an
+  escaping warning: that reintroduces exactly the XSS the escaping prevented.
+- **A guest's name is user content.** It appears on the page, in the `.txt`, and in
+  the `.ics`. Escape it on the page (HEEx default) and handle formatting in the
+  other outputs (section 7).
+- **Client-side:** prefer native `JS` commands and `phx-*` over hooks that inject
+  HTML. If a hook must insert server-supplied text, use `textContent`, never
+  `innerHTML` (see `.claude/rules/liveview.md`).
+
+## 2. The admin boundary
+
+**Every action that creates, structurally alters, or destroys an event is admin.**
+
+- Admin routes live under the `/admin` scope, in the `:admin_required` pipeline
+  (`plug :require_admin`), and the corresponding LiveViews use the
+  `on_mount {RolezinhoWeb.Plugs.Admin, :require_admin}` hook.
+- **The plug and the `on_mount` are two halves of the same check, and you need
+  both.** The plug protects the initial HTTP request; the `on_mount` protects the
+  socket connection, which does not pass through the plug pipeline. Adding an admin
+  LiveView with the plug but without the `on_mount` leaves the surface open over the
+  socket.
+- The admin password is compared in constant time
+  (`Plug.Crypto.secure_compare`) — keep it that way; comparing with `==` leaks
+  information through timing.
+- Admin state lives in the session (`:admin?`), signed by the Phoenix cookie.
+- **An admin `handle_event` inside a public LiveView is a trap.** A socket message
+  can be forged by any connected client: if a privileged event exists in a public
+  LiveView, it **must re-check permission in the handler itself**, without relying on
+  the UI having hidden the button. Hiding the control in the template is not access
+  control.
+
+## 3. Event passwords: friction, not secrecy
+
+An event's optional password is stored **in plaintext** in the `events.password`
+column and compared in constant time against what the visitor submitted. This is a
+**deliberate decision**, not an oversight awaiting a fix:
+
+- The password is shared in the group alongside the link, and the share text can
+  **deliberately include it** (`Senha: <password>`).
+- The admin must be able to read the password back in order to re-share it. Hashing
+  would make that impossible and break the feature.
+- It is not an identity credential: it protects no account, cannot be reused to log
+  in, and has no user attached to it.
+
+What the password actually does: **it filters out the curious passer-by who
+stumbled onto the URL**, hiding location, description, and the names of those who
+confirmed from anyone without it. What it does **not** do:
+
+- It is not a cryptographic guarantee. Anyone with database access reads it.
+- It does not protect against someone who received the password and passed it on.
+- It is not rate-limited today — there is no protection against bulk guessing
+  (tracked in `TODOS.md`).
+
+Rules when touching this:
+
+- **Do not treat an event password as a credential** or reuse it for any other
+  purpose.
+- **Never expose it on an ungated surface.** It appears in the share text only when
+  the admin explicitly asks for it.
+- **The gate is on the server.** Unlocking is recorded in the session
+  (`:unlocked_events`); the decision to show location, description, and names is made
+  on the server based on that — not by CSS, not by `hidden`, not by a template
+  class. Gated content that reaches the HTML and is hidden visually has already
+  leaked.
+- **Admins see everything** without unlocking, by definition.
+- If the password ever needs to be a real secret, the design changes (hashing, no
+  display, rate limiting) and it stops being shareable in the group — that's a
+  product decision, not a technical tweak. Record it as an ADR in
+  `docs/decisions/`.
+
+## 4. Mass assignment
+
+Fields the user must not control **never enter a changeset's `cast`** — they are set
+explicitly by the code.
+
+- An anonymous visitor may change only their own attendance and payment on a list.
+  `slug`, `status`, `password`, `main_capacity`, and the event's structure belong to
+  the admin.
+- `status` and `slug` change through dedicated context functions
+  (`set_status/2`, `rename_slug/2`), invoked from the admin surface — not by casting
+  public form params.
+- The general rule lives in `.claude/rules/phoenix.md` ("Business validations").
+
+## 5. Validating anonymous input
+
+Anonymous writes are the feature, so validation carries the weight authentication
+would carry in another project:
+
+- **Bound the size of everything.** Guest names, descriptions, and other free-text
+  fields need an upper limit. Without one, a repeated POST fills the column and the
+  page.
+- **Validate index and capacity on the server.** A slot position coming from the
+  client is hostile input: check the range against the real capacity before writing.
+- **Never build an atom from external input** (`String.to_atom/1`) — statuses and
+  the like are mapped by an explicit `case` from known strings to known atoms.
+- **Normalize before persisting** (trim, collapse whitespace) so the list isn't
+  polluted by invisible variations.
+
+## 6. CSRF, sessions, and state-changing requests
+
+- `protect_from_forgery` and `put_secure_browser_headers` stay in the `:browser`
+  pipeline. Do not remove either.
+- State-changing forms (unlocking an event, admin login) go through the browser
+  pipeline, with a CSRF token.
+- LiveView carries the CSRF token on the socket; do not disable that check.
+- Every state-changing action uses `POST`/`PUT`/`PATCH`/`DELETE` or a LiveView event
+  — never `GET`. A `GET /admin/logout` exists today for link convenience: it only
+  ends the caller's own session, but **do not use it as a precedent** for any other
+  mutation.
+- `force_ssl` with HSTS is enabled in production. Session cookie over HTTPS.
+
+## 7. The non-HTML outputs
+
+The same content ships in three formats, and HTML escaping protects only one of
+them:
+
+- **`.txt`** — plain text pasted back into the group. There is no markup to escape,
+  but user content must not break the document's structure.
+- **`.ics`** — the iCalendar format has its own syntax: fields are line-separated
+  and `,`, `;`, `\`, and line breaks are significant. User text entering an `.ics`
+  field must be **escaped per RFC 5545**, otherwise a name containing a comma or a
+  description with a line break corrupts the file (or injects fields). HTML escaping
+  does not solve this.
+
+  The invariant exists: `Rolezinho.Event.Meta.ics/2` passes `SUMMARY`, `LOCATION`,
+  and `DESCRIPTION` through `escape_ics/1`. **Every new field carrying user text
+  needs the same treatment** — a field interpolated raw into the `.ics` is calendar
+  property injection.
+
+  The download is refused outright for a protected, un-unlocked event, because the
+  `.ics` carries `LOCATION` (see `CalendarController`). Preserve that gate when
+  adding new fields to the file.
+
+- **Pix QR code** — the BR Code is generated from the key detected in the
+  description. The payload is assembled by our code with computed length and CRC; the
+  key is normalized before it goes in. When touching `Rolezinho.Pix`, preserve key
+  validation: a malformed payload produces a QR that fails in the banking app, and a
+  *well*-formed payload with the wrong key sends money to the wrong place. This is
+  the one place in the system where a bug costs a user real money.
+
+## 8. Secrets and configuration
+
+- **No secrets in the repository.** `SECRET_KEY_BASE`, `ADMIN_PASSWORD`, and
+  `DATABASE_URL` come from environment variables read in `config/runtime.exs`.
+- **`ADMIN_PASSWORD` has a development default.** If the variable is unset, the
+  admin password falls back to a default value. That is acceptable in dev and
+  **unacceptable in production** — it is tracked in `TODOS.md` as a pending fix to
+  fail at boot instead of silently accepting the default.
+- Do not log event passwords, `ADMIN_PASSWORD`, or login request bodies. Beware
+  `inspect` on an event struct: it carries the password.
+- Errors must not expose stack traces, queries, or secrets to the end user.
+
+## 9. Rate limiting
+
+**There is no rate limiting today.** The endpoints that accept repeated attempts at
+no cost to an attacker:
+
+- `POST /admin/login` — brute force against the admin password.
+- `POST /r/:slug/unlock` — brute force against an event's password.
+- Anonymous list writes — slot stuffing / pollution.
+
+Tracked in `TODOS.md`. When creating any new endpoint that accepts repeatable
+anonymous input, treat the limit as part of the deliverable, not as a follow-up.
+
+## 10. Dependencies
+
+- `mix deps.get` reports dependency advisories. A high-severity advisory is a
+  high-priority item in `TODOS.md`, not noise.
+- Run `mix hex.audit` / review the warnings when updating deps.
+
+---
+
+## Before closing out any change
+
+Three questions, every time:
+
+1. **What external content am I rendering** — is it escaped, and does the markdown
+   still go through `escape: true`?
+2. **What action am I adding** — is it admin or public? If it's admin, does it have
+   both the plug **and** the `on_mount`? If it's a privileged `handle_event`, does it
+   re-check permission in the handler?
+3. **If the content is password-gated** — is the gate on the server, or merely
+   hidden in the template?

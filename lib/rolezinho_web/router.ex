@@ -2,6 +2,7 @@ defmodule RolezinhoWeb.Router do
   use RolezinhoWeb, :router
 
   import RolezinhoWeb.Plugs.Admin
+  import RolezinhoWeb.Plugs.ContentSecurityPolicy
 
   pipeline :browser do
     plug :accepts, ["html"]
@@ -10,6 +11,7 @@ defmodule RolezinhoWeb.Router do
     plug :put_root_layout, html: {RolezinhoWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug :put_content_security_policy
     plug :fetch_admin
   end
 
@@ -33,7 +35,6 @@ defmodule RolezinhoWeb.Router do
     get "/admin/login", AdminSessionController, :new
     post "/admin/login", AdminSessionController, :create
     delete "/admin/logout", AdminSessionController, :delete
-    get "/admin/logout", AdminSessionController, :delete
   end
 
   ## Admin-only routes
@@ -47,15 +48,28 @@ defmodule RolezinhoWeb.Router do
     end
   end
 
-  # Enable LiveDashboard and Swoosh mailbox preview in development
+  # Enable LiveDashboard, Swoosh mailbox preview and the component catalog in
+  # development. Storybook is a development tool: it is not mounted in
+  # production, where it would only add public surface.
   if Application.compile_env(:rolezinho, :dev_routes) do
     import Phoenix.LiveDashboard.Router
+    import PhoenixStorybook.Router
 
     scope "/dev" do
       pipe_through :browser
 
       live_dashboard "/dashboard", metrics: RolezinhoWeb.Telemetry
       forward "/mailbox", Plug.Swoosh.MailboxPreview
+    end
+
+    scope "/" do
+      storybook_assets()
+    end
+
+    scope "/" do
+      pipe_through :browser
+
+      live_storybook("/storybook", backend_module: RolezinhoWeb.Storybook)
     end
   end
 end
