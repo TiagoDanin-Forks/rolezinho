@@ -96,18 +96,28 @@ defmodule RolezinhoWeb do
       import RolezinhoWeb.Components.UI.BottomSheet, only: [bottom_sheet: 1]
       import RolezinhoWeb.Components.UI.Button
       import RolezinhoWeb.Components.UI.Card
+      import RolezinhoWeb.Components.UI.Coachmark
+      import RolezinhoWeb.Components.UI.DateTimeField
       import RolezinhoWeb.Components.UI.EmptyState
       import RolezinhoWeb.Components.UI.EventCard
+      import RolezinhoWeb.Components.UI.FieldConfigRow
+      import RolezinhoWeb.Components.UI.FilterChips
       import RolezinhoWeb.Components.UI.IconButton
       import RolezinhoWeb.Components.UI.InfoTile
+      import RolezinhoWeb.Components.UI.InviteCard
       import RolezinhoWeb.Components.UI.ParticipantRow
+      import RolezinhoWeb.Components.UI.PixQR
       import RolezinhoWeb.Components.UI.ProgressBar
+      import RolezinhoWeb.Components.UI.RoleCard
+      import RolezinhoWeb.Components.UI.SearchField
       import RolezinhoWeb.Components.UI.SectionHeader
       import RolezinhoWeb.Components.UI.SegmentedControl
       import RolezinhoWeb.Components.UI.SharePreview
       import RolezinhoWeb.Components.UI.Skeleton
       import RolezinhoWeb.Components.UI.StatusPill
       import RolezinhoWeb.Components.UI.Stepper
+      import RolezinhoWeb.Components.UI.SwipeActions
+      import RolezinhoWeb.Components.UI.TabBar
       import RolezinhoWeb.Components.UI.TextField
       import RolezinhoWeb.Components.UI.Toast
       import RolezinhoWeb.Components.UI.ToggleChip

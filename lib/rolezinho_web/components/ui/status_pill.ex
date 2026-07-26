@@ -39,7 +39,7 @@ defmodule RolezinhoWeb.Components.UI.StatusPill do
     """
   end
 
-  defp tone_classes("open"), do: "bg-tint text-ink-ink"
+  defp tone_classes("open"), do: "bg-tint text-accent-ink"
   defp tone_classes("full"), do: "bg-ink text-ink-content"
   defp tone_classes("done"), do: "bg-ink/[0.08] text-ink/55"
   defp tone_classes("debt"), do: "bg-danger text-danger-content"
