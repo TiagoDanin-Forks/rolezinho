@@ -963,7 +963,7 @@ defmodule RolezinhoWeb.EventLive do
                     />
                     <button
                       type="submit"
-                      class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 bg-primary text-primary-content hover:bg-primary/90"
+                      class="rounded-lg bg-ink px-2.5 py-1.5 text-[11px] font-bold text-ink-content"
                     >Salvar</button>
                     <button
                       type="button"
@@ -987,7 +987,7 @@ defmodule RolezinhoWeb.EventLive do
                   type="button"
                   phx-click="promote"
                   phx-value-index={i}
-                  class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-2 py-1 text-xs bg-primary text-primary-content hover:bg-primary/90"
+                  class="rounded-lg bg-ink px-2.5 py-1.5 text-[10px] font-bold text-ink-content"
                   title="Promover para a lista principal"
                 >
                   <.icon name="tabler-arrow-up" class="size-3.5" /> Promover
@@ -1409,7 +1409,7 @@ defmodule RolezinhoWeb.EventLive do
           href={@google_calendar_url}
           target="_blank"
           rel="noopener"
-          class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 bg-primary text-primary-content hover:bg-primary/90"
+          class="rounded-lg bg-ink px-2.5 py-1.5 text-[11px] font-bold text-ink-content"
         >
           <.icon name="tabler-calendar-event" class="size-4" /> Google Calendar
         </a>
