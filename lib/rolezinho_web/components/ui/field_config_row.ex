@@ -36,7 +36,7 @@ defmodule RolezinhoWeb.Components.UI.FieldConfigRow do
     ]}>
       <div class="min-w-0 flex-1">
         <div class="truncate text-[13px] font-bold">{@label}</div>
-        <div class="mt-0.5 text-[10.5px] text-ink/45">{type_label(@type)}</div>
+        <div class="mt-0.5 text-[10.5px] text-muted">{type_label(@type)}</div>
       </div>
 
       <button
@@ -47,7 +47,7 @@ defmodule RolezinhoWeb.Components.UI.FieldConfigRow do
         aria-pressed={to_string(@required)}
         class={[
           "shrink-0 rounded-lg px-2.5 py-1.5 text-[9.5px] font-bold uppercase tracking-wide",
-          "bg-ink/[0.08] text-ink/55 aria-pressed:bg-accent aria-pressed:text-accent-content",
+          "bg-ink/[0.08] text-muted aria-pressed:bg-accent aria-pressed:text-accent-content",
           "disabled:cursor-default",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         ]}

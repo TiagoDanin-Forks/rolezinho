@@ -60,7 +60,7 @@ defmodule RolezinhoWeb.Components.UI.RoleCard do
         >
           {@category_initial || String.first(@category)}
         </span>
-        <span :if={@category} class="text-[10px] font-semibold uppercase tracking-wide text-ink/45">
+        <span :if={@category} class="text-[10px] font-semibold uppercase tracking-wide text-muted">
           {@category}
         </span>
         <.status_pill :if={@status} tone={@status} class="ml-auto">
@@ -69,11 +69,11 @@ defmodule RolezinhoWeb.Components.UI.RoleCard do
       </div>
 
       <div class="mt-2 text-lg font-extrabold tracking-tight">{@title}</div>
-      <div :if={@when_text} class="mt-0.5 text-xs text-ink/55">{@when_text}</div>
+      <div :if={@when_text} class="mt-0.5 text-xs text-muted">{@when_text}</div>
 
       <div :if={@names != [] || @filled} class="mt-3 flex items-center justify-between gap-3">
         <.avatar_stack :if={@names != []} names={@names} size="xs" max={4} ring_class="ring-base-100" />
-        <span :if={@filled && @capacity} class="ml-auto text-[11px] font-semibold text-ink/50">
+        <span :if={@filled && @capacity} class="ml-auto text-[11px] font-semibold text-muted">
           {@filled}/{@capacity} confirmados
         </span>
       </div>

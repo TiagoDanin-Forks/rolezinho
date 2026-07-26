@@ -31,7 +31,7 @@ defmodule RolezinhoWeb.Components.UI.DateTimeField do
     ~H"""
     <div class={["flex gap-2", @class]}>
       <label class="flex-[1.4]">
-        <span class="mb-1 block text-[10px] font-bold text-ink/45">{@date_label}</span>
+        <span class="mb-1 block text-[10px] font-bold text-muted">{@date_label}</span>
         <input
           type="date"
           name={@date_name}
@@ -40,7 +40,7 @@ defmodule RolezinhoWeb.Components.UI.DateTimeField do
         />
       </label>
       <label class="flex-1">
-        <span class="mb-1 block text-[10px] font-bold text-ink/45">{@starts_at_label}</span>
+        <span class="mb-1 block text-[10px] font-bold text-muted">{@starts_at_label}</span>
         <input
           type="time"
           name={@starts_at_name}
@@ -49,7 +49,7 @@ defmodule RolezinhoWeb.Components.UI.DateTimeField do
         />
       </label>
       <label class="flex-1">
-        <span class="mb-1 block text-[10px] font-bold text-ink/45">{@ends_at_label}</span>
+        <span class="mb-1 block text-[10px] font-bold text-muted">{@ends_at_label}</span>
         <input
           type="time"
           name={@ends_at_name}

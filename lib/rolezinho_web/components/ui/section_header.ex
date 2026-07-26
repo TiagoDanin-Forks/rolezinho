@@ -26,7 +26,7 @@ defmodule RolezinhoWeb.Components.UI.SectionHeader do
       <h2 class={[
         "text-[13px] font-extrabold",
         @tone == "strong" && "text-ink",
-        @tone == "muted" && "text-ink/55"
+        @tone == "muted" && "text-muted"
       ]}>
         {@title}
       </h2>
@@ -35,7 +35,7 @@ defmodule RolezinhoWeb.Components.UI.SectionHeader do
         class={[
           "rounded-md px-1.5 py-0.5 text-[10px] font-extrabold",
           @tone == "strong" && "bg-ink text-ink-content",
-          @tone == "muted" && "bg-ink/10 text-ink/55"
+          @tone == "muted" && "bg-ink/10 text-muted"
         ]}
       >
         {if @capacity, do: "#{@count}/#{@capacity}", else: @count}

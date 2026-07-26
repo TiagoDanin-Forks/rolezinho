@@ -148,12 +148,12 @@ defmodule RolezinhoWeb.InviteLive do
              mostly deciding whether your people are going. -->
         <div :if={@confirmed != []} class="mt-5 flex flex-col items-center gap-2">
           <.avatar_stack names={@confirmed} size="md" max={6} ring_class="ring-canvas" />
-          <p class="text-[13px] font-semibold text-ink/55">
+          <p class="text-[13px] font-semibold text-muted">
             {confirmed_text(@filled, @event.main_capacity)}
           </p>
         </div>
 
-        <p :if={@confirmed == [] and @unlocked?} class="mt-5 text-center text-[13px] text-ink/55">
+        <p :if={@confirmed == [] and @unlocked?} class="mt-5 text-center text-[13px] text-muted">
           Ninguém entrou ainda. Você pode ser o primeiro.
         </p>
 
@@ -166,7 +166,7 @@ defmodule RolezinhoWeb.InviteLive do
           <.detail_row :if={@amount} label="Quanto" value={@amount} divider={false} />
         </section>
 
-        <p :if={not @unlocked?} class="mt-5 text-center text-[13px] text-ink/55">
+        <p :if={not @unlocked?} class="mt-5 text-center text-[13px] text-muted">
           Essa lista pede senha. Abra o rolê pra digitar.
         </p>
 
@@ -206,7 +206,7 @@ defmodule RolezinhoWeb.InviteLive do
           <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
 
           <label class="block">
-            <span class="mb-1 block text-[11px] font-bold text-ink/50">Seu nome *</span>
+            <span class="mb-1 block text-[11px] font-bold text-muted">Seu nome *</span>
             <input
               type="text"
               name="name"
@@ -222,7 +222,7 @@ defmodule RolezinhoWeb.InviteLive do
           <!-- RN-60/61/62: the questions this organizer chose to ask. Answers
                are scoped to this event and never rendered in the public list. -->
           <label :for={field <- @extra_fields} class="mt-3 block">
-            <span class="mb-1 block text-[11px] font-bold text-ink/50">
+            <span class="mb-1 block text-[11px] font-bold text-muted">
               {field.label}{if field.required, do: " *"}
             </span>
             <input

@@ -44,7 +44,7 @@ defmodule RolezinhoWeb.Components.UI.Stepper do
     ]}>
       <div>
         <div class="text-[13px] font-bold">{@label}</div>
-        <div :if={@hint} class="mt-px text-[11px] text-ink/55">{@hint}</div>
+        <div :if={@hint} class="mt-px text-[11px] text-muted">{@hint}</div>
       </div>
       <div class="flex items-center gap-3.5">
         <button
@@ -115,7 +115,7 @@ defmodule RolezinhoWeb.Components.UI.Stepper do
     >
       <div>
         <div class="text-[13px] font-bold">{@label}</div>
-        <div :if={@hint} class="mt-px text-[11px] text-ink/55">{@hint}</div>
+        <div :if={@hint} class="mt-px text-[11px] text-muted">{@hint}</div>
       </div>
       <div class="flex items-center gap-3.5">
         <button

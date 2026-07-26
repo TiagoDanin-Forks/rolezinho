@@ -67,7 +67,7 @@ defmodule RolezinhoWeb.HomeLive do
         <header class="flex items-end justify-between gap-4">
           <div>
             <h1 class="text-2xl font-extrabold tracking-tight">Rolezinhos</h1>
-            <p class="mt-0.5 text-[13px] text-ink/55">Os rolês abertos por aqui</p>
+            <p class="mt-0.5 text-[13px] text-muted">Os rolês abertos por aqui</p>
           </div>
           <.link
             :if={@current_admin?}

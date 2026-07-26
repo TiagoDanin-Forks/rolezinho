@@ -13,6 +13,7 @@ colors:
   danger: "oklch(55% 0.18 25)"
   danger-content: "oklch(100% 0 0)"
   hairline: "oklch(83.05% 0.0193 75.3)"
+  muted: "oklch(51.5% 0.0072 84.57)"
   secondary: "oklch(45% 0.012 80.52)"
   secondary-content: "oklch(100% 0 0)"
   base-100: "oklch(100% 0 0)"
@@ -32,6 +33,7 @@ colors-dark:
   danger: "oklch(64% 0.17 25)"
   danger-content: "oklch(15% 0.008 84.57)"
   hairline: "oklch(45% 0.013 78)"
+  muted: "oklch(67% 0.006 78.26)"
   secondary: "oklch(72% 0.012 80.52)"
   secondary-content: "oklch(15% 0.008 84.57)"
   base-100: "oklch(22% 0.009 84.57)"
@@ -220,7 +222,12 @@ A warm neutral ramp with two brand colors on top. The semantic colors (`danger`,
   action per screen, at the bottom, within thumb reach.
 - Also used for the FAB, for the count badge on a full list, and for the toast.
 - `ink` doubles as the text color, and as the base for translucent hairlines and
-  dividers (`border-ink/8`, `text-ink/55`) rather than a separate grey ramp.
+  dividers (`border-ink/8`) rather than a separate grey ramp.
+- **Supporting text uses `muted`, never a translucent ink.** `text-ink/55` reads
+  at 3.87:1 on the canvas and fails WCAG AA; the passing floor is 60% in the
+  light theme and 49% in the dark, so no single opacity satisfies both. `muted`
+  is the lightest tone that clears 4.5:1 on every surface of its theme —
+  canvas, white, and tint.
 - In the dark theme `ink` inverts to the lightest tone, keeping the same role:
   maximum contrast against the page.
 

@@ -891,7 +891,7 @@ defmodule RolezinhoWeb.EventLive do
                   <button
                     type="button"
                     phx-click="cancel_edit"
-                    class="shrink-0 px-2 py-1.5 text-[11px] font-bold text-ink/55"
+                    class="shrink-0 px-2 py-1.5 text-[11px] font-bold text-muted"
                   >
                     Cancelar
                   </button>
@@ -1217,7 +1217,7 @@ defmodule RolezinhoWeb.EventLive do
              before the form rather than after it. -->
         <div :if={@confirmed_names != []} class="mb-3.5 flex items-center gap-2.5">
           <.avatar_stack names={@confirmed_names} size="sm" max={5} ring_class="ring-white" />
-          <span class="text-[11px] font-semibold text-ink/55">{confirmed_summary(@confirmed_names)}</span>
+          <span class="text-[11px] font-semibold text-muted">{confirmed_summary(@confirmed_names)}</span>
         </div>
 
         <form
@@ -1229,7 +1229,7 @@ defmodule RolezinhoWeb.EventLive do
           <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
 
           <label class="block">
-            <span class="mb-1 block text-[11px] font-bold text-ink/50">Seu nome *</span>
+            <span class="mb-1 block text-[11px] font-bold text-muted">Seu nome *</span>
             <input
               type="text"
               name="name"
@@ -1248,7 +1248,7 @@ defmodule RolezinhoWeb.EventLive do
           <!-- RN-60/61/62: the questions this organizer chose to ask. Answers
                are scoped to this event and never rendered in the public list. -->
           <label :for={field <- @extra_fields} class="mt-3 block">
-            <span class="mb-1 block text-[11px] font-bold text-ink/50">
+            <span class="mb-1 block text-[11px] font-bold text-muted">
               {field.label}{if field.required, do: " *"}
             </span>
             <input
@@ -1401,7 +1401,7 @@ defmodule RolezinhoWeb.EventLive do
       <h2 class="mt-2 text-2xl font-extrabold leading-tight tracking-tight">
         Essa lista é<br />protegida por senha
       </h2>
-      <p class="mt-3 text-sm leading-relaxed text-ink/55">
+      <p class="mt-3 text-sm leading-relaxed text-muted">
         <%= if @has_location? do %>
           Digite a senha que veio junto com o link pra ver o local, os nomes e entrar na lista.
         <% else %>
@@ -1417,7 +1417,7 @@ defmodule RolezinhoWeb.EventLive do
       >
         <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
         <label class="block">
-          <span class="text-[11px] font-bold uppercase tracking-wide text-ink/50">
+          <span class="text-[11px] font-bold uppercase tracking-wide text-muted">
             Senha da lista
           </span>
           <input
@@ -1439,7 +1439,7 @@ defmodule RolezinhoWeb.EventLive do
         </button>
       </form>
 
-      <p class="mt-3.5 text-xs text-ink/45">
+      <p class="mt-3.5 text-xs text-muted">
         Não tem a senha? Pede pra quem te chamou.
       </p>
     </section>
@@ -1505,12 +1505,12 @@ defmodule RolezinhoWeb.EventLive do
     ~H"""
     <div class="space-y-2">
       <div :if={@amount} class="rounded-[14px] bg-tint px-3 py-2.5">
-        <div class="text-[10px] font-semibold uppercase text-ink/50">Valor</div>
+        <div class="text-[10px] font-semibold uppercase text-muted">Valor</div>
         <div class="mt-0.5 text-[15px] font-extrabold">{@amount}</div>
       </div>
 
       <div class="rounded-[14px] bg-tint px-3 py-2.5">
-        <div class="text-[10px] font-semibold uppercase text-ink/50">Chave Pix</div>
+        <div class="text-[10px] font-semibold uppercase text-muted">Chave Pix</div>
         <div class="mt-0.5 flex items-center gap-2">
           <span class="min-w-0 flex-1 truncate font-mono text-sm font-extrabold">
             {@pix.display}

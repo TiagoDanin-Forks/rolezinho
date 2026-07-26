@@ -40,7 +40,7 @@ defmodule RolezinhoWeb.Components.UI.SegmentedControl do
           "min-h-11 flex-1 rounded-row px-3 py-2.5 text-xs font-bold transition",
           if(value == @value,
             do: "bg-ink text-ink-content",
-            else: "bg-white text-ink/55 hover:bg-surface"
+            else: "bg-white text-muted hover:bg-surface"
           )
         ]}
       >

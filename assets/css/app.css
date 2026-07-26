@@ -92,6 +92,14 @@
   --color-danger-content: oklch(100% 0 0);
   --color-hairline: oklch(83.05% 0.0193 75.3);
 
+  /* Supporting text, at the lightest tone that still clears WCAG AA (4.5:1) on
+     every surface of this theme — canvas, white, and tint. Written as a colour
+     rather than an ink opacity because the passing floor differs per theme
+     (60% here, 49% in dark), so a shared `text-ink/55` cannot satisfy both.
+     `DESIGN.md` forbids light grey for information; this is where that line
+     actually sits. */
+  --color-muted: oklch(51.5% 0.0072 84.57);
+
   /* Inter, self-hosted (see the @font-face blocks above). The rest of the stack
      is the fallback used only while the font loads. */
   --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -163,6 +171,10 @@
   --color-danger: oklch(64% 0.17 25);
   --color-danger-content: oklch(15% 0.008 84.57);
   --color-hairline: oklch(45% 0.013 78);
+
+  /* The same role, inverted: light text held back from the foreground tone,
+     still clearing 4.5:1 on both the canvas and a raised surface. */
+  --color-muted: oklch(67% 0.006 78.26);
 
   --color-secondary: oklch(72% 0.012 80.52);
   --color-secondary-content: oklch(15% 0.008 84.57);

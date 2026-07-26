@@ -94,7 +94,7 @@ defmodule RolezinhoWeb.EventNewLive do
                 required
               />
               <.input field={@form[:slug]} label="Link" placeholder="volei-ver-o-beach" required />
-              <p class="-mt-2 text-[11px] text-ink/45">
+              <p class="-mt-2 text-[11px] text-muted">
                 Vira <code class="font-mono">/r/{@form[:slug].value || "seu-link"}</code>
               </p>
               <.input field={@form[:local]} label="Onde" placeholder="ex.: Rua Caripunas" />
@@ -113,7 +113,7 @@ defmodule RolezinhoWeb.EventNewLive do
 
           <section class="mt-3 rounded-card border border-hairline bg-base-100 p-4 shadow-card">
             <h2 class="text-[13px] font-extrabold">Rateio</h2>
-            <p class="mt-0.5 text-[11px] text-ink/45">
+            <p class="mt-0.5 text-[11px] text-muted">
               Deixe em branco se o rolê for de graça.
             </p>
 
@@ -141,14 +141,14 @@ defmodule RolezinhoWeb.EventNewLive do
               />
               <.input field={@form[:wait_size]} type="number" label="Na espera" min="0" max="100" />
             </div>
-            <p class="mt-2 text-[11px] text-ink/45">
+            <p class="mt-2 text-[11px] text-muted">
               0 na espera desliga a fila. Depois de criada, ela não tem limite.
             </p>
           </section>
 
           <section class="mt-3 rounded-card border border-hairline bg-base-100 p-4 shadow-card">
             <h2 class="text-[13px] font-extrabold">Senha</h2>
-            <p class="mt-0.5 text-[11px] text-ink/45">
+            <p class="mt-0.5 text-[11px] text-muted">
               Em branco, qualquer um com o link entra. Com senha, o link sozinho não basta.
             </p>
 

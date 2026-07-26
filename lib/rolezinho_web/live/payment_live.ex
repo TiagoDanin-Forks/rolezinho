@@ -110,7 +110,7 @@ defmodule RolezinhoWeb.PaymentLive do
         <header>
           <p class="text-[11px] font-bold uppercase tracking-wide text-accent">Você está dentro</p>
           <h1 class="mt-1 text-2xl font-extrabold tracking-tight">{@event.title}</h1>
-          <p :if={@row} class="mt-0.5 text-[13px] text-ink/55">
+          <p :if={@row} class="mt-0.5 text-[13px] text-muted">
             {list_position_text(@event, @row)}
           </p>
         </header>
@@ -119,7 +119,7 @@ defmodule RolezinhoWeb.PaymentLive do
           :if={@pix}
           class="mt-5 rounded-card border border-hairline bg-base-100 p-5 shadow-card"
         >
-          <p class="text-center text-[11px] font-semibold uppercase tracking-wide text-ink/45">
+          <p class="text-center text-[11px] font-semibold uppercase tracking-wide text-muted">
             Sua parte
           </p>
           <p class="mt-1 text-center text-[40px] font-extrabold leading-none tracking-tight">

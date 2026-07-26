@@ -35,7 +35,7 @@ defmodule RolezinhoWeb.Components.UI.TextField do
 
     ~H"""
     <div class={@class}>
-      <label for={@id} class="mb-1 block text-[11px] font-bold text-ink/55">
+      <label for={@id} class="mb-1 block text-[11px] font-bold text-muted">
         {@label}<span :if={@required} aria-hidden="true">&nbsp;*</span>
       </label>
       <input
@@ -85,7 +85,7 @@ defmodule RolezinhoWeb.Components.UI.TextField do
 
     ~H"""
     <div class={@class}>
-      <label for={@id} class="mb-1 block text-[11px] font-bold text-ink/55">{@label}</label>
+      <label for={@id} class="mb-1 block text-[11px] font-bold text-muted">{@label}</label>
       <input
         type="text"
         id={@id}

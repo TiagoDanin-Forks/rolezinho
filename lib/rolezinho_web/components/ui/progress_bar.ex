@@ -29,7 +29,7 @@ defmodule RolezinhoWeb.Components.UI.ProgressBar do
     <div class={@class}>
       <div :if={@label} class="flex items-center justify-between">
         <span class="text-[13px] font-bold">{@label}</span>
-        <span class="text-[11px] font-semibold text-ink/55">{@filled}/{@capacity}</span>
+        <span class="text-[11px] font-semibold text-muted">{@filled}/{@capacity}</span>
       </div>
       <div
         class={["h-[5px] overflow-hidden rounded-full bg-ink/[0.08]", @label && "mt-2"]}
@@ -59,7 +59,7 @@ defmodule RolezinhoWeb.Components.UI.ProgressBar do
   def payment_legend(assigns) do
     ~H"""
     <div class={[
-      "flex flex-wrap items-center gap-2 text-[11px] font-semibold text-ink/55",
+      "flex flex-wrap items-center gap-2 text-[11px] font-semibold text-muted",
       @class
     ]}>
       <span class="inline-flex size-4 items-center justify-center rounded-full bg-accent text-[9px] text-accent-content">

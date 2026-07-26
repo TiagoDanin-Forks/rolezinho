@@ -52,7 +52,7 @@ defmodule RolezinhoWeb.AdminHomeLive do
         <header class="flex items-center justify-between gap-3">
           <div>
             <h1 class="text-2xl font-extrabold tracking-tight">Painel</h1>
-            <p class="mt-0.5 text-[13px] text-ink/55">Todos os rolês, em qualquer estado.</p>
+            <p class="mt-0.5 text-[13px] text-muted">Todos os rolês, em qualquer estado.</p>
           </div>
           <.link
             navigate={~p"/admin/new"}
@@ -111,7 +111,7 @@ defmodule RolezinhoWeb.AdminHomeLive do
         >
           <.link navigate={~p"/r/#{event.slug}"} class="min-w-0 flex-1">
             <p class="truncate text-[13px] font-bold">{event.title}</p>
-            <p class="truncate font-mono text-[11px] text-ink/45">/r/{event.slug}</p>
+            <p class="truncate font-mono text-[11px] text-muted">/r/{event.slug}</p>
           </.link>
           <.link
             navigate={~p"/admin/r/#{event.slug}/edit"}

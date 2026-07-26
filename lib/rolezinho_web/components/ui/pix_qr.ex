@@ -40,10 +40,10 @@ defmodule RolezinhoWeb.Components.UI.PixQR do
         <div :if={@amount || @payee} class="truncate text-sm font-extrabold">
           {[@amount, @payee] |> Enum.reject(&is_nil/1) |> Enum.join(" · ")}
         </div>
-        <div :if={@pix_key} class="mt-0.5 truncate font-mono text-[11px] text-ink/55">
+        <div :if={@pix_key} class="mt-0.5 truncate font-mono text-[11px] text-muted">
           {@pix_key}
         </div>
-        <p :if={@hint} class="mt-1 text-[11px] leading-snug text-ink/50">{@hint}</p>
+        <p :if={@hint} class="mt-1 text-[11px] leading-snug text-muted">{@hint}</p>
         <div :if={@action != []} class="mt-2">{render_slot(@action)}</div>
       </div>
     </div>

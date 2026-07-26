@@ -32,20 +32,20 @@ defmodule RolezinhoWeb.SettingsLive do
       <div id="settings" phx-hook=".Settings" class="mx-auto max-w-[560px]">
         <header>
           <h1 class="text-2xl font-extrabold tracking-tight">Suas preferências</h1>
-          <p class="mt-1 text-[13px] text-ink/55">
+          <p class="mt-1 text-[13px] text-muted">
             Ficam salvas só neste aparelho, pra você não digitar tudo de novo no próximo rolê.
           </p>
         </header>
 
         <section class="mt-6 rounded-card border border-hairline bg-base-100 p-4 shadow-card">
           <h2 class="text-[13px] font-extrabold">Seus dados</h2>
-          <p class="mt-0.5 text-[11px] text-ink/45">
+          <p class="mt-0.5 text-[11px] text-muted">
             Usados pra preencher o formulário quando você entra numa lista.
           </p>
 
           <div class="mt-3.5 space-y-3">
             <label class="block">
-              <span class="mb-1 block text-[11px] font-bold text-ink/50">Nome</span>
+              <span class="mb-1 block text-[11px] font-bold text-muted">Nome</span>
               <input
                 type="text"
                 data-field="name"
@@ -57,7 +57,7 @@ defmodule RolezinhoWeb.SettingsLive do
             </label>
 
             <label class="block">
-              <span class="mb-1 block text-[11px] font-bold text-ink/50">WhatsApp</span>
+              <span class="mb-1 block text-[11px] font-bold text-muted">WhatsApp</span>
               <input
                 type="tel"
                 data-field="phone"
@@ -70,14 +70,14 @@ defmodule RolezinhoWeb.SettingsLive do
             </label>
           </div>
 
-          <p class="mt-3 text-[11px] leading-relaxed text-ink/50">
+          <p class="mt-3 text-[11px] leading-relaxed text-muted">
             Nada disso vai pro servidor agora. Só viaja junto quando você entrar numa lista.
           </p>
         </section>
 
         <section class="mt-3 rounded-card border border-hairline bg-base-100 p-4 shadow-card">
           <h2 class="text-[13px] font-extrabold">Aparência</h2>
-          <p class="mt-0.5 text-[11px] text-ink/45">
+          <p class="mt-0.5 text-[11px] text-muted">
             No automático, segue o tema do seu celular.
           </p>
 
@@ -92,14 +92,14 @@ defmodule RolezinhoWeb.SettingsLive do
               aria-checked="false"
               phx-click={JS.dispatch("phx:set-theme")}
               data-phx-theme={value}
-              class="flex-1 rounded-row bg-ink/[0.08] py-2.5 text-xs font-bold text-ink/55 aria-checked:bg-ink aria-checked:text-ink-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              class="flex-1 rounded-row bg-ink/[0.08] py-2.5 text-xs font-bold text-muted aria-checked:bg-ink aria-checked:text-ink-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               {label}
             </button>
           </div>
         </section>
 
-        <p class="mt-4 text-center text-[11px] text-ink/45">
+        <p class="mt-4 text-center text-[11px] text-muted">
           Limpar os dados do navegador apaga tudo isso — e também faz você perder o
           controle das listas em que já entrou.
         </p>
@@ -108,18 +108,18 @@ defmodule RolezinhoWeb.SettingsLive do
           <.link
             :if={!@current_admin?}
             href={~p"/admin/login"}
-            class="text-[11px] font-bold text-ink/45 hover:text-ink"
+            class="text-[11px] font-bold text-muted hover:text-ink"
           >
             Entrar como admin
           </.link>
           <div :if={@current_admin?} class="flex items-center justify-center gap-4">
-            <.link navigate={~p"/admin"} class="text-[11px] font-bold text-ink/55 hover:text-ink">
+            <.link navigate={~p"/admin"} class="text-[11px] font-bold text-muted hover:text-ink">
               Painel do admin
             </.link>
             <.link
               href={~p"/admin/logout"}
               method="delete"
-              class="text-[11px] font-bold text-ink/45 hover:text-ink"
+              class="text-[11px] font-bold text-muted hover:text-ink"
             >
               Sair
             </.link>

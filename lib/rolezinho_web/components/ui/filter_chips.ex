@@ -45,7 +45,7 @@ defmodule RolezinhoWeb.Components.UI.FilterChips do
         phx-click={@on_select}
         phx-value-id={chip.id}
         class={[
-          "whitespace-nowrap rounded-row bg-ink/[0.08] px-3.5 py-2.5 text-xs font-bold text-ink/55",
+          "whitespace-nowrap rounded-row bg-ink/[0.08] px-3.5 py-2.5 text-xs font-bold text-muted",
           "aria-checked:bg-accent aria-checked:text-accent-content",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         ]}

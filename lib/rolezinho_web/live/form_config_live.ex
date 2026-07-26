@@ -105,7 +105,7 @@ defmodule RolezinhoWeb.FormConfigLive do
           </.link>
           <div class="min-w-0">
             <h1 class="text-2xl font-extrabold tracking-tight">Formulário</h1>
-            <p class="truncate text-[11px] text-ink/45">O que a pessoa preenche pra entrar</p>
+            <p class="truncate text-[11px] text-muted">O que a pessoa preenche pra entrar</p>
           </div>
         </header>
 
@@ -130,14 +130,14 @@ defmodule RolezinhoWeb.FormConfigLive do
           <h2 class="text-[13px] font-extrabold">Adicionar um campo</h2>
           <!-- RN-61: framed as a cost, because it is one. Every question is
                something between a person and the list. -->
-          <p class="mt-0.5 text-[11px] leading-relaxed text-ink/45">
+          <p class="mt-0.5 text-[11px] leading-relaxed text-muted">
             Cada campo a mais é uma chance de alguém desistir no meio. Só peça o que
             você realmente vai usar.
           </p>
 
           <form phx-submit="add_field" phx-change="update_label" class="mt-3.5">
             <label class="block">
-              <span class="mb-1 block text-[11px] font-bold text-ink/50">Pergunta</span>
+              <span class="mb-1 block text-[11px] font-bold text-muted">Pergunta</span>
               <input
                 type="text"
                 name="label"
@@ -150,7 +150,7 @@ defmodule RolezinhoWeb.FormConfigLive do
             </label>
 
             <div class="mt-3">
-              <span class="mb-1 block text-[11px] font-bold text-ink/50">Tipo de resposta</span>
+              <span class="mb-1 block text-[11px] font-bold text-muted">Tipo de resposta</span>
               <.segmented_control
                 name="Tipo de resposta"
                 value={@new_type}
@@ -168,7 +168,7 @@ defmodule RolezinhoWeb.FormConfigLive do
           </form>
         </section>
 
-        <p class="mt-4 text-center text-[11px] leading-relaxed text-ink/45">
+        <p class="mt-4 text-center text-[11px] leading-relaxed text-muted">
           As respostas ficam só neste rolê e só você vê — não aparecem na lista pública.
         </p>
       </div>

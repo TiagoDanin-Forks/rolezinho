@@ -66,7 +66,7 @@ defmodule RolezinhoWeb.Components.UI.BottomSheet do
         >
           <div class="mx-auto mb-3 h-1 w-9 rounded-full bg-ink/15" aria-hidden="true" />
           <h2 id={"#{@id}-title"} class="text-sm font-extrabold">{@title}</h2>
-          <p :if={@description} class="mt-1.5 text-xs leading-relaxed text-ink/55">
+          <p :if={@description} class="mt-1.5 text-xs leading-relaxed text-muted">
             {@description}
           </p>
           <div :if={@inner_block != []} class="mt-3.5">{render_slot(@inner_block)}</div>

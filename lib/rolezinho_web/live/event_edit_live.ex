@@ -173,7 +173,7 @@ defmodule RolezinhoWeb.EventEditLive do
         </.link>
         <div class="min-w-0">
           <h1 class="text-2xl font-extrabold tracking-tight">Editar</h1>
-          <p class="truncate font-mono text-[11px] text-ink/45">
+          <p class="truncate font-mono text-[11px] text-muted">
             /r/{@event.slug} · {@event.status}
           </p>
         </div>
@@ -181,7 +181,7 @@ defmodule RolezinhoWeb.EventEditLive do
 
       <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
         <h2 class="text-[13px] font-extrabold mb-3">Slug (URL)</h2>
-        <p class="text-[11px] text-ink/45 mb-3">
+        <p class="text-[11px] text-muted mb-3">
           Trocar o slug muda a URL do rolezinho. Links antigos deixam de funcionar.
         </p>
 
@@ -244,7 +244,7 @@ defmodule RolezinhoWeb.EventEditLive do
 
       <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
         <h2 class="text-[13px] font-extrabold mb-3">Texto do rolezinho</h2>
-        <p class="text-[11px] text-ink/45 mb-3">
+        <p class="text-[11px] text-muted mb-3">
           Edite livremente. O parser reconhece o título (# ...), a lista principal (linhas numeradas), a lista de reserva
           (segunda lista numerada) e o marcador ✅ para pagamentos.
         </p>
@@ -294,7 +294,7 @@ defmodule RolezinhoWeb.EventEditLive do
 
       <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
         <h2 class="text-[13px] font-extrabold mb-3">Senha (opcional)</h2>
-        <p class="text-[11px] text-ink/45 mb-3">
+        <p class="text-[11px] text-muted mb-3">
           Se preenchida, quem quiser ver o local ou entrar na lista precisa digitar
           a senha. Serve pra bloquear bots e curiosos — não precisa ser forte.
           Deixe em branco para remover.
@@ -327,7 +327,7 @@ defmodule RolezinhoWeb.EventEditLive do
           </button>
         </form>
 
-        <p :if={@event.password} class="text-[11px] leading-relaxed text-ink/45 mt-3">
+        <p :if={@event.password} class="text-[11px] leading-relaxed text-muted mt-3">
           Senha atual:
           <code class="font-mono text-base-content bg-base-200 px-1 py-0.5 rounded">{@event.password}</code>
         </p>
@@ -339,7 +339,7 @@ defmodule RolezinhoWeb.EventEditLive do
       >
         <div class="min-w-0 flex-1">
           <div class="text-[13px] font-bold">Formulário de entrada</div>
-          <div class="mt-0.5 text-[11px] text-ink/45">O que a pessoa preenche pra entrar</div>
+          <div class="mt-0.5 text-[11px] text-muted">O que a pessoa preenche pra entrar</div>
         </div>
         <.icon name="tabler-chevron-right" class="size-4 shrink-0 text-ink/30" />
       </.link>
@@ -358,7 +358,7 @@ defmodule RolezinhoWeb.EventEditLive do
             phx-click="set_status"
             phx-value-status={to_string(status)}
             class={[
-              "rounded-row bg-ink/[0.08] px-3.5 py-2.5 text-xs font-bold text-ink/55",
+              "rounded-row bg-ink/[0.08] px-3.5 py-2.5 text-xs font-bold text-muted",
               "aria-checked:bg-ink aria-checked:text-ink-content",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             ]}
@@ -366,7 +366,7 @@ defmodule RolezinhoWeb.EventEditLive do
             {status_label(status)}
           </button>
         </div>
-        <p class="text-[11px] leading-relaxed text-ink/45 mt-3">
+        <p class="text-[11px] leading-relaxed text-muted mt-3">
           <strong>Ativo:</strong>
           aparece na página inicial e aceita novas inscrições. <strong>Só pagamentos:</strong>
           aparece na home, mas ninguém consegue entrar em novas listas —

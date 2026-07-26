@@ -50,14 +50,14 @@ defmodule RolezinhoWeb.Components.UI.EventCard do
       <div :if={@badge != []} class="mb-2 flex items-center gap-2">{render_slot(@badge)}</div>
 
       <h3 class="text-lg font-extrabold tracking-tight">{@title}</h3>
-      <p :if={@subtitle} class="mt-0.5 text-xs text-ink/55">{@subtitle}</p>
+      <p :if={@subtitle} class="mt-0.5 text-xs text-muted">{@subtitle}</p>
 
       <div class="mt-3 flex items-center justify-between gap-3">
         <.avatar_stack :if={@names != []} names={@names} size="xs" max={4} />
-        <span :if={@names == []} class="text-[11px] font-semibold text-ink/55">
+        <span :if={@names == []} class="text-[11px] font-semibold text-muted">
           Nobody in yet
         </span>
-        <span class="shrink-0 text-[11px] font-semibold text-ink/55">
+        <span class="shrink-0 text-[11px] font-semibold text-muted">
           {@filled}/{@capacity} confirmed
         </span>
       </div>

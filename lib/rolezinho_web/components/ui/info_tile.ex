@@ -27,7 +27,7 @@ defmodule RolezinhoWeb.Components.UI.InfoTile do
   def info_tile(assigns) do
     ~H"""
     <div class={["rounded-cta bg-tint px-3 py-2.5", @class]}>
-      <div class="text-[10px] font-semibold uppercase tracking-wide text-ink/55">
+      <div class="text-[10px] font-semibold uppercase tracking-wide text-muted">
         {@label}
       </div>
       <div class="mt-0.5 flex items-center gap-2">
@@ -78,7 +78,7 @@ defmodule RolezinhoWeb.Components.UI.InfoTile do
     ]}>
       <span class="size-2 shrink-0 rounded-full bg-accent" />
       <div>
-        <div class="text-[11px] text-ink/55">{@label}</div>
+        <div class="text-[11px] text-muted">{@label}</div>
         <div class="text-[13px] font-bold">{@value}</div>
       </div>
     </div>

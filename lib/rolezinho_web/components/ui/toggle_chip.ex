@@ -38,7 +38,7 @@ defmodule RolezinhoWeb.Components.UI.ToggleChip do
         @uppercase && "uppercase tracking-wide",
         if(@on,
           do: "bg-accent text-accent-content",
-          else: "bg-ink/[0.08] text-ink/55 hover:bg-ink/[0.12]"
+          else: "bg-ink/[0.08] text-muted hover:bg-ink/[0.12]"
         ),
         @class
       ]}

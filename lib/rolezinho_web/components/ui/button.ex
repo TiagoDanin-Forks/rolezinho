@@ -79,7 +79,7 @@ defmodule RolezinhoWeb.Components.UI.Button do
   end
 
   defp variant_classes("ghost") do
-    "min-h-11 px-2 py-1 text-[13px] font-semibold text-ink/50 underline"
+    "min-h-11 px-2 py-1 text-[13px] font-semibold text-muted underline"
   end
 
   # The destructive confirmation inside a sheet. It always sits to the right of the
