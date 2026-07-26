@@ -7,6 +7,7 @@ defmodule RolezinhoWeb.EventLive do
 
   alias Rolezinho.Event
   alias Rolezinho.Event.Attendee
+  alias Rolezinho.Event.Cash
   alias Rolezinho.Event.Meta
   alias Rolezinho.Event.Policy
   alias Rolezinho.Events
@@ -91,6 +92,19 @@ defmodule RolezinhoWeb.EventLive do
     |> assign(:participant_id, participant_id)
     |> assign(:organizer?, organizer?)
     |> assign(:mine_index, own_row_index(event, participant_id))
+    |> assign_cash(event, organizer?)
+  end
+
+  # RN-15, without a screen of its own: the organizer is the one who ends up out
+  # of pocket, so the outstanding total belongs on the page they already look at.
+  # Nobody else sees it — what the group owes is the organizer's problem to
+  # chase, not a scoreboard.
+  defp assign_cash(socket, %Event{} = event, organizer?) do
+    show? = (organizer? or socket.assigns.current_admin?) and Cash.outstanding?(event)
+
+    socket
+    |> assign(:cash, if(show?, do: Cash.summary(event)))
+    |> assign(:reminder_text, if(show?, do: Cash.reminder_text(event)))
   end
 
   # The 1-based position of this browser's own row, or nil. Used to highlight it
@@ -119,6 +133,17 @@ defmodule RolezinhoWeb.EventLive do
   # dense list is caught before it happens.
   defp remove_confirm(true, _name), do: "Sair da lista?"
   defp remove_confirm(false, name), do: "Remover #{name} da lista?"
+
+  defp debt_summary(%{debtors: [_one], missing_cents: missing}) do
+    "Falta #{Cash.format_amount(missing)} · 1 pessoa não pagou o Pix."
+  end
+
+  defp debt_summary(%{debtors: debtors, missing_cents: missing}) do
+    "Faltam #{Cash.format_amount(missing)} · #{length(debtors)} pessoas não pagaram o Pix."
+  end
+
+  defp charge_label(%{debtors: [_one]}), do: "Cobrar no WhatsApp"
+  defp charge_label(%{debtors: debtors}), do: "Cobrar os #{length(debtors)} no WhatsApp"
 
   # Stamps the joining row with whatever identity this browser already holds for
   # the event. A visitor joining for the first time has none yet: a LiveView
@@ -518,6 +543,20 @@ defmodule RolezinhoWeb.EventLive do
           <h1 class="text-3xl sm:text-4xl font-bold tracking-tight">{@event.title}</h1>
 
           <.payments_only_notice :if={@signups_locked?} />
+
+          <div :if={@cash} class="mt-4">
+            <.alert_banner tone="warn">{debt_summary(@cash)}</.alert_banner>
+            <a
+              :if={@reminder_text}
+              href={"https://wa.me/?text=" <> URI.encode(@reminder_text)}
+              target="_blank"
+              rel="noopener"
+              class="mt-2 flex w-full items-center justify-center gap-1.5 rounded-cta bg-ink px-4 py-3 text-[13px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              <.icon name="tabler-brand-whatsapp" class="size-4" />
+              {charge_label(@cash)}
+            </a>
+          </div>
 
           <.unlock_panel
             :if={@password_protected? and not @unlocked?}
