@@ -38,6 +38,7 @@ defmodule RolezinhoWeb.Router do
     get "/r/txt/:slug", RawController, :show
     get "/r/:slug/calendar", CalendarController, :show
     post "/r/:slug/unlock", EventUnlockController, :unlock
+    post "/r/:slug/join", JoinController, :create
 
     get "/admin/login", AdminSessionController, :new
     post "/admin/login", AdminSessionController, :create

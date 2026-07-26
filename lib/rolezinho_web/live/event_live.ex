@@ -8,8 +8,10 @@ defmodule RolezinhoWeb.EventLive do
   alias Rolezinho.Event
   alias Rolezinho.Event.Attendee
   alias Rolezinho.Event.Meta
+  alias Rolezinho.Event.Policy
   alias Rolezinho.Events
   alias Rolezinho.Pix
+  alias RolezinhoWeb.Plugs.Participant
 
   @impl true
   def mount(%{"slug" => slug}, _session, socket) do
@@ -58,6 +60,7 @@ defmodule RolezinhoWeb.EventLive do
 
     socket
     |> assign(:event, event)
+    |> assign_identity(event)
     |> assign(:event_url, url)
     |> assign(:pix, if(unlocked?, do: Pix.detect(event.header), else: nil))
     |> assign(:meta, display_meta)
@@ -70,6 +73,44 @@ defmodule RolezinhoWeb.EventLive do
     |> assign(:page_title, page_title_for(event))
     |> reset_share_toggle_if_disallowed()
     |> assign_shareable_text()
+  end
+
+  # Who this browser is *on this event*. The socket carries the session maps
+  # (see RolezinhoWeb.Plugs.Participant), and both are scoped by slug so a claim
+  # on one event never leaks into another.
+  defp assign_identity(socket, %Event{} = event) do
+    participant_id = Map.get(socket.assigns[:participants] || %{}, event.slug)
+
+    organizer? =
+      Participant.organizer?(
+        %{"organizer_tokens" => socket.assigns[:organizer_tokens] || %{}},
+        event
+      )
+
+    socket
+    |> assign(:participant_id, participant_id)
+    |> assign(:organizer?, organizer?)
+  end
+
+  # Stamps the joining row with whatever identity this browser already holds for
+  # the event. A visitor joining for the first time has none yet: a LiveView
+  # cannot write to the session, so the id is issued by the join controller
+  # (which does hold a conn) and only then travels back here.
+  defp join_opts(socket) do
+    case socket.assigns[:participant_id] do
+      id when is_binary(id) and id != "" -> [participant_id: id]
+      _ -> []
+    end
+  end
+
+  # The options every Policy call needs. Kept in one place so a handler cannot
+  # accidentally ask the policy a question with half the context missing.
+  defp policy_opts(socket) do
+    [
+      admin?: socket.assigns.current_admin?,
+      organizer?: socket.assigns[:organizer?] || false,
+      participant_id: socket.assigns[:participant_id]
+    ]
   end
 
   # If the event's password was removed or the user is no longer unlocked,
@@ -160,7 +201,8 @@ defmodule RolezinhoWeb.EventLive do
   @impl true
   def handle_event("add_to_main", %{"name" => name}, socket) do
     with :ok <- ensure_can_signup(socket),
-         {:ok, event} <- Events.add_to_main(socket.assigns.event, name) do
+         {:ok, event} <-
+           Events.add_to_main(socket.assigns.event, name, join_opts(socket)) do
       {:noreply,
        socket
        |> assign_event(event)
@@ -184,7 +226,8 @@ defmodule RolezinhoWeb.EventLive do
 
   def handle_event("add_to_wait", %{"name" => name}, socket) do
     with :ok <- ensure_can_signup(socket),
-         {:ok, event} <- Events.add_to_wait(socket.assigns.event, name) do
+         {:ok, event} <-
+           Events.add_to_wait(socket.assigns.event, name, join_opts(socket)) do
       {:noreply,
        socket
        |> assign_event(event)
@@ -230,28 +273,32 @@ defmodule RolezinhoWeb.EventLive do
 
   # ---------- Admin actions ----------
 
+  # RN-12/RN-13: the organizer marks anyone; a participant marks only their own
+  # row. The check is here rather than in the template because the button being
+  # absent does not stop the message from arriving.
   def handle_event("toggle_paid_main", %{"index" => index}, socket) do
-    require_admin!(socket)
-    {:ok, event} = Events.toggle_paid_main(socket.assigns.event, String.to_integer(index))
-    {:noreply, assign_event(socket, event)}
+    authorize_row(socket, :main, index, &Policy.can_toggle_paid?/3, fn event, position ->
+      Events.toggle_paid_main(event, position)
+    end)
   end
 
   def handle_event("toggle_paid_wait", %{"index" => index}, socket) do
-    require_admin!(socket)
-    {:ok, event} = Events.toggle_paid_wait(socket.assigns.event, String.to_integer(index))
-    {:noreply, assign_event(socket, event)}
+    authorize_row(socket, :wait, index, &Policy.can_toggle_paid?/3, fn event, position ->
+      Events.toggle_paid_wait(event, position)
+    end)
   end
 
+  # RN-21: a participant removes only themselves; the organizer removes anyone.
   def handle_event("remove_main", %{"index" => index}, socket) do
-    require_admin!(socket)
-    {:ok, event} = Events.remove_main(socket.assigns.event, String.to_integer(index))
-    {:noreply, assign_event(socket, event)}
+    authorize_row(socket, :main, index, &Policy.can_remove?/3, fn event, position ->
+      Events.remove_main(event, position)
+    end)
   end
 
   def handle_event("remove_wait", %{"index" => index}, socket) do
-    require_admin!(socket)
-    {:ok, event} = Events.remove_wait(socket.assigns.event, String.to_integer(index))
-    {:noreply, assign_event(socket, event)}
+    authorize_row(socket, :wait, index, &Policy.can_remove?/3, fn event, position ->
+      Events.remove_wait(event, position)
+    end)
   end
 
   def handle_event("start_edit_main", %{"index" => index}, socket) do
@@ -365,6 +412,50 @@ defmodule RolezinhoWeb.EventLive do
 
     :ok
   end
+
+  # Resolves a row from a client-supplied index, asks the policy whether this
+  # caller may act on it, and only then runs the operation.
+  #
+  # The index arrives over the socket, so it is hostile input twice over: it can
+  # point outside the list, and it can point at somebody else's row. Both are
+  # rejected here — silently, because a caller that fabricated the message is not
+  # owed an explanation, and a stale index from a list that changed underneath is
+  # not worth an error toast.
+  defp authorize_row(socket, list, raw_index, allowed?, operation) do
+    event = socket.assigns.event
+
+    with {:ok, position} <- parse_position(raw_index),
+         %Attendee{} = attendee <- fetch_row(event, list, position),
+         true <- allowed?.(event, attendee, policy_opts(socket)),
+         {:ok, updated} <- operation.(event, position) do
+      {:noreply, assign_event(socket, updated)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  defp parse_position(index) when is_integer(index), do: {:ok, index}
+
+  defp parse_position(index) when is_binary(index) do
+    case Integer.parse(index) do
+      {position, ""} when position > 0 -> {:ok, position}
+      _ -> :error
+    end
+  end
+
+  defp parse_position(_), do: :error
+
+  # Positions are 1-based, and a row only exists if someone is in it: an empty
+  # slot has nothing to pay for and nobody to remove.
+  defp fetch_row(%Event{} = event, list, position) do
+    case event |> list_for(list) |> Enum.at(position - 1) do
+      %Attendee{name: name} = attendee when name != "" -> attendee
+      _ -> nil
+    end
+  end
+
+  defp list_for(%Event{main_list: list}, :main), do: list
+  defp list_for(%Event{wait_list: list}, :wait), do: list
 
   # ---------- Rendering ----------
 

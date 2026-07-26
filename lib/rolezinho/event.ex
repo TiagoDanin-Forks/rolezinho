@@ -528,12 +528,30 @@ defmodule Rolezinho.Event do
       wait_enabled: event.wait_enabled,
       wait_intro: event.wait_intro,
       password: event.password,
+      category: event.category,
+      local: event.local,
+      starts_at: event.starts_at,
+      ends_at: event.ends_at,
+      price_cents: event.price_cents,
+      pix_key: event.pix_key,
       main_list: Enum.map(event.main_list, &attendee_to_map/1),
       wait_list: Enum.map(event.wait_list, &attendee_to_map/1)
     }
   end
 
-  defp attendee_to_map(%Attendee{name: n, paid: p}), do: %{name: n, paid: p}
+  # Every field of the row round-trips: this map is what a save rebuilds the
+  # event from, so anything omitted here is silently dropped on the next write.
+  # Losing participant_id would quietly unclaim the row from the person holding
+  # it.
+  defp attendee_to_map(%Attendee{} = attendee) do
+    %{
+      name: attendee.name,
+      paid: attendee.paid,
+      participant_id: attendee.participant_id,
+      joined_at: attendee.joined_at,
+      values: attendee.values
+    }
+  end
 
   # ---------- Rendering helpers ----------
 
