@@ -43,50 +43,50 @@ colors-dark:
   warning-content: "oklch(98% 0.022 95.277)"
 typography:
   display:
-    fontFamily: "{typography.sans}"
+    fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif"
     fontSize: "1.875rem"
     fontWeight: 800
     lineHeight: 1.1
     letterSpacing: "-0.027em"
   title:
-    fontFamily: "{typography.sans}"
+    fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif"
     fontSize: "1.5rem"
     fontWeight: 800
     lineHeight: 1.2
     letterSpacing: "-0.017em"
   subtitle:
-    fontFamily: "{typography.sans}"
+    fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif"
     fontSize: "1.125rem"
     fontWeight: 800
     lineHeight: 1.3
     letterSpacing: "-0.017em"
   body-strong:
-    fontFamily: "{typography.sans}"
+    fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif"
     fontSize: "0.9375rem"
     fontWeight: 700
     lineHeight: 1.4
     letterSpacing: "normal"
   body:
-    fontFamily: "{typography.sans}"
+    fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif"
     fontSize: "0.8125rem"
     fontWeight: 400
     lineHeight: 1.55
     letterSpacing: "normal"
   label:
-    fontFamily: "{typography.sans}"
+    fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif"
     fontSize: "0.6875rem"
     fontWeight: 700
     lineHeight: 1.4
     letterSpacing: "normal"
   overline:
-    fontFamily: "{typography.sans}"
+    fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif"
     fontSize: "0.625rem"
     fontWeight: 700
     lineHeight: 1.4
     letterSpacing: "0.06em"
     textTransform: "uppercase"
   mono:
-    fontFamily: "{typography.mono}"
+    fontFamily: "ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace"
     fontSize: "0.625rem"
     fontWeight: 400
     lineHeight: 1.65
@@ -270,6 +270,10 @@ sunlight: do not use `ink` at reduced opacity for text that must be read; for
 hierarchy, prefer weight and size.
 
 ## 3. Typography
+
+**Display Font:** Inter (with ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif)
+**Body Font:** Inter (with ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif)
+**Mono Font:** ui-monospace (with SFMono-Regular, SF Mono, Menlo, Consolas, monospace)
 
 **Inter**, self-hosted from `priv/static/fonts` — latin subset, weights 400 to 800,
 about 24KB each, with `font-display: swap` so text paints before the font arrives.

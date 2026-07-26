@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-07-26T19:30:32.267Z",
+        "reason": "Inter is specified by the design handoff (Rolezinho Tailwind Kit @theme and Design System typography section); the brief wins"
+      }
+    ]
+  }
+}
