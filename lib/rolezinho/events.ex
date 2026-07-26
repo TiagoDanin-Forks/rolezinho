@@ -156,11 +156,55 @@ defmodule Rolezinho.Events do
          meta: meta,
          main_size: main_size,
          wait_size: wait_size,
-         password: password
+         password: password,
+         category: trimmed(params, "category"),
+         local: trimmed(params, "local"),
+         starts_at: parse_datetime(params["starts_at"]),
+         ends_at: parse_datetime(params["ends_at"]),
+         price_cents: parse_price(params["price"]),
+         pix_key: trimmed(params, "pix_key")
        }}
     else
       {:error, errors}
     end
+  end
+
+  defp trimmed(params, key) do
+    case params |> Map.get(key) |> to_string() |> String.trim() do
+      "" -> nil
+      value -> value
+    end
+  end
+
+  defp parse_datetime(%DateTime{} = value), do: value
+
+  defp parse_datetime(value) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, datetime, _offset} -> datetime
+      {:error, _} -> nil
+    end
+  end
+
+  defp parse_datetime(_), do: nil
+
+  # People write an amount the way they say it: "15", "R$ 15", "15,00". All three
+  # mean the same thing, and rejecting two of them would be pedantry.
+  defp parse_price(value) when is_integer(value), do: value
+
+  defp parse_price(value) when is_binary(value) do
+    digits = String.replace(value, ~r/[^\d,.]/, "")
+
+    case Regex.run(~r/^(\d+)(?:[.,](\d{1,2}))?$/, digits) do
+      [_, reais] -> String.to_integer(reais) * 100
+      [_, reais, cents] -> String.to_integer(reais) * 100 + pad_cents(cents)
+      _ -> nil
+    end
+  end
+
+  defp parse_price(_), do: nil
+
+  defp pad_cents(cents) do
+    cents |> String.pad_trailing(2, "0") |> String.to_integer()
   end
 
   defp validate_slug(errors, ""), do: put_error(errors, :slug, "obrigatório")
@@ -199,7 +243,13 @@ defmodule Rolezinho.Events do
       wait_intro: "Lista de reserva",
       main_list: empty_slots,
       wait_list: [],
-      password: attrs.password
+      password: attrs.password,
+      category: attrs.category,
+      local: attrs.local,
+      starts_at: attrs.starts_at,
+      ends_at: attrs.ends_at,
+      price_cents: attrs.price_cents,
+      pix_key: attrs.pix_key
     }
   end
 
