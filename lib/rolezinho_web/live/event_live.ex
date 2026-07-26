@@ -12,6 +12,7 @@ defmodule RolezinhoWeb.EventLive do
   alias Rolezinho.Event.Policy
   alias Rolezinho.Events
   alias Rolezinho.Pix
+  alias RolezinhoWeb.Components.UI.BottomSheet
   alias RolezinhoWeb.Plugs.Participant
 
   @impl true
@@ -61,7 +62,7 @@ defmodule RolezinhoWeb.EventLive do
 
     socket
     |> assign(:event, event)
-    |> assign_identity(event)
+    |> assign_identity(event, unlocked?)
     |> assign(:event_url, url)
     |> assign(:pix, if(unlocked?, do: Pix.detect(event.header), else: nil))
     |> assign(:meta, display_meta)
@@ -79,7 +80,7 @@ defmodule RolezinhoWeb.EventLive do
   # Who this browser is *on this event*. The socket carries the session maps
   # (see RolezinhoWeb.Plugs.Participant), and both are scoped by slug so a claim
   # on one event never leaks into another.
-  defp assign_identity(socket, %Event{} = event) do
+  defp assign_identity(socket, %Event{} = event, unlocked?) do
     participant_id = Map.get(socket.assigns[:participants] || %{}, event.slug)
 
     organizer? =
@@ -93,6 +94,34 @@ defmodule RolezinhoWeb.EventLive do
     |> assign(:organizer?, organizer?)
     |> assign(:mine_index, own_row_index(event, participant_id))
     |> assign_cash(event, organizer?)
+    |> assign_join_availability(event, participant_id, organizer?, unlocked?)
+  end
+
+  # Whether to offer the join action at all. Someone already on the list is not
+  # offered it — the waiting list would take them a second time, and a list with
+  # the same person twice is a list nobody trusts.
+  defp assign_join_availability(socket, %Event{} = event, participant_id, organizer?, unlocked?) do
+    opts = [
+      admin?: socket.assigns.current_admin?,
+      organizer?: organizer?,
+      participant_id: participant_id
+    ]
+
+    can_join? =
+      unlocked? and
+        Policy.can_join?(event, opts) and
+        is_nil(own_row_index(event, participant_id)) and
+        is_nil(own_wait_index(event, participant_id)) and
+        (not Event.main_full?(event) or event.wait_enabled)
+
+    assign(socket, :can_join?, can_join?)
+  end
+
+  defp own_wait_index(%Event{wait_list: list}, participant_id) do
+    case Enum.find_index(list, &Attendee.owned_by?(&1, participant_id)) do
+      nil -> nil
+      index -> index + 1
+    end
   end
 
   # RN-15, without a screen of its own: the organizer is the one who ends up out
@@ -144,6 +173,19 @@ defmodule RolezinhoWeb.EventLive do
 
   defp charge_label(%{debtors: [_one]}), do: "Cobrar no WhatsApp"
   defp charge_label(%{debtors: debtors}), do: "Cobrar os #{length(debtors)} no WhatsApp"
+
+  # RN-03: a full main list does not hide the action, it changes what it means.
+  # The label has to say which, or someone taps expecting a slot and lands in a
+  # queue.
+  defp join_label(%Event{} = event) do
+    if Event.main_full?(event), do: "Entrar na espera", else: "Entrar na lista"
+  end
+
+  defp join_description(%Event{} = event) do
+    if Event.main_full?(event) do
+      "A lista principal está cheia. Você entra na espera e sobe se alguém sair."
+    end
+  end
 
   # Stamps the joining row with whatever identity this browser already holds for
   # the event. A visitor joining for the first time has none yet: a LiveView
@@ -803,31 +845,6 @@ defmodule RolezinhoWeb.EventLive do
             </li>
           </ol>
 
-          <div
-            :if={not Event.main_full?(@event) and not @signups_locked? and @unlocked?}
-            class="mt-4"
-          >
-            <form
-              phx-submit="add_to_main"
-              phx-change="update_new_main_name"
-              class="flex gap-2 flex-wrap"
-              id="add-main-form"
-            >
-              <input
-                type="text"
-                name="name"
-                value={@new_main_name}
-                placeholder="Seu nome"
-                class={[field_class(), "flex-1 min-w-0"]}
-                required
-              />
-              <button
-                type="submit"
-                class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm bg-primary text-primary-content hover:bg-primary/90"
-              >Entrar na lista</button>
-            </form>
-          </div>
-
           <p
             :if={not @unlocked? and not @signups_locked?}
             class="mt-4 text-sm text-base-content/60"
@@ -990,6 +1007,79 @@ defmodule RolezinhoWeb.EventLive do
           </div>
         </section>
       </article>
+
+      <!-- One primary action per screen, at the bottom where the thumb is.
+           The label follows what tapping it will actually do: with the main
+           list full, joining means joining the queue (RN-03). -->
+      <div :if={@can_join?} class="sticky bottom-0 -mx-5 mt-6 bg-canvas px-5 pb-2 pt-3">
+        <button
+          type="button"
+          phx-click={BottomSheet.show("join-sheet")}
+          class="w-full rounded-cta bg-ink px-4 py-4 text-[15px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
+          {join_label(@event)}
+        </button>
+      </div>
+
+      <!-- Rendered only when joining is actually allowed. A sheet that exists
+           but is hidden is markup someone can still submit, and the gate has to
+           be the server's decision rather than a CSS class. -->
+      <.bottom_sheet
+        :if={@can_join?}
+        id="join-sheet"
+        title={join_label(@event)}
+        description={join_description(@event)}
+      >
+        <form
+          id="join-form"
+          method="post"
+          action={~p"/r/#{@event.slug}/join"}
+          phx-hook=".JoinDefaults"
+        >
+          <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
+          <input
+            type="hidden"
+            name="list"
+            value={if Event.main_full?(@event), do: "wait", else: "main"}
+          />
+
+          <label class="block">
+            <span class="mb-1 block text-[11px] font-bold text-ink/50">Seu nome *</span>
+            <input
+              type="text"
+              name="name"
+              data-profile="name"
+              required
+              maxlength="60"
+              autocomplete="name"
+              placeholder="Como te chamam no grupo"
+              class="w-full rounded-row border border-ink/12 bg-base-100 px-3.5 py-3 text-[13px] font-semibold text-ink outline-none placeholder:font-normal placeholder:text-ink/35 focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+          </label>
+
+          <button
+            type="submit"
+            class="mt-3.5 w-full rounded-cta bg-ink px-4 py-4 text-[15px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97]"
+          >
+            {join_label(@event)}
+          </button>
+        </form>
+
+        <script :type={Phoenix.LiveView.ColocatedHook} name=".JoinDefaults">
+          export default {
+            mounted() {
+              // Someone who has filled in their name once should not type it
+              // again in every list they join.
+              let profile = {}
+              try { profile = JSON.parse(localStorage.getItem("rolezinho:profile") || "{}") } catch (_) {}
+
+              this.el.querySelectorAll("[data-profile]").forEach((input) => {
+                if (!input.value) input.value = profile[input.dataset.profile] || ""
+              })
+            }
+          }
+        </script>
+      </.bottom_sheet>
 
       <script :type={Phoenix.LiveView.ColocatedHook} name=".CopyText">
         export default {

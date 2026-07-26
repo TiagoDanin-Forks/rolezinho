@@ -67,11 +67,21 @@ defmodule RolezinhoWeb.PasswordGatingTest do
     end
 
     test "hides the join form and shows a hint instead", %{conn: conn, event: event} do
-      {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
+      {:ok, view, html} = live(conn, ~p"/r/#{event.slug}")
 
-      refute html =~ "id=\"add-main-form\""
-      refute html =~ "id=\"add-wait-form\""
+      refute has_element?(view, "#join-form")
+      refute has_element?(view, "#add-wait-form")
       assert html =~ "Digite a senha acima pra entrar na lista"
+    end
+
+    test "a locked visitor cannot join by posting straight to the endpoint", %{
+      conn: conn,
+      event: event
+    } do
+      # The gate is on the server, so skipping the UI does not skip the check.
+      post(conn, ~p"/r/#{event.slug}/join", %{"name" => "Alice"})
+
+      assert Events.find(event.slug).main_list |> Enum.all?(&(&1.name == ""))
     end
 
     test "add_to_main from a locked non-admin socket flashes an error", %{
@@ -199,19 +209,15 @@ defmodule RolezinhoWeb.PasswordGatingTest do
     end
 
     test "shows the location and no unlock form", %{conn: conn, event: event} do
-      {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
+      {:ok, view, html} = live(conn, ~p"/r/#{event.slug}")
       assert html =~ "Endereço revelado"
-      refute html =~ "Rolezinho protegido por senha"
-      # Join form is visible again
-      assert html =~ "id=\"add-main-form\""
+      refute has_element?(view, "#unlock-form-#{event.slug}")
+      # The join action is available again, now behind the sheet.
+      assert has_element?(view, "#join-form")
     end
 
     test "can add to the main list without re-entering the password", %{conn: conn, event: event} do
-      {:ok, view, _html} = live(conn, ~p"/r/#{event.slug}")
-
-      view
-      |> form("#add-main-form", %{"name" => "Alice"})
-      |> render_submit()
+      post(conn, ~p"/r/#{event.slug}/join", %{"name" => "Alice"})
 
       assert Events.find(event.slug) |> Map.get(:main_list) |> Enum.at(0) |> Map.get(:name) ==
                "Alice"

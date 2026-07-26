@@ -49,13 +49,12 @@ defmodule RolezinhoWeb.EventLiveTest do
     end
 
     test "anyone can add themselves to the main list", %{conn: conn, event: event} do
-      {:ok, view, _html} = live(conn, ~p"/r/#{event.slug}")
+      # Joining goes through a real request: the participant id has to land in
+      # the session, and a LiveView cannot write to it.
+      post(conn, ~p"/r/#{event.slug}/join", %{"name" => "Alice"})
 
-      view
-      |> form("#add-main-form", %{"name" => "Alice"})
-      |> render_submit()
-
-      assert render(view) =~ "Alice"
+      {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
+      assert html =~ "Alice"
     end
 
     test "anyone can add themselves to the wait list", %{conn: conn, event: event} do
