@@ -65,7 +65,7 @@ defmodule RolezinhoWeb.EventLive do
     |> assign(:event, event)
     |> assign_identity(event, unlocked?)
     |> assign(:event_url, url)
-    |> assign(:pix, if(unlocked?, do: Pix.detect(event.header), else: nil))
+    |> assign(:pix, if(unlocked?, do: pix_for(event), else: nil))
     |> assign(:meta, display_meta)
     |> assign(:stripped_header, display_header)
     |> assign(:google_calendar_url, google_calendar_url)
@@ -115,7 +115,19 @@ defmodule RolezinhoWeb.EventLive do
         is_nil(own_wait_index(event, participant_id)) and
         (not Event.main_full?(event) or event.wait_enabled)
 
-    assign(socket, :can_join?, can_join?)
+    socket
+    |> assign(:can_join?, can_join?)
+    |> assign(:confirmed_names, confirmed_names(event, unlocked?))
+  end
+
+  # Names are part of what a password gates, so someone who has not unlocked
+  # sees no social proof at all rather than a hidden one.
+  defp confirmed_names(%Event{}, false), do: []
+
+  defp confirmed_names(%Event{main_list: list}, true) do
+    list
+    |> Enum.map(&String.trim(&1.name))
+    |> Enum.reject(&(&1 == ""))
   end
 
   defp own_wait_index(%Event{wait_list: list}, participant_id) do
@@ -174,6 +186,24 @@ defmodule RolezinhoWeb.EventLive do
 
   defp charge_label(%{debtors: [_one]}), do: "Cobrar no WhatsApp"
   defp charge_label(%{debtors: debtors}), do: "Cobrar os #{length(debtors)} no WhatsApp"
+
+  # The structured field wins over the key recovered from the description: it
+  # was typed into a field meant for it, and it accepts every DICT type rather
+  # than only the phone shape the regex could recognize.
+  defp pix_for(%Event{pix_key: key} = event) when is_binary(key) and key != "" do
+    case Pix.classify(key) do
+      {:ok, _type, canonical} ->
+        %{key: canonical, raw: key, display: Pix.display(key) || key}
+
+      :error ->
+        Pix.detect(event.header)
+    end
+  end
+
+  defp pix_for(%Event{} = event), do: Pix.detect(event.header)
+
+  defp confirmed_summary([_one]), do: "1 pessoa já confirmou"
+  defp confirmed_summary(names), do: "#{length(names)} pessoas já confirmaram"
 
   # Whether this caller can act on every part of the row, which is what makes
   # the swipe gesture worth attaching. An empty slot has nothing to swipe.
@@ -696,7 +726,7 @@ defmodule RolezinhoWeb.EventLive do
                   slug={@event.slug}
                   google_calendar_url={@google_calendar_url}
                 />
-                <.pix_panel pix={@pix} full_width />
+                <.pix_panel pix={@pix} amount={Cash.format_amount(@event.price_cents)} full_width />
               </div>
 
               <div
@@ -726,7 +756,7 @@ defmodule RolezinhoWeb.EventLive do
                 >
                   {raw(render_markdown(@stripped_header))}
                 </div>
-                <.pix_panel pix={@pix} />
+                <.pix_panel pix={@pix} amount={Cash.format_amount(@event.price_cents)} />
               </div>
             <% true -> %>
               <div
@@ -1138,6 +1168,14 @@ defmodule RolezinhoWeb.EventLive do
         title={join_label(@event)}
         description={join_description(@event)}
       >
+        <!-- RN-42: who is already in, above the action. Deciding whether to go
+             is mostly deciding whether your people are going, so the names come
+             before the form rather than after it. -->
+        <div :if={@confirmed_names != []} class="mb-3.5 flex items-center gap-2.5">
+          <.avatar_stack names={@confirmed_names} size="sm" max={5} ring_class="ring-white" />
+          <span class="text-[11px] font-semibold text-ink/55">{confirmed_summary(@confirmed_names)}</span>
+        </div>
+
         <form
           id="join-form"
           method="post"
@@ -1390,6 +1428,7 @@ defmodule RolezinhoWeb.EventLive do
   # ---------- PIX panel ----------
 
   attr :pix, :map, required: true
+  attr :amount, :string, default: nil
   attr :full_width, :boolean, default: false
 
   defp pix_panel(assigns) do
@@ -1400,6 +1439,9 @@ defmodule RolezinhoWeb.EventLive do
       "flex flex-col items-center gap-2 rounded-2xl border border-base-300 bg-base-100 p-3",
       if(@full_width, do: "w-full h-full justify-center", else: "shrink-0 sm:w-52")
     ]}>
+      <!-- The amount reads before the code: someone opening this wants to know
+           how much before they scan anything. -->
+      <p :if={@amount} class="text-2xl font-extrabold tracking-tight">{@amount}</p>
       <div class="bg-white rounded-lg p-2 w-full flex items-center justify-center">
         {raw(@svg)}
       </div>
