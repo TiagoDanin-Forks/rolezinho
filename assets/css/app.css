@@ -6,6 +6,10 @@
 @source "../css";
 @source "../js";
 @source "../../lib/rolezinho_web";
+/* The stories carry classes that appear nowhere else (the surfaces components are
+   demoed against). Without this, those utilities are absent from the build and
+   /storybook renders them unstyled. */
+@source "../../storybook";
 /* Required for Tailwind to automatically pick up changes in colocated CSS files in dev */
 @source "../../_build/dev/phoenix-colocated/rolezinho/*/";
 
@@ -13,6 +17,52 @@
    padrao; sufixo "-filled" para a variante preenchida). A instalacao dos icones
    e gerenciada pela dep :tabler_icons no mix.exs. */
 @plugin "../vendor/tabler";
+
+/* Inter, self-hosted from priv/static/fonts (latin subset, ~24KB per weight).
+   The design's typography is Inter — display and title sit at weight 800, and the
+   system fallback does not carry that weight, so the hierarchy collapses without
+   these files. Self-hosted rather than linked: no external <link> is allowed (see
+   AGENTS.md) and no third party sees the reader's IP.
+   font-display: swap so text paints immediately on bad 4G. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/inter-latin-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/inter-latin-500.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/inter-latin-600.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/inter-latin-700.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("/fonts/inter-latin-800.woff2") format("woff2");
+}
 
 /* Design system tokens — source of truth: the DESIGN.md frontmatter (`colors`
    and `colors-dark` sections). Never edit values here without updating
@@ -47,9 +97,8 @@
   --color-error: oklch(55% 0.18 25);
   --color-error-content: oklch(100% 0 0);
 
-  /* Inter when the device has it; otherwise the system UI sans, which is very
-     close in geometry. Deliberately no webfont download: the page opens on bad
-     4G and no external <link> is allowed (see AGENTS.md). */
+  /* Inter, self-hosted (see the @font-face blocks above). The rest of the stack
+     is the fallback used only while the font loads. */
   --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
@@ -110,6 +159,18 @@
    deliberately darker than the cards that sit on it — that contrast is what
    gives cards their shape, since they carry no resting shadow. */
 body {
+  background-color: var(--color-base-300);
+  color: var(--color-base-content);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Storybook sandbox (sandbox_class in lib/rolezinho_web/storybook.ex). Stories
+   render inside a wrapper div, not inside our <body>, so the typography and the
+   page canvas above never reach them — without this the catalog shows the
+   components in the browser's default font on a white background, which is not
+   what the design looks like. */
+.rolezinho {
   background-color: var(--color-base-300);
   color: var(--color-base-content);
   font-family: var(--font-sans);

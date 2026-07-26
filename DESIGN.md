@@ -196,8 +196,8 @@ light gray, no ambiguity.
   attention and active state. Nothing else competes.
 - Generous corners: 0.625rem on fields, 0.875rem on inputs, 1.125rem on cards and
   buttons, 1.5rem on panels. The product is informal and touchable.
-- Inter when the device has it, system UI sans otherwise — no webfont download:
-  the page opens fast on bad 4G.
+- Inter, self-hosted from `priv/static/fonts` (latin subset, five weights, ~24KB
+  each, `font-display: swap`).
 - Single column, 32rem max width, centered. Mobile-first, one-handed.
 - Two themes (light and dark) the user can switch, both first-class.
 
@@ -255,9 +255,13 @@ that must be read; for hierarchy, prefer weight and size.
 
 ## 3. Typography
 
-**Inter** when the device already has it, system UI sans otherwise. Nothing is
-downloaded — a performance decision (the page opens on bad 4G) and a tonal one: this
-is the font of the messages the reader already reads.
+**Inter**, self-hosted from `priv/static/fonts` — latin subset, weights 400 to 800,
+about 24KB each, with `font-display: swap` so text paints before the font arrives.
+
+Self-hosted rather than linked from a CDN: no external `<link>` is allowed (see
+`AGENTS.md`) and no third party gets to see the reader's IP. The weights are not
+optional — the scale leans on 800, which no system fallback provides, so without
+the files the hierarchy flattens into something that is not this design.
 
 The scale is heavy at the top: display and title sit at weight 800 with tight
 tracking, which is what makes a screen feel titled without a large header.
@@ -385,7 +389,8 @@ Actively rejected (see `PRODUCT.md` for the product-level anti-references):
 - **Cool gray.** The neutral ramp is warm. A cool gray dropped into it reads as a
   foreign element on the page.
 - **Two columns.** Ever.
-- **Downloaded webfonts.** Inter-if-present is a decision, not an omission.
+- **Fonts loaded from a third-party CDN.** Inter is self-hosted; a Google Fonts
+  `<link>` leaks the reader's IP and adds a blocking request on bad 4G.
 - **Unlabeled icons** on important actions.
 - **Touch targets below 44px.**
 - **A component with no story.** If it's in `components/ui/`, it's in
