@@ -159,7 +159,7 @@ defmodule Rolezinho.Events do
          password: password,
          category: trimmed(params, "category"),
          local: trimmed(params, "local"),
-         starts_at: parse_datetime(params["starts_at"]),
+         starts_at: parse_datetime(params["starts_at"]) || combine_date_time(params),
          ends_at: parse_datetime(params["ends_at"]),
          price_cents: parse_price(params["price"]),
          pix_key: trimmed(params, "pix_key")
@@ -175,6 +175,36 @@ defmodule Rolezinho.Events do
       value -> value
     end
   end
+
+  # The form asks for a date and a time separately, because that is how someone
+  # thinks about it. Stored as one instant, since "Wednesday 7pm" cannot be
+  # sorted or turned into a calendar entry.
+  #
+  # The pair is read as local time in Brasília (UTC-3, no DST), which is the
+  # wall clock everyone in the group is reading.
+  defp combine_date_time(params) do
+    with date when is_binary(date) <- params["date"],
+         {:ok, date} <- Date.from_iso8601(String.trim(date)),
+         {:ok, time} <- parse_time(params["time"]),
+         {:ok, naive} <- NaiveDateTime.new(date, time) do
+      naive |> DateTime.from_naive!("Etc/UTC") |> DateTime.add(3 * 3600, :second)
+    else
+      _ -> nil
+    end
+  end
+
+  # A date with no time means the whole day; midnight is the conventional way to
+  # say that in a timestamp.
+  defp parse_time(nil), do: {:ok, ~T[00:00:00]}
+
+  defp parse_time(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> {:ok, ~T[00:00:00]}
+      trimmed -> Time.from_iso8601(trimmed <> ":00")
+    end
+  end
+
+  defp parse_time(_), do: {:ok, ~T[00:00:00]}
 
   defp parse_datetime(%DateTime{} = value), do: value
 

@@ -49,7 +49,7 @@ defmodule RolezinhoWeb.CalendarController do
     %Meta{
       local: event.local || parsed.local,
       date: DateTime.to_date(local_time),
-      time: DateTime.to_time(local_time)
+      time: clock_time(local_time)
     }
   end
 
@@ -62,6 +62,16 @@ defmodule RolezinhoWeb.CalendarController do
   # UTC timestamp has to be shifted before it goes in — otherwise the round trip
   # adds three hours to every event.
   defp shift_to_brt(%DateTime{} = utc), do: DateTime.add(utc, -3 * 3600, :second)
+
+  # Midnight is how a date with no time is stored, so on the way out it has to
+  # read as "no time" again — otherwise an all-day event turns into one starting
+  # at 00:00, which calendars show as a timed entry at the top of the day.
+  defp clock_time(%DateTime{} = local_time) do
+    case DateTime.to_time(local_time) do
+      ~T[00:00:00] -> nil
+      time -> time
+    end
+  end
 
   defp ensure_unlocked(conn, %Event{} = event) do
     admin? = conn.assigns[:current_admin?] == true

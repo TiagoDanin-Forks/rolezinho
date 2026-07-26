@@ -656,73 +656,34 @@ defmodule RolezinhoWeb.EventLive do
           <% end %>
         </header>
 
-        <div class="flex flex-wrap gap-2">
+        <div class="flex items-center gap-1.5">
           <button
-            id="copy-btn"
             type="button"
-            phx-hook=".CopyText"
-            data-text={@shareable_text}
-            class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 border border-base-300 hover:bg-base-200"
+            phx-click={BottomSheet.show("share-sheet")}
+            class="grid size-11 place-items-center rounded-full bg-ink/[0.06] text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            aria-label="Compartilhar a lista"
           >
-            <.icon name="tabler-clipboard" class="size-4" /> Copiar lista
+            <.icon name="tabler-share" class="size-[18px]" />
           </button>
-          <button
-            id="share-btn"
-            type="button"
-            phx-hook=".ShareEvent"
-            data-title={@event.title}
-            data-text={@shareable_text}
-            data-url={@event_url}
-            class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 border border-base-300 hover:bg-base-200"
-          >
-            <.icon name="tabler-share" class="size-4" /> Compartilhar
-          </button>
-          <a
-            href={"/r/#{@event.slug}.txt"}
-            target="_blank"
-            rel="noopener"
-            class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 hover:bg-base-200"
-          >
-            <.icon name="tabler-file-text" class="size-4" /> Texto puro
-          </a>
           <.link
             :if={@current_admin?}
             navigate={~p"/admin/r/#{@event.slug}/edit"}
-            class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 bg-primary text-primary-content hover:bg-primary/90"
+            class="grid size-11 place-items-center rounded-full bg-ink/[0.06] text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            aria-label="Editar o rolê"
           >
-            <.icon name="tabler-edit" class="size-4" /> Editar
+            <.icon name="tabler-pencil" class="size-[18px]" />
           </.link>
-        </div>
-
-        <div
-          :if={@current_admin?}
-          class="flex flex-wrap gap-2 pt-2 border-t border-base-300"
-        >
           <button
+            :if={@current_admin?}
             type="button"
             phx-click="clone"
             data-confirm="Criar uma cópia deste rolezinho?"
-            class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 border border-base-300 hover:bg-base-200"
-            title="Duplicar este rolezinho para editar em cima"
+            class="grid size-11 place-items-center rounded-full bg-ink/[0.06] text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            aria-label="Clonar o rolê"
           >
-            <.icon name="tabler-copy" class="size-4" /> Clonar
+            <.icon name="tabler-copy" class="size-[18px]" />
           </button>
         </div>
-
-        <label
-          :if={@password_protected? and @unlocked?}
-          for="share-password-toggle"
-          class="inline-flex items-center gap-2 text-sm text-base-content/80 cursor-pointer select-none"
-        >
-          <input
-            id="share-password-toggle"
-            type="checkbox"
-            class={checkbox_class()}
-            phx-click="toggle_share_password"
-            checked={@show_password_in_share?}
-          />
-          <span>Mostrar senha no compartilhamento?</span>
-        </label>
 
         <section class="rounded-2xl border border-base-300 bg-base-100 p-5">
           <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
@@ -1020,6 +981,52 @@ defmodule RolezinhoWeb.EventLive do
           {join_label(@event)}
         </button>
       </div>
+
+      <!-- RN-40: the group chat is the channel, so the product's job is to hand
+           back a block of text somebody can paste there. The preview shows what
+           will actually be pasted, because a share button that copies something
+           unseen gets pasted once and never again. -->
+      <.bottom_sheet id="share-sheet" title="Mandar no grupo">
+        <label
+          :if={@password_protected? and @unlocked?}
+          class="mb-3 flex items-center gap-2.5 rounded-row bg-tint px-3 py-2.5"
+        >
+          <input
+            id="share-password-toggle"
+            type="checkbox"
+            class={checkbox_class()}
+            phx-click="toggle_share_password"
+            checked={@show_password_in_share?}
+          />
+          <span class="text-xs font-semibold">Incluir a senha no texto</span>
+        </label>
+
+        <.share_preview text={@shareable_text} />
+
+        <:actions>
+          <button
+            id="copy-btn"
+            type="button"
+            phx-hook=".CopyText"
+            data-text={@shareable_text}
+            data-copied-label="Copiado!"
+            class="flex-1 rounded-row bg-ink/[0.06] py-3 text-xs font-bold text-ink"
+          >
+            Copiar
+          </button>
+          <button
+            id="share-btn"
+            type="button"
+            phx-hook=".ShareEvent"
+            data-title={@event.title}
+            data-text={@shareable_text}
+            data-url={@event_url}
+            class="flex-1 rounded-row bg-ink py-3 text-xs font-bold text-ink-content"
+          >
+            Compartilhar
+          </button>
+        </:actions>
+      </.bottom_sheet>
 
       <!-- Rendered only when joining is actually allowed. A sheet that exists
            but is hidden is markup someone can still submit, and the gate has to
