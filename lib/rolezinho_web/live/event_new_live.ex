@@ -2,8 +2,6 @@ defmodule RolezinhoWeb.EventNewLive do
   @moduledoc "Admin form to create a new rolezinho."
   use RolezinhoWeb, :live_view
 
-  alias Rolezinho.Events
-
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
@@ -45,22 +43,6 @@ defmodule RolezinhoWeb.EventNewLive do
     {:noreply, assign_form(socket, params, %{})}
   end
 
-  def handle_event("save", %{"event" => params}, socket) do
-    case Events.create(params) do
-      {:ok, event} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Rolezinho criado!")
-         |> push_navigate(to: ~p"/r/#{event.slug}")}
-
-      {:error, errors} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Verifique os campos.")
-         |> assign_form(params, errors)}
-    end
-  end
-
   @impl true
   def render(assigns) do
     ~H"""
@@ -72,7 +54,7 @@ defmodule RolezinhoWeb.EventNewLive do
       <div class="mx-auto max-w-[420px]">
         <header class="flex items-center gap-2">
           <.link
-            navigate={~p"/admin"}
+            navigate={~p"/"}
             class="grid size-11 shrink-0 place-items-center rounded-full bg-ink/[0.06] text-ink"
             aria-label="Voltar"
           >
@@ -81,7 +63,14 @@ defmodule RolezinhoWeb.EventNewLive do
           <h1 class="text-2xl font-extrabold tracking-tight">Criar rolezinho</h1>
         </header>
 
-        <.form for={@form} id="new-event-form" phx-change="validate" phx-submit="save" class="mt-5">
+        <.form
+          for={@form}
+          id="new-event-form"
+          action={~p"/criar"}
+          method="post"
+          phx-change="validate"
+          class="mt-5"
+        >
           <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card">
             <h2 class="text-[13px] font-extrabold">O rolê</h2>
 
@@ -156,13 +145,25 @@ defmodule RolezinhoWeb.EventNewLive do
             </div>
           </section>
 
-          <.input
-            field={@form[:description]}
-            type="textarea"
-            label="Mais alguma coisa?"
-            rows="4"
-            class="mt-3"
-          />
+          <section class="mt-3 rounded-card border border-hairline bg-base-100 p-4 shadow-card">
+            <h2 class="text-[13px] font-extrabold">Recado pro grupo</h2>
+            <p class="mt-0.5 text-[11px] leading-relaxed text-muted">
+              O que levar, onde estacionar, qualquer coisa que ajude. Aparece na página do rolê.
+            </p>
+
+            <div class="mt-3.5">
+              <.input field={@form[:description]} type="textarea" rows="4" />
+            </div>
+
+            <!-- The syntax is the group's own, so the hint names it rather than
+                 teaching markdown: someone who formats messages already knows
+                 this and does not need to be told it is markdown. -->
+            <p class="mt-2 text-[11px] text-muted">
+              Dá pra usar <code class="font-mono font-bold">*negrito*</code>,
+              <code class="font-mono italic">_itálico_</code>
+              e <code class="font-mono line-through">~riscado~</code>, como no WhatsApp.
+            </p>
+          </section>
 
           <div class="sticky bottom-0 mt-4 bg-canvas pb-2 pt-3">
             <button

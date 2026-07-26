@@ -20,7 +20,7 @@ defmodule RolezinhoWeb.Components.UI.EmptyState do
         body="Create the first one and drop the link in the group."
       >
         <:cta>
-          <.action_button navigate={~p"/admin/new"} full_width={false}>
+          <.action_button navigate={~p"/criar"} full_width={false}>
             Create event
           </.action_button>
         </:cta>

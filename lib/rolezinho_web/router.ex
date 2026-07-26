@@ -35,12 +35,14 @@ defmodule RolezinhoWeb.Router do
       live "/r/:slug", EventLive, :show
       live "/r/:slug/convite", InviteLive, :show
       live "/r/:slug/pagamento", PaymentLive, :show
+      live "/criar", EventNewLive, :new
     end
 
     get "/r/txt/:slug", RawController, :show
     get "/r/:slug/calendar", CalendarController, :show
     post "/r/:slug/unlock", EventUnlockController, :unlock
     post "/r/:slug/join", JoinController, :create
+    post "/criar", EventCreateController, :create
 
     get "/admin/login", AdminSessionController, :new
     post "/admin/login", AdminSessionController, :create
@@ -53,7 +55,6 @@ defmodule RolezinhoWeb.Router do
 
     live_session :admin, on_mount: [{RolezinhoWeb.Plugs.Admin, :require_admin}] do
       live "/", AdminHomeLive, :index
-      live "/new", EventNewLive, :new
       live "/r/:slug/edit", EventEditLive, :edit
       live "/r/:slug/formulario", FormConfigLive, :show
     end

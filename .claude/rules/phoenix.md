@@ -46,9 +46,15 @@ of it assumes `phx.gen.auth` and `current_scope`. That does not apply here.
 
 ## The admin boundary
 
-**Every action that creates, structurally alters, or destroys an event is admin.
-Actions on one's own attendance/payment are public.** There is no third case —
-explicitly classify every new action.
+**Every action that structurally alters or destroys an existing event is admin.
+Actions on one's own attendance/payment are public. Creating an event is public.**
+Classify every new action explicitly, into one of three levels:
+
+- **Public** — any visitor: reading, joining, one's own payment check, creating.
+- **Organizer** — holds that event's `organizer_token` in their session: managing
+  the list of the one event they created. Not an admin.
+- **Admin** — the environment password: anything that reshapes or removes an event
+  that already exists (slug, capacity, status, clone, delete).
 
 For a new admin surface, both halves are mandatory:
 

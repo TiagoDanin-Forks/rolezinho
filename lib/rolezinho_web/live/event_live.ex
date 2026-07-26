@@ -10,6 +10,7 @@ defmodule RolezinhoWeb.EventLive do
   alias Rolezinho.Event.Cash
   alias Rolezinho.Event.Meta
   alias Rolezinho.Event.Policy
+  alias Rolezinho.Event.WhatsMarkup
   alias Rolezinho.Events
   alias Rolezinho.Pix
   alias RolezinhoWeb.Components.UI.BottomSheet
@@ -782,12 +783,20 @@ defmodule RolezinhoWeb.EventLive do
             amount={Cash.format_amount(@event.price_cents)}
           />
 
-          <div
+          <!-- The organizer's own words, in a card of their own. Loose under the
+               details it read as a stray paragraph belonging to nothing; labelled,
+               it is clear whose text this is and why it is on the page. -->
+          <section
             :if={@stripped_header != ""}
-            class="prose prose-sm sm:prose-base max-w-none prose-p:my-2 leading-relaxed"
+            class="rounded-card border border-hairline bg-base-100 p-4"
           >
-            {raw(render_markdown(@stripped_header))}
-          </div>
+            <h2 class="text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Recado do organizador
+            </h2>
+            <div class="prose prose-sm mt-1.5 max-w-none leading-relaxed prose-p:my-1.5 prose-p:text-[13px]">
+              {raw(render_markdown(@stripped_header))}
+            </div>
+          </section>
         </header>
 
         <!-- RN-52: repeating is the natural next move once a rolê is over, and
@@ -1504,6 +1513,11 @@ defmodule RolezinhoWeb.EventLive do
 
   defp render_markdown(text) when is_binary(text) do
     text
+    # WhatsApp markup first, so what the organizer typed becomes markdown before
+    # anything else looks at it. Then the quote neutralizer, which has to be the
+    # last thing standing between user text and Earmark — swapping these two
+    # would let a converted span reintroduce a quote after it was made safe.
+    |> WhatsMarkup.to_markdown()
     |> neutralize_attribute_injection()
     |> Earmark.as_html(breaks: true, escape: true, compact_output: false)
     |> case do

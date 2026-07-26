@@ -52,7 +52,7 @@ defmodule RolezinhoWeb.Components.UI.IconButton do
 
   ## Examples
 
-      <.fab label="Create event" navigate={~p"/admin/new"} />
+      <.fab label="Create event" navigate={~p"/criar"} />
   """
   attr :name, :string, default: "tabler-plus"
   attr :label, :string, required: true

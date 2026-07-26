@@ -52,8 +52,9 @@ defmodule RolezinhoWeb.MarkdownXssTest do
       refute html =~ ~S{onmouseover="alert}
     end
 
-    test "legitimate markdown still renders", %{conn: conn} do
-      event = seed_event("End: **Praia** do *Farol*\nHorário: 19h")
+    test "legitimate formatting still renders", %{conn: conn} do
+      # WhatsApp markup: *bold* and _italic_, which is what the field accepts.
+      event = seed_event("End: *Praia* do _Farol_\nHorário: 19h")
 
       {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
 

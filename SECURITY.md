@@ -137,8 +137,17 @@ Rules:
 
 ## 2. The admin boundary
 
-**Every action that creates, structurally alters, or destroys an event is admin.**
+**Every action that structurally alters or destroys an *existing* event is admin.**
+Creating one is not: `POST /criar` is public, and whoever creates an event receives
+its `organizer_token` in their session, which is what authorizes them over that
+event and nothing else.
 
+- Creation is a controller action, not a LiveView event, because the token has to
+  reach the session and a LiveView cannot write there. A creation path that skips
+  the session hands out an event nobody can administer.
+- Being the organizer of an event is not being an admin. Cloning, renaming a slug,
+  resizing, and deleting stay admin-only; the organizer's powers are scoped to the
+  one event whose token they hold (see `Rolezinho.Event.Policy`).
 - Admin routes live under the `/admin` scope, in the `:admin_required` pipeline
   (`plug :require_admin`), and the corresponding LiveViews use the
   `on_mount {RolezinhoWeb.Plugs.Admin, :require_admin}` hook.

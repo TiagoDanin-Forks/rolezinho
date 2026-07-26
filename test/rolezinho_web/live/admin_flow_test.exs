@@ -38,15 +38,12 @@ defmodule RolezinhoWeb.AdminFlowTest do
     assert html =~ "Criar rolezinho"
   end
 
-  test "admin creates a rolezinho through the form", %{conn: conn} do
-    {:ok, view, _html} =
-      conn
-      |> admin_conn()
-      |> live(~p"/admin/new")
-
-    {:error, {:live_redirect, %{to: to}}} =
-      view
-      |> form("#new-event-form", %{
+  test "anyone can create a rolezinho, and gets to administer it", %{conn: conn} do
+    # RN-20: whoever creates is the organizer. Creating posts rather than
+    # submitting over the socket, because the organizer secret has to land in the
+    # session and a LiveView cannot write there.
+    conn =
+      post(conn, ~p"/criar", %{
         "event" => %{
           "title" => "Teste UI",
           "slug" => "teste-ui",
@@ -55,9 +52,19 @@ defmodule RolezinhoWeb.AdminFlowTest do
           "wait_size" => "2"
         }
       })
-      |> render_submit()
 
-    assert to == "/r/teste-ui"
-    assert Events.find("teste-ui").title == "Teste UI"
+    assert redirected_to(conn) == "/r/teste-ui"
+
+    event = Events.find("teste-ui")
+    assert event.title == "Teste UI"
+
+    # And the secret reached the browser, so they can actually manage it.
+    assert %{"teste-ui" => token} = Plug.Conn.get_session(conn, "organizer_tokens")
+    assert token == event.organizer_token
+  end
+
+  test "the create form is reachable without signing in", %{conn: conn} do
+    assert {:ok, _view, html} = live(conn, ~p"/criar")
+    assert html =~ "Criar rolezinho"
   end
 end

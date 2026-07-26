@@ -81,8 +81,7 @@ defmodule RolezinhoWeb.HomeLive do
               <.icon name="tabler-user-circle" class="size-5" />
             </.link>
             <.link
-              :if={@current_admin?}
-              navigate={~p"/admin/new"}
+              navigate={~p"/criar"}
               class="grid size-11 place-items-center rounded-full bg-ink text-ink-content shadow-cta focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
               aria-label="Criar rolezinho"
             >
@@ -107,7 +106,7 @@ defmodule RolezinhoWeb.HomeLive do
           title={empty_title(@category)}
           class="mt-6"
         >
-          {empty_body(@category, @current_admin?)}
+          {empty_body(@category)}
         </.empty_state>
 
         <ul :if={@visible != []} class="mt-4 space-y-2.5">
@@ -148,9 +147,10 @@ defmodule RolezinhoWeb.HomeLive do
   defp empty_title("all"), do: "Nenhum rolê por aqui"
   defp empty_title(_), do: "Nada nessa categoria"
 
-  defp empty_body("all", true), do: "Cria o primeiro e manda o link no grupo."
-  defp empty_body("all", false), do: "Quando alguém criar um, ele aparece aqui."
-  defp empty_body(_, _), do: "Tenta outra categoria."
+  # Anyone can create now, so the empty state invites rather than explains the
+  # wait.
+  defp empty_body("all"), do: "Cria o primeiro e manda o link no grupo."
+  defp empty_body(_category), do: "Tenta outra categoria."
 
   defp status_for(%Event{status: :payments_only}), do: "payments_only"
   defp status_for(%Event{status: :done}), do: "done"

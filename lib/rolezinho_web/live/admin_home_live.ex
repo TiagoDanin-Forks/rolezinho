@@ -54,7 +54,7 @@ defmodule RolezinhoWeb.AdminHomeLive do
             <p class="mt-0.5 text-[13px] text-muted">Todos os rolês, em qualquer estado.</p>
           </div>
           <.link
-            navigate={~p"/admin/new"}
+            navigate={~p"/criar"}
             class="grid size-11 shrink-0 place-items-center rounded-full bg-ink text-ink-content shadow-cta focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             aria-label="Criar rolezinho"
           >
