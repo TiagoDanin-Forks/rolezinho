@@ -104,8 +104,26 @@ defmodule RolezinhoWeb.PaymentLive do
       flash={@flash}
       current_admin?={@current_admin?}
       page_title={@page_title}
-      tabs?={false}
     >
+      <:action>
+        <!-- RN-11: the app records a declaration, it does not verify a
+               transfer, so the label describes what the person did elsewhere. -->
+        <button
+          :if={@row && not @row.paid}
+          type="button"
+          phx-click="mark_paid"
+          class="w-full rounded-cta bg-ink px-4 py-4 text-[15px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
+          Já fiz o Pix
+        </button>
+
+        <.link
+          navigate={~p"/r/#{@event.slug}"}
+          class="block w-full rounded-cta border-[1.5px] border-ink/15 px-4 py-3.5 text-center text-[15px] font-bold text-ink"
+        >
+          {if @row && @row.paid, do: "Ver a lista", else: "Pago depois"}
+        </.link>
+      </:action>
       <div class="mx-auto flex min-h-full max-w-[420px] flex-col">
         <header>
           <p class="text-[11px] font-bold uppercase tracking-wide text-accent">Você está dentro</p>
@@ -149,26 +167,6 @@ defmodule RolezinhoWeb.PaymentLive do
         </section>
 
         <div class="flex-1" />
-
-        <div class="sticky bottom-0 mt-6 space-y-2 bg-canvas pb-2 pt-3">
-          <!-- RN-11: the app records a declaration, it does not verify a
-               transfer, so the label describes what the person did elsewhere. -->
-          <button
-            :if={@row && not @row.paid}
-            type="button"
-            phx-click="mark_paid"
-            class="w-full rounded-cta bg-ink px-4 py-4 text-[15px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-          >
-            Já fiz o Pix
-          </button>
-
-          <.link
-            navigate={~p"/r/#{@event.slug}"}
-            class="block w-full rounded-cta border-[1.5px] border-ink/15 px-4 py-3.5 text-center text-[15px] font-bold text-ink"
-          >
-            {if @row && @row.paid, do: "Ver a lista", else: "Pago depois"}
-          </.link>
-        </div>
       </div>
 
       <script :type={Phoenix.LiveView.ColocatedHook} name=".CopyText">

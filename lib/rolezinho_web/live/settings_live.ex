@@ -27,7 +27,6 @@ defmodule RolezinhoWeb.SettingsLive do
       flash={@flash}
       current_admin?={@current_admin?}
       page_title={@page_title}
-      active_tab="me"
     >
       <div id="settings" phx-hook=".Settings" class="mx-auto max-w-[560px]">
         <header>

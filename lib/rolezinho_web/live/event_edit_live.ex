@@ -161,7 +161,6 @@ defmodule RolezinhoWeb.EventEditLive do
       flash={@flash}
       current_admin?={@current_admin?}
       page_title={@page_title}
-      tabs?={false}
     >
       <header class="mb-5 flex items-center gap-2">
         <.link

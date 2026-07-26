@@ -4,9 +4,10 @@ defmodule RolezinhoWeb.LayoutTest do
 
   Two of these guard against regressions that are invisible until someone is
   actually on a phone: `vh` puts the bottom of the page under Safari's toolbar,
-  and a tab bar without the safe-area inset sits under the home indicator.
+  and a bottom strip without the safe-area inset sits under the home indicator.
   """
-  use RolezinhoWeb.ConnCase, async: true
+  # async: false — this file now creates an event and drives a LiveView against it.
+  use RolezinhoWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
 
@@ -23,36 +24,40 @@ defmodule RolezinhoWeb.LayoutTest do
 
       assert html =~ "max-w-[420px]"
     end
+  end
 
-    test "clears the home indicator under the tab bar", %{conn: conn} do
-      {:ok, _view, html} = live(conn, ~p"/")
+  describe "the pinned bottom strip" do
+    test "belongs to the screen's action, not to navigation", %{conn: conn} do
+      {:ok, event} =
+        Rolezinho.Events.create(%{
+          "title" => "Vôlei",
+          "slug" => "volei-shell-#{System.unique_integer([:positive])}",
+          "description" => "End: Praia",
+          "main_size" => "4",
+          "wait_size" => "0"
+        })
 
+      {:ok, view, html} = live(conn, ~p"/r/#{event.slug}")
+
+      # Two destinations do not earn a permanent bar, and the most reachable
+      # strip of the screen is worth more to the thing someone came to do.
+      refute has_element?(view, ~s{nav[aria-label="Main sections"]})
+      assert html =~ "Entrar na lista"
       assert html =~ "env(safe-area-inset-bottom)"
+    end
+
+    test "is absent on a screen with no action of its own", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/me")
+
+      refute html =~ "env(safe-area-inset-bottom)"
     end
   end
 
-  describe "the tab bar" do
-    test "marks the section being viewed", %{conn: conn} do
+  describe "reaching settings" do
+    test "sits next to the title on the home screen", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
-      assert has_element?(view, ~s{a[aria-current="page"]}, "Rolês")
-    end
-
-    test "follows the reader to settings", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/me")
-
-      assert has_element?(view, ~s{a[aria-current="page"]}, "Eu")
-    end
-
-    test "stays out of admin screens, which are not a section of the app", %{conn: conn} do
-      conn =
-        conn
-        |> Plug.Test.init_test_session(%{})
-        |> Plug.Conn.put_session(:admin?, true)
-
-      {:ok, view, _html} = live(conn, ~p"/admin")
-
-      refute has_element?(view, ~s{nav[aria-label="Main sections"]})
+      assert has_element?(view, ~s{a[href="/me"][aria-label="Suas preferências"]})
     end
   end
 

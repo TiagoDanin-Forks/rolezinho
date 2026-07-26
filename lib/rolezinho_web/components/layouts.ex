@@ -11,9 +11,15 @@ defmodule RolezinhoWeb.Layouts do
 
   Shaped for the one context this product actually has: a phone, held in one
   hand, opened from a link someone pasted into a group chat. So the frame is a
-  single column, the content scrolls inside a viewport pinned to `dvh` — `vh`
-  would put the bottom of the page under Safari's toolbar — and the tab bar
-  clears the home indicator through the safe-area inset.
+  single column and the content scrolls inside a viewport pinned to `dvh` —
+  `vh` would put the bottom of the page under Safari's toolbar.
+
+  The bottom of the frame belongs to the screen's own action, not to
+  navigation. This app has two destinations, which is not enough to earn a
+  permanent bar: a tab bar would spend the most reachable strip of the screen
+  on switching between two places while the thing someone came to do — join the
+  list — scrolled away above it. Screens pass that action through `:action`,
+  where it stays put and clears the home indicator via the safe-area inset.
 
   On a desktop the same column simply centres. There is no wide layout, because
   a second column would be built for a reader this product does not have.
@@ -21,10 +27,11 @@ defmodule RolezinhoWeb.Layouts do
   attr :flash, :map, required: true
   attr :current_admin?, :boolean, default: false
   attr :page_title, :string, default: nil
-  attr :active_tab, :string, default: "events"
-  attr :tabs?, :boolean, default: true, doc: "false on screens that own the whole viewport"
 
   slot :inner_block, required: true
+
+  slot :action,
+    doc: "pinned to the bottom of the viewport: the screen's primary action, never navigation"
 
   def app(assigns) do
     ~H"""
@@ -35,10 +42,12 @@ defmodule RolezinhoWeb.Layouts do
         </div>
       </main>
 
-      <.tab_bar :if={@tabs?} active={@active_tab} class="shrink-0">
-        <:tab id="events" icon="tabler-diamond" label="Rolês" navigate={~p"/"} />
-        <:tab id="me" icon="tabler-user-circle" label="Eu" navigate={~p"/me"} />
-      </.tab_bar>
+      <div
+        :if={@action != []}
+        class="shrink-0 border-t border-hairline bg-canvas px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+      >
+        <div class="mx-auto max-w-[420px]">{render_slot(@action)}</div>
+      </div>
     </div>
 
     <.flash_group flash={@flash} />

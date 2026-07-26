@@ -65,18 +65,30 @@ defmodule RolezinhoWeb.HomeLive do
     <Layouts.app flash={@flash} current_admin?={@current_admin?} page_title={@page_title}>
       <div id="home" phx-hook=".RecentEvents" class="mx-auto max-w-[560px]">
         <header class="flex items-end justify-between gap-4">
-          <div>
+          <div class="min-w-0">
             <h1 class="text-2xl font-extrabold tracking-tight">Rolezinhos</h1>
             <p class="mt-0.5 text-[13px] text-muted">Os rolês abertos por aqui</p>
           </div>
-          <.link
-            :if={@current_admin?}
-            navigate={~p"/admin/new"}
-            class="grid size-11 shrink-0 place-items-center rounded-full bg-ink text-ink-content shadow-cta focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-            aria-label="Criar rolezinho"
-          >
-            <.icon name="tabler-plus" class="size-5" />
-          </.link>
+          <!-- Both destinations live here, next to the title. Two of them do not
+               earn a permanent bar across the bottom of every screen, and the
+               bottom strip is worth more to the action someone came to take. -->
+          <div class="flex shrink-0 items-center gap-1.5">
+            <.link
+              navigate={~p"/me"}
+              class="grid size-11 place-items-center rounded-full bg-ink/[0.06] text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              aria-label="Suas preferências"
+            >
+              <.icon name="tabler-user-circle" class="size-5" />
+            </.link>
+            <.link
+              :if={@current_admin?}
+              navigate={~p"/admin/new"}
+              class="grid size-11 place-items-center rounded-full bg-ink text-ink-content shadow-cta focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              aria-label="Criar rolezinho"
+            >
+              <.icon name="tabler-plus" class="size-5" />
+            </.link>
+          </div>
         </header>
 
         <.filter_chips

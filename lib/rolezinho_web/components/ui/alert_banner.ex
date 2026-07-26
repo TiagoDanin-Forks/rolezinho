@@ -30,11 +30,16 @@ defmodule RolezinhoWeb.Components.UI.AlertBanner do
 
   def alert_banner(assigns) do
     ~H"""
+    <!-- `row` rather than `cta`: at one line tall a 16px radius reads as a pill
+         with flat sides. The 2.5 padding keeps a single line at 38px, matching
+         the row height used elsewhere, and grows for a wrapped one.
+         `items-start` so the icon sits with the first line instead of drifting
+         to the vertical centre of a two-line message. -->
     <div
       role={if @tone == "danger", do: "alert", else: "status"}
-      class={["flex items-center gap-2.5 rounded-cta px-3.5 py-3", tone_classes(@tone), @class]}
+      class={["flex items-start gap-2 rounded-row px-3 py-2.5", tone_classes(@tone), @class]}
     >
-      <.icon name={icon_for(@tone)} class="size-4 shrink-0" />
+      <.icon name={icon_for(@tone)} class="mt-px size-4 shrink-0" />
       <div class="flex-1 text-xs font-semibold leading-snug">{render_slot(@inner_block)}</div>
       <button
         :if={@action}

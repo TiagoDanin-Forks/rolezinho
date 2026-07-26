@@ -117,7 +117,6 @@ defmodule RolezinhoWeb do
       import RolezinhoWeb.Components.UI.StatusPill
       import RolezinhoWeb.Components.UI.Stepper
       import RolezinhoWeb.Components.UI.SwipeActions
-      import RolezinhoWeb.Components.UI.TabBar
       import RolezinhoWeb.Components.UI.TextField
       import RolezinhoWeb.Components.UI.Toast
       import RolezinhoWeb.Components.UI.ToggleChip

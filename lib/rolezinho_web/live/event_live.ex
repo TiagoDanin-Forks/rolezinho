@@ -689,6 +689,16 @@ defmodule RolezinhoWeb.EventLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_admin?={@current_admin?} page_title={@page_title}>
+      <:action :if={@can_join?}>
+        <button
+          type="button"
+          phx-click={BottomSheet.show("join-sheet")}
+          class="w-full rounded-cta bg-ink px-4 py-4 text-[15px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
+          {join_label(@event)}
+        </button>
+      </:action>
+
       <article class="space-y-8">
         <header class="space-y-3">
           <div class="flex items-center gap-2 text-xs text-base-content/50">
@@ -1112,19 +1122,6 @@ defmodule RolezinhoWeb.EventLive do
           <.icon name="tabler-brand-whatsapp" class="size-4" />
           {charge_label(@cash)}
         </a>
-      </div>
-
-      <!-- In the flow rather than pinned: this page is a list someone scrolls,
-           and a sticky bar would cover the rows for the whole scroll. It closes
-           the page, right after what it acts on. -->
-      <div :if={@can_join?} class="mt-6">
-        <button
-          type="button"
-          phx-click={BottomSheet.show("join-sheet")}
-          class="w-full rounded-cta bg-ink px-4 py-4 text-[15px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-        >
-          {join_label(@event)}
-        </button>
       </div>
 
       <!-- RN-22: removal always confirms, naming who is going. The destructive

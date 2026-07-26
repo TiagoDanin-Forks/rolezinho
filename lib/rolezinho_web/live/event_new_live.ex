@@ -68,7 +68,6 @@ defmodule RolezinhoWeb.EventNewLive do
       flash={@flash}
       current_admin?={@current_admin?}
       page_title={@page_title}
-      tabs?={false}
     >
       <div class="mx-auto max-w-[420px]">
         <header class="flex items-center gap-2">

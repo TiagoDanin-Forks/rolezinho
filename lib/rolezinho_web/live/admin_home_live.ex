@@ -46,7 +46,6 @@ defmodule RolezinhoWeb.AdminHomeLive do
       flash={@flash}
       current_admin?={@current_admin?}
       page_title={@page_title}
-      tabs?={false}
     >
       <div class="mx-auto max-w-[420px]">
         <header class="flex items-center justify-between gap-3">
