@@ -72,44 +72,75 @@
    Tailwind generate the matching utilities (bg-primary, text-base-content,
    border-base-300, ...). */
 @theme {
-  --color-primary: oklch(69.81% 0.1771 48.76);
-  --color-primary-content: oklch(100% 0 0);
-  --color-primary-strong: oklch(60.1% 0.1558 47.88);
-  --color-secondary: oklch(45% 0.012 80.52);
-  --color-secondary-content: oklch(100% 0 0);
-  --color-accent: oklch(18.76% 0.0085 84.57);
-  --color-accent-content: oklch(100% 0 0);
-  --color-neutral: oklch(19.3% 0.0108 80.52);
-  --color-neutral-content: oklch(100% 0 0);
-  --color-base-100: oklch(100% 0 0);
-  --color-base-200: oklch(97.56% 0.0085 67.73);
-  --color-base-300: oklch(93.02% 0.0137 78.26);
-  --color-base-400: oklch(83.05% 0.0193 75.3);
-  --color-base-content: oklch(19.3% 0.0108 80.52);
+  /* The design vocabulary, named exactly as the handoff's Tailwind kit names it,
+     so markup can be copied from the kit without translation. Values are the
+     kit's hex palette converted to oklch:
+       ink #15130F · canvas #EDE7DE · surface #FBF6F1
+       tint #FDECDD · accent #F2751F · accent-ink #C85D15 */
+  --color-ink: oklch(18.76% 0.0085 84.57);
+  --color-canvas: oklch(93.02% 0.0137 78.26);
+  --color-surface: oklch(97.56% 0.0085 67.73);
   --color-tint: oklch(95.26% 0.0272 63.96);
-  --color-tint-content: oklch(60.1% 0.1558 47.88);
-  --color-info: oklch(62% 0.214 259.815);
-  --color-info-content: oklch(97% 0.014 254.604);
-  --color-success: oklch(69.81% 0.1771 48.76);
-  --color-success-content: oklch(100% 0 0);
-  --color-warning: oklch(66% 0.179 58.318);
-  --color-warning-content: oklch(98% 0.022 95.277);
-  --color-error: oklch(55% 0.18 25);
-  --color-error-content: oklch(100% 0 0);
+  --color-accent: oklch(69.81% 0.1771 48.76);
+  --color-accent-ink: oklch(60.1% 0.1558 47.88);
+  --color-danger: oklch(55% 0.18 25);
+
+  /* Roles the kit leaves implicit: text on an ink/accent fill, and the hairline
+     used for card borders and dividers. */
+  --color-ink-content: oklch(100% 0 0);
+  --color-accent-content: oklch(100% 0 0);
+  --color-danger-content: oklch(100% 0 0);
+  --color-hairline: oklch(83.05% 0.0193 75.3);
 
   /* Inter, self-hosted (see the @font-face blocks above). The rest of the stack
      is the fallback used only while the font loads. */
   --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
-  --radius-selector: 0.625rem;
-  --radius-field: 0.875rem;
-  --radius-box: 1.125rem;
-  --radius-panel: 1.5rem;
+  /* 12 / 16 / 18 / 24 — the kit's scale. `row` is a list row, `cta` the screen's
+     action button, `card` a surface, `sheet` the bottom sheet's top corners. */
+  --radius-row: 0.75rem;
+  --radius-cta: 1rem;
+  --radius-card: 1.125rem;
+  --radius-sheet: 1.5rem;
 
-  --shadow-card: 0 8px 24px oklch(19.3% 0.0108 80.52 / 0.06);
-  --shadow-raised: 0 6px 18px oklch(19.3% 0.0108 80.52 / 0.18);
-  --shadow-sheet: 0 -8px 24px oklch(19.3% 0.0108 80.52 / 0.12);
+  --shadow-card: 0 8px 24px oklch(18.76% 0.0085 84.57 / 0.06);
+  --shadow-cta: 0 6px 18px oklch(18.76% 0.0085 84.57 / 0.18);
+  --shadow-sheet: 0 -8px 24px oklch(18.76% 0.0085 84.57 / 0.12);
+
+  --ease-sheet: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Legacy vocabulary, kept as aliases so the screens that predate the design
+     system (HomeLive, EventLive, core_components) keep rendering while they are
+     migrated one at a time — see TODOS.md. New markup uses the names above. */
+  --color-primary: var(--color-accent);
+  --color-primary-content: var(--color-accent-content);
+  --color-primary-strong: var(--color-accent-ink);
+  --color-secondary: oklch(45% 0.012 80.52);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-neutral: var(--color-ink);
+  --color-neutral-content: var(--color-ink-content);
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: var(--color-surface);
+  --color-base-300: var(--color-canvas);
+  --color-base-400: var(--color-hairline);
+  --color-base-content: var(--color-ink);
+  --color-tint-content: var(--color-accent-ink);
+  --color-info: oklch(62% 0.214 259.815);
+  --color-info-content: oklch(97% 0.014 254.604);
+  --color-success: var(--color-accent);
+  --color-success-content: var(--color-accent-content);
+  --color-warning: oklch(66% 0.179 58.318);
+  --color-warning-content: oklch(98% 0.022 95.277);
+  --color-error: var(--color-danger);
+  --color-error-content: var(--color-danger-content);
+
+  --radius-selector: var(--radius-row);
+  --radius-field: var(--radius-cta);
+  --radius-box: var(--radius-card);
+  --radius-panel: var(--radius-sheet);
+
+  --shadow-raised: var(--shadow-cta);
 }
 
 /* Dark theme. The design handoff is light-only, so this is derived: the warm
@@ -117,33 +148,36 @@
    same token roles. Orange stays the action color — it holds contrast on a warm
    dark base, so there is no reason to shift the hue. */
 [data-theme="dark"] {
-  --color-primary: oklch(72% 0.17 48.76);
-  --color-primary-content: oklch(15% 0.008 84.57);
-  --color-primary-strong: oklch(80% 0.14 55);
+  /* `ink` keeps its role as the high-contrast tone against the page, so it
+     inverts to near-white; `canvas` and `surface` swap direction with it. The
+     accent orange only lightens — it holds contrast on a warm dark base, so
+     there is no reason to shift its hue. */
+  --color-ink: oklch(95% 0.008 78.26);
+  --color-ink-content: oklch(15% 0.008 84.57);
+  --color-canvas: oklch(18.76% 0.0085 84.57);
+  --color-surface: oklch(22% 0.009 84.57);
+  --color-tint: oklch(30% 0.026 55);
+  --color-accent: oklch(72% 0.17 48.76);
+  --color-accent-ink: oklch(80% 0.14 55);
+  --color-accent-content: oklch(15% 0.008 84.57);
+  --color-danger: oklch(64% 0.17 25);
+  --color-danger-content: oklch(15% 0.008 84.57);
+  --color-hairline: oklch(45% 0.013 78);
+
   --color-secondary: oklch(72% 0.012 80.52);
   --color-secondary-content: oklch(15% 0.008 84.57);
-  --color-accent: oklch(97.56% 0.0085 67.73);
-  --color-accent-content: oklch(18.76% 0.0085 84.57);
-  --color-neutral: oklch(93.02% 0.0137 78.26);
-  --color-neutral-content: oklch(18.76% 0.0085 84.57);
   --color-base-100: oklch(22% 0.009 84.57);
   --color-base-200: oklch(18.76% 0.0085 84.57);
   --color-base-300: oklch(31% 0.011 80.52);
-  --color-base-400: oklch(45% 0.013 78);
   --color-base-content: oklch(95% 0.008 78.26);
-  --color-tint: oklch(30% 0.026 55);
   --color-tint-content: oklch(85% 0.11 60);
   --color-info: oklch(58% 0.158 241.966);
   --color-info-content: oklch(97% 0.013 236.62);
-  --color-success: oklch(72% 0.17 48.76);
-  --color-success-content: oklch(15% 0.008 84.57);
   --color-warning: oklch(66% 0.179 58.318);
   --color-warning-content: oklch(98% 0.022 95.277);
-  --color-error: oklch(64% 0.17 25);
-  --color-error-content: oklch(15% 0.008 84.57);
 
   --shadow-card: 0 8px 24px oklch(0% 0 0 / 0.4);
-  --shadow-raised: 0 6px 18px oklch(0% 0 0 / 0.5);
+  --shadow-cta: 0 6px 18px oklch(0% 0 0 / 0.5);
   --shadow-sheet: 0 -8px 24px oklch(0% 0 0 / 0.45);
 }
 
@@ -155,12 +189,19 @@
 /* Use the data attribute for dark mode  */
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
-/* Page background and text color. The page canvas is base-300 (the warm cream),
-   deliberately darker than the cards that sit on it — that contrast is what
-   gives cards their shape, since they carry no resting shadow. */
+/* Payment and identity as state variants rather than conditional class strings,
+   per the handoff's Tailwind rules: a row carries data-paid / data-me and the
+   styling follows from the attribute. Keeps the check's appearance in one place
+   instead of branching in every caller. */
+@custom-variant paid (&:where([data-paid="true"], [data-paid="true"] *));
+@custom-variant me (&:where([data-me="true"], [data-me="true"] *));
+
+/* Page background and text color. The canvas is deliberately darker than the
+   surfaces that sit on it — that contrast is what gives cards their shape,
+   since they carry no resting shadow. */
 body {
-  background-color: var(--color-base-300);
-  color: var(--color-base-content);
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
@@ -171,8 +212,8 @@ body {
    components in the browser's default font on a white background, which is not
    what the design looks like. */
 .rolezinho {
-  background-color: var(--color-base-300);
-  color: var(--color-base-content);
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
@@ -191,8 +232,22 @@ body {
   animation: rolezinho-shimmer 1.2s ease-in-out infinite;
 }
 
+/* Bottom sheet entrance — the handoff's spec is .26s on --ease-sheet. */
+@keyframes sheet-in {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+/* The handoff ships this block with the design: motion is decoration here, and
+   a sheet that slides or a button that scales must not fight someone who asked
+   the OS to stop animating. The fade is what remains. */
 @media (prefers-reduced-motion: reduce) {
   .animate-shimmer { animation: none; opacity: 0.7; }
+
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* This file is for your main application CSS */

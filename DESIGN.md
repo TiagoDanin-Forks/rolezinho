@@ -2,55 +2,43 @@
 name: Rolezinho
 description: "The hangout in one link: who's coming, when, where, and how to pay — no sign-up."
 colors:
-  primary: "oklch(69.81% 0.1771 48.76)"
-  primary-content: "oklch(100% 0 0)"
-  primary-strong: "oklch(60.1% 0.1558 47.88)"
+  ink: "oklch(18.76% 0.0085 84.57)"
+  ink-content: "oklch(100% 0 0)"
+  canvas: "oklch(93.02% 0.0137 78.26)"
+  surface: "oklch(97.56% 0.0085 67.73)"
+  tint: "oklch(95.26% 0.0272 63.96)"
+  accent: "oklch(69.81% 0.1771 48.76)"
+  accent-ink: "oklch(60.1% 0.1558 47.88)"
+  accent-content: "oklch(100% 0 0)"
+  danger: "oklch(55% 0.18 25)"
+  danger-content: "oklch(100% 0 0)"
+  hairline: "oklch(83.05% 0.0193 75.3)"
   secondary: "oklch(45% 0.012 80.52)"
   secondary-content: "oklch(100% 0 0)"
-  accent: "oklch(18.76% 0.0085 84.57)"
-  accent-content: "oklch(100% 0 0)"
-  neutral: "oklch(19.3% 0.0108 80.52)"
-  neutral-content: "oklch(100% 0 0)"
   base-100: "oklch(100% 0 0)"
-  base-200: "oklch(97.56% 0.0085 67.73)"
-  base-300: "oklch(93.02% 0.0137 78.26)"
-  base-400: "oklch(83.05% 0.0193 75.3)"
-  base-content: "oklch(19.3% 0.0108 80.52)"
-  tint: "oklch(95.26% 0.0272 63.96)"
-  tint-content: "oklch(60.1% 0.1558 47.88)"
   info: "oklch(62% 0.214 259.815)"
   info-content: "oklch(97% 0.014 254.604)"
-  success: "oklch(69.81% 0.1771 48.76)"
-  success-content: "oklch(100% 0 0)"
   warning: "oklch(66% 0.179 58.318)"
   warning-content: "oklch(98% 0.022 95.277)"
-  error: "oklch(55% 0.18 25)"
-  error-content: "oklch(100% 0 0)"
 colors-dark:
-  primary: "oklch(72% 0.17 48.76)"
-  primary-content: "oklch(15% 0.008 84.57)"
-  primary-strong: "oklch(80% 0.14 55)"
+  ink: "oklch(95% 0.008 78.26)"
+  ink-content: "oklch(15% 0.008 84.57)"
+  canvas: "oklch(18.76% 0.0085 84.57)"
+  surface: "oklch(22% 0.009 84.57)"
+  tint: "oklch(30% 0.026 55)"
+  accent: "oklch(72% 0.17 48.76)"
+  accent-ink: "oklch(80% 0.14 55)"
+  accent-content: "oklch(15% 0.008 84.57)"
+  danger: "oklch(64% 0.17 25)"
+  danger-content: "oklch(15% 0.008 84.57)"
+  hairline: "oklch(45% 0.013 78)"
   secondary: "oklch(72% 0.012 80.52)"
   secondary-content: "oklch(15% 0.008 84.57)"
-  accent: "oklch(97.56% 0.0085 67.73)"
-  accent-content: "oklch(18.76% 0.0085 84.57)"
-  neutral: "oklch(93.02% 0.0137 78.26)"
-  neutral-content: "oklch(18.76% 0.0085 84.57)"
   base-100: "oklch(22% 0.009 84.57)"
-  base-200: "oklch(18.76% 0.0085 84.57)"
-  base-300: "oklch(31% 0.011 80.52)"
-  base-400: "oklch(45% 0.013 78)"
-  base-content: "oklch(95% 0.008 78.26)"
-  tint: "oklch(30% 0.026 55)"
-  tint-content: "oklch(85% 0.11 60)"
   info: "oklch(58% 0.158 241.966)"
   info-content: "oklch(97% 0.013 236.62)"
-  success: "oklch(72% 0.17 48.76)"
-  success-content: "oklch(15% 0.008 84.57)"
   warning: "oklch(66% 0.179 58.318)"
   warning-content: "oklch(98% 0.022 95.277)"
-  error: "oklch(64% 0.17 25)"
-  error-content: "oklch(15% 0.008 84.57)"
 typography:
   display:
     fontFamily: "{typography.sans}"
@@ -104,15 +92,17 @@ typography:
   sans: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif"
   mono-family: "ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace"
 rounded:
-  selector: "0.625rem"
-  field: "0.875rem"
-  box: "1.125rem"
-  panel: "1.5rem"
+  row: "0.75rem"
+  cta: "1rem"
+  card: "1.125rem"
+  sheet: "1.5rem"
   full: "9999px"
 shadow:
-  card: "0 8px 24px oklch(19.3% 0.0108 80.52 / 0.06)"
-  raised: "0 6px 18px oklch(19.3% 0.0108 80.52 / 0.18)"
-  sheet: "0 -8px 24px oklch(19.3% 0.0108 80.52 / 0.12)"
+  card: "0 8px 24px oklch(18.76% 0.0085 84.57 / 0.06)"
+  cta: "0 6px 18px oklch(18.76% 0.0085 84.57 / 0.18)"
+  sheet: "0 -8px 24px oklch(18.76% 0.0085 84.57 / 0.12)"
+ease:
+  sheet: "cubic-bezier(0.2, 0.8, 0.2, 1)"
 spacing:
   xs: "0.25rem"
   sm: "0.5rem"
@@ -126,39 +116,47 @@ layout:
   touch-target-min: "2.75rem"
 components:
   button-primary:
-    backgroundColor: "{colors.accent}"
-    textColor: "{colors.accent-content}"
-    rounded: "{rounded.box}"
-    padding: "0.9375rem 1rem"
-    boxShadow: "{shadow.raised}"
+    backgroundColor: "{colors.ink}"
+    textColor: "{colors.ink-content}"
+    rounded: "{rounded.cta}"
+    padding: "1rem"
+    boxShadow: "{shadow.cta}"
   button-outline:
     backgroundColor: "transparent"
-    textColor: "{colors.base-content}"
-    borderColor: "{colors.base-400}"
-    rounded: "{rounded.box}"
+    textColor: "{colors.ink}"
+    borderColor: "{colors.hairline}"
+    rounded: "{rounded.cta}"
     padding: "0.875rem 1rem"
   button-ghost:
     backgroundColor: "transparent"
     textColor: "{colors.secondary}"
-    rounded: "{rounded.field}"
+    rounded: "{rounded.row}"
     padding: "0.25rem 0.5rem"
   card:
     backgroundColor: "{colors.base-100}"
-    textColor: "{colors.base-content}"
-    borderColor: "{colors.base-300}"
-    rounded: "{rounded.box}"
+    textColor: "{colors.ink}"
+    borderColor: "{colors.hairline}"
+    rounded: "{rounded.card}"
     padding: "1rem"
   info-tile:
     backgroundColor: "{colors.tint}"
-    textColor: "{colors.base-content}"
-    rounded: "{rounded.field}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.cta}"
     padding: "0.625rem 0.75rem"
   input-field:
     backgroundColor: "{colors.base-100}"
-    textColor: "{colors.base-content}"
-    borderColor: "{colors.base-400}"
-    rounded: "{rounded.selector}"
+    textColor: "{colors.ink}"
+    borderColor: "{colors.hairline}"
+    rounded: "{rounded.row}"
     padding: "0.75rem 0.8125rem"
+  participant-row:
+    textColor: "{colors.ink}"
+    rounded: "{rounded.row}"
+    padding: "0.75rem 0.875rem"
+  bottom-sheet:
+    backgroundColor: "{colors.surface}"
+    rounded: "{rounded.sheet}"
+    boxShadow: "{shadow.sheet}"
 ---
 
 # Design System: Rolezinho
@@ -168,6 +166,14 @@ The YAML frontmatter above mirrors the `@theme` block in `assets/css/app.css` �
 two are a **coupled pair**: changing one requires changing the other in the same
 commit. Never invent a value outside these tokens; if a token is missing, add it
 here and to `app.css` before using it.
+
+The token names match the design handoff's Tailwind kit exactly (`ink`, `canvas`,
+`surface`, `tint`, `accent`, `rounded-cta`, `shadow-card`), so markup can be copied
+from the handoff without translation. `app.css` also defines a set of **legacy
+aliases** (`primary`, `base-200`, `rounded-field`, ...) pointing at these same
+values, so the screens written before the design system keep rendering while they
+are migrated one at a time — see `TODOS.md`. Those aliases are not part of the
+design system: new markup uses the names documented here.
 
 ## 1. Overview
 
@@ -190,12 +196,13 @@ light gray, no ambiguity.
 
 **Key Characteristics:**
 
-- Warm cream page canvas (`base-300`); white cards (`base-100`) on top of it with a
-  hairline border. The canvas/card contrast is what gives cards their shape.
-- **Ink** (`accent`) is the primary action color; **orange** (`primary`) marks
-  attention and active state. Nothing else competes.
-- Generous corners: 0.625rem on fields, 0.875rem on inputs, 1.125rem on cards and
-  buttons, 1.5rem on panels. The product is informal and touchable.
+- Warm cream page canvas (`canvas`); white and off-white surfaces (`base-100`,
+  `surface`) on top of it with a hairline border. The canvas/surface contrast is
+  what gives cards their shape.
+- **Ink** is the primary action color; **accent** (orange) marks attention and
+  active state. Nothing else competes.
+- Generous corners: 0.75rem on list rows, 1rem on the action button, 1.125rem on
+  cards, 1.5rem on sheets. The product is informal and touchable.
 - Inter, self-hosted from `priv/static/fonts` (latin subset, five weights, ~24KB
   each, `font-display: swap`).
 - Single column, 32rem max width, centered. Mobile-first, one-handed.
@@ -203,55 +210,57 @@ light gray, no ambiguity.
 
 ## 2. Colors
 
-A warm neutral ramp with two brand colors on top. The semantic colors (`error`,
+A warm neutral ramp with two brand colors on top. The semantic colors (`danger`,
 `warning`, `info`) are separate from the brand and reserved for state.
 
-### Accent — the action color
+### Ink — the action color
 
 - **Ink** (`oklch(18.76% 0.0085 84.57)`), a warm near-black. This is what the
   primary button is made of: "Join the list", "Create", "Confirm". One primary
   action per screen, at the bottom, within thumb reach.
 - Also used for the FAB, for the count badge on a full list, and for the toast.
-- In the dark theme `accent` inverts to the lightest surface tone, keeping the same
-  role: maximum contrast against the page.
+- `ink` doubles as the text color, and as the base for translucent hairlines and
+  dividers (`border-ink/8`, `text-ink/55`) rather than a separate grey ramp.
+- In the dark theme `ink` inverts to the lightest tone, keeping the same role:
+  maximum contrast against the page.
 
-### Primary — attention and active state
+### Accent — attention and active state
 
 - **Orange** (`oklch(69.81% 0.1771 48.76)`). Reserved for: the paid check, the
   progress bar of a filling list, the active item of a toggle or segmented control,
   the overline of a highlighted block, and inline links.
-- `primary-strong` is the darker orange used for text on a `tint` background, where
+- `accent-ink` is the darker orange used for text on a `tint` background, where
   the plain orange would not carry enough contrast.
 - Rule: orange marks **attention and active state**, never a large fill or running
   text.
 
 ### Neutrals and surfaces
 
-- `base-100` — card and sheet background (light: white; dark: the raised tone).
-- `base-200` — recessed background, for the demo well inside a card and for grouped
-  zones.
-- `base-300` — the **page canvas**, the warm cream the whole app sits on. Also
-  hairline borders and dividers.
-- `base-400` — stronger borders: input outlines, the outline button.
-- `base-content` — text. High contrast in both themes; the default for legible text.
+- `canvas` — the **page canvas**, the warm cream the whole app sits on.
+- `surface` — the app screen background and recessed zones: the well inside a card,
+  a grouped block, the bottom sheet.
+- `base-100` — card background (light: white; dark: the raised tone).
+- `hairline` — stronger borders: input outlines, the outline button. Lighter
+  hairlines come from `ink` at low opacity.
 - `secondary` — supporting text and metadata. Never for information the reader
   actually needs.
 - `tint` — the warm peach block behind a highlighted value (amount, Pix key) and
-  behind the "this is you" row. Text on it uses `tint-content`.
+  behind the "this is you" row. Text on it uses `accent-ink`.
 
 ### Semantics
 
-- `error` (red) — failure, wrong password, destructive action.
+- `danger` (red) — failure, wrong password, destructive action.
 - `warning` (amber) — attention, event in a special state.
 - `info` (blue) — neutral, non-critical notice.
-- `success` — an alias of the primary orange: in this product "paid" is the state
-  that deserves attention, and the group reads orange as the confirmation color.
+- There is no separate `success`: in this product "paid" is the state that deserves
+  attention, and the group reads the accent orange as the confirmation color.
 
 ### Contrast
 
-Every text/background pair uses `*-content` over its matching color. The page is
-read outdoors, in sunlight: do not use `base-content` at reduced opacity for text
-that must be read; for hierarchy, prefer weight and size.
+Every text/background pair uses `*-content` over its matching color — `ink-content`
+on an ink fill, `accent-content` on an orange one. The page is read outdoors, in
+sunlight: do not use `ink` at reduced opacity for text that must be read; for
+hierarchy, prefer weight and size.
 
 ## 3. Typography
 
@@ -304,14 +313,16 @@ a component with no story is invisible to the next person.
 
 Use them; don't rebuild a button or a row out of loose classes.
 
-- **button** — `primary` (ink, raised shadow), `outline` (hairline), `ghost`
+- **button** — `primary` (ink fill, `shadow-cta`), `outline` (hairline), `ghost`
   (underlined text). One primary per screen, at the bottom.
-- **card** — content block: `base-100` background, hairline `base-300` border,
+- **card** — content block: `base-100` background, hairline `border-ink/8`,
   1.125rem corner. **No resting shadow** — the canvas contrast is what separates.
 - **info-tile** — a highlighted value on `tint`: amount, Pix key. An overline label
-  above, the value in weight 800 below, an optional inline action ("Copy").
+  above, the value in weight 800 below, an optional inline action ("Copy"). A long
+  value truncates; it never wraps.
 - **participant-row** — the densest and most important component: number, name,
-  paid check. Four states (paid, unpaid, you, free slot).
+  paid check. Four states (paid, unpaid, you, free slot). The 22px check sits inside
+  a 44px tappable area.
 - **input-field** — text field. The name field is the most important input in the
   product: large, obvious, with visible focus.
 
@@ -337,9 +348,11 @@ that attribute (`@custom-variant dark`), not to `prefers-color-scheme`.
 - The dark theme keeps the neutral ramp's warm hue and inverts its lightness, so
   dark reads as dim paper rather than as a cool console. Orange keeps its hue in
   both themes.
-- Note that `base-100` is *lighter* than `base-300` in light, and *darker* in dark:
+- Note that `base-100` is *lighter* than `canvas` in light, and *darker* in dark:
   the token role is "card surface" vs. "page canvas", not "lighter" vs. "darker".
-  Use the roles, never assume the direction.
+  The same holds for `ink`, which is near-black in light and near-white in dark —
+  its role is "maximum contrast against the page", not "dark". Use the roles, never
+  assume the direction.
 - When adding a color, add it to **both** themes. A color defined only in light
   breaks dark silently.
 - Check name, amount, and payment status in both themes before closing out any UI

@@ -7,7 +7,7 @@ defmodule Storybook.Welcome do
     ~H"""
     <div class="max-w-2xl space-y-6 text-sm leading-relaxed">
       <p>
-        This catalog holds the components under <code class="rounded bg-base-200 px-1 py-0.5">lib/rolezinho_web/components/ui/</code>,
+        This catalog holds the components under <code class="rounded bg-surface px-1 py-0.5">lib/rolezinho_web/components/ui/</code>,
         one module per component. Every component here is styled from the design tokens —
         no loose color or radius values.
       </p>
