@@ -48,13 +48,22 @@ defmodule RolezinhoWeb.PasswordGatingTest do
     end
 
     test "hides the location and shows an unlock form", %{conn: conn, event: event} do
+      {:ok, view, html} = live(conn, ~p"/r/#{event.slug}")
+
+      # The location must not reach the HTML at all — hiding it visually would
+      # still leak it to anyone reading the source.
+      refute html =~ "Rua Secreta"
+      assert has_element?(view, "#unlock-form-#{event.slug}")
+      assert has_element?(view, "#unlock-form-#{event.slug} input[name=password]")
+      assert html =~ "protegida por senha"
+    end
+
+    test "the password itself never reaches the gate", %{conn: conn, event: event} do
+      # The gate asks for the password, so the page must not be able to answer
+      # its own question — including through a placeholder or a hidden field.
       {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
 
-      refute html =~ "Rua Secreta"
-      assert html =~ "Rolezinho protegido por senha"
-      assert html =~ "unlock-form-#{event.slug}"
-      # Google Calendar button gone since location is a factor + we don't want to leak
-      assert html =~ "Digite a senha pra ver os detalhes"
+      refute html =~ "senha123"
     end
 
     test "hides the join form and shows a hint instead", %{conn: conn, event: event} do

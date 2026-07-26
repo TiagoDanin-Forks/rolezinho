@@ -1016,51 +1016,64 @@ defmodule RolezinhoWeb.EventLive do
   attr :slug, :string, required: true
   attr :has_location?, :boolean, required: true
 
+  # The gate someone lands on when a shared link reaches them (RN-41). It is a
+  # whole screen rather than a warning strip because it is the only thing to do
+  # here: everything else on the page is deliberately withheld until the password
+  # is right, on the server.
   defp unlock_panel(assigns) do
     ~H"""
-    <section class="rounded-2xl border border-warning/40 bg-warning/10 p-4 sm:p-5">
-      <div class="flex items-start gap-3">
-        <.icon name="tabler-lock" class="size-5 text-warning shrink-0 mt-0.5" />
-        <div class="flex-1 min-w-0 space-y-3">
-          <div>
-            <p class="font-semibold">Rolezinho protegido por senha.</p>
-            <p class="text-sm text-base-content/80">
-              <%= if @has_location? do %>
-                Digite a senha pra ver os detalhes, o local, os nomes e entrar na lista.
-              <% else %>
-                Digite a senha pra ver os detalhes, os nomes e entrar na lista.
-              <% end %>
-            </p>
-          </div>
-
-          <form
-            method="post"
-            action={~p"/r/#{@slug}/unlock"}
-            id={"unlock-form-" <> @slug}
-            class="flex flex-wrap gap-2"
-          >
-            <input
-              type="hidden"
-              name="_csrf_token"
-              value={Phoenix.Controller.get_csrf_token()}
-            />
-            <input
-              type="password"
-              name="password"
-              placeholder="Senha do rolezinho"
-              autocomplete="off"
-              required
-              class={[field_class(), "flex-1 min-w-0"]}
-            />
-            <button
-              type="submit"
-              class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm bg-warning text-warning-content hover:bg-warning/90"
-            >
-              <.icon name="tabler-key" class="size-4" /> Desbloquear
-            </button>
-          </form>
-        </div>
+    <section class="mx-auto max-w-[420px] px-2 py-6 text-center">
+      <div class="mx-auto grid size-16 place-items-center rounded-[22px] bg-ink">
+        <.icon name="tabler-lock" class="size-7 text-accent" />
       </div>
+
+      <p class="mt-5 text-[11px] font-bold uppercase tracking-wide text-accent">
+        Convite recebido
+      </p>
+      <h2 class="mt-2 text-2xl font-extrabold leading-tight tracking-tight">
+        Essa lista é<br />protegida por senha
+      </h2>
+      <p class="mt-3 text-sm leading-relaxed text-ink/55">
+        <%= if @has_location? do %>
+          Digite a senha que veio junto com o link pra ver o local, os nomes e entrar na lista.
+        <% else %>
+          Digite a senha que veio junto com o link pra ver os nomes e entrar na lista.
+        <% end %>
+      </p>
+
+      <form
+        method="post"
+        action={~p"/r/#{@slug}/unlock"}
+        id={"unlock-form-" <> @slug}
+        class="mt-6 rounded-[20px] border border-hairline bg-base-100 p-4 text-left shadow-card"
+      >
+        <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
+        <label class="block">
+          <span class="text-[11px] font-bold uppercase tracking-wide text-ink/50">
+            Senha da lista
+          </span>
+          <input
+            type="password"
+            name="password"
+            placeholder="ex: VOLEI25"
+            autocomplete="off"
+            autocapitalize="characters"
+            required
+            class="mt-2 w-full border-0 border-b-2 border-ink/12 bg-transparent px-0 py-1.5 text-xl font-extrabold uppercase tracking-[2px] text-ink outline-none placeholder:tracking-normal placeholder:text-ink/25 focus:border-accent"
+          />
+        </label>
+
+        <button
+          type="submit"
+          class="mt-4 w-full rounded-cta bg-ink px-4 py-4 text-[15px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
+          Ver o rolê
+        </button>
+      </form>
+
+      <p class="mt-3.5 text-xs text-ink/45">
+        Não tem a senha? Pede pra quem te chamou.
+      </p>
     </section>
     """
   end
