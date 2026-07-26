@@ -1055,9 +1055,24 @@ defmodule RolezinhoWeb.EventLive do
   end
 
   defp render_markdown(text) when is_binary(text) do
-    case Earmark.as_html(text, breaks: true, escape: true, compact_output: false) do
+    text
+    |> neutralize_attribute_injection()
+    |> Earmark.as_html(breaks: true, escape: true, compact_output: false)
+    |> case do
       {:ok, html, _warnings} -> html
       {:error, html, _warnings} -> html
     end
   end
+
+  # Earmark 1.4.x interpolates link/image URLs and titles into `href`/`src`/`title`
+  # attributes without escaping double quotes, so `[x](http://a/?b=c" onerror="alert(1))`
+  # closes the attribute and injects an event handler (EEF-CVE-2026-48591, no patched
+  # release — the package is retired). `escape: true` does not cover this: it escapes
+  # markup in text, not quotes inside generated attributes.
+  #
+  # Writes here are anonymous, so this is reachable by any visitor. Replacing the quote
+  # with its HTML entity before parsing means whatever reaches an attribute can no longer
+  # terminate it, while the character still renders as a quote in body text. Markdown
+  # itself goes away in the structured-fields migration, which removes this path entirely.
+  defp neutralize_attribute_injection(text), do: String.replace(text, "\"", "&quot;")
 end

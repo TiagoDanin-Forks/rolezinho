@@ -81,9 +81,21 @@ an event description comes out as text, not as a script. Switching it to
 `escape: false` — or rendering user markdown through another path without that
 option — opens stored XSS across every event page at once.
 
+`escape: true` covers markup in text, and **not** quotes in the attributes Earmark
+generates. Earmark 1.4.x writes link and image URLs straight into `href`/`src`, so a
+description containing `[x](http://a/?b=c" onerror="alert(1))` used to close the
+attribute and inject a handler (EEF-CVE-2026-48591). The package is retired and no
+patched release is coming, so `render_markdown/1` replaces `"` with `&quot;` before
+parsing: what reaches an attribute can no longer terminate it. `markdown_xss_test.exs`
+covers the three vectors — URL, image URL, and link title.
+
+The second invariant, then: **user text never reaches Earmark without passing through
+that replacement.** Both hold only while a single rendering path exists.
+
 Rules:
 
 - Never change `escape: true` to `false`.
+- Never call Earmark without the quote replacement that precedes it.
 - Do not introduce a second markdown rendering path. If you need one, reuse the
   existing function instead of calling Earmark directly.
 - When adding a new `raw(...)`, its content must come from one of two origins:
@@ -277,7 +289,7 @@ anonymous input, treat the limit as part of the deliverable, not as a follow-up.
 Three questions, every time:
 
 1. **What external content am I rendering** — is it escaped, and does the markdown
-   still go through `escape: true`?
+   still go through `escape: true` *and* the quote replacement?
 2. **What action am I adding** — is it admin or public? If it's admin, does it have
    both the plug **and** the `on_mount`? If it's a privileged `handle_event`, does it
    re-check permission in the handler?
