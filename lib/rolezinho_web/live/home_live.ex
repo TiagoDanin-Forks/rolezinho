@@ -37,8 +37,12 @@ defmodule RolezinhoWeb.HomeLive do
             </p>
           </div>
 
-          <.link :if={@current_admin?} navigate={~p"/admin/new"} class="btn btn-primary">
-            <.icon name="hero-plus" class="size-4" /> Criar rolezinho
+          <.link
+            :if={@current_admin?}
+            navigate={~p"/admin/new"}
+            class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm bg-primary text-primary-content hover:bg-primary/90"
+          >
+            <.icon name="tabler-plus" class="size-4" /> Criar rolezinho
           </.link>
         </div>
       </section>

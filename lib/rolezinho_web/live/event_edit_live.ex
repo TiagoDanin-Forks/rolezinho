@@ -163,8 +163,11 @@ defmodule RolezinhoWeb.EventEditLive do
           <p class="text-xs text-base-content/50">/r/{@event.slug} · status: {@event.status}</p>
           <h1 class="text-3xl font-bold tracking-tight">Editar rolezinho</h1>
         </div>
-        <.link navigate={~p"/r/#{@event.slug}"} class="btn btn-sm btn-ghost">
-          <.icon name="hero-arrow-left" class="size-4" /> Voltar
+        <.link
+          navigate={~p"/r/#{@event.slug}"}
+          class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 hover:bg-base-200"
+        >
+          <.icon name="tabler-arrow-left" class="size-4" /> Voltar
         </.link>
       </div>
 
@@ -182,20 +185,27 @@ defmodule RolezinhoWeb.EventEditLive do
         >
           <label class="flex-1 min-w-64">
             <span class="label text-sm mb-1">Novo slug</span>
-            <div class="join w-full">
-              <span class="btn btn-sm join-item pointer-events-none px-3 font-mono text-xs sm:text-sm">/r/</span>
+            <div class="inline-flex -space-x-px w-full">
+              <span class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 rounded-none first:rounded-l-md last:rounded-r-md pointer-events-none font-mono text-xs sm:text-sm">/r/</span>
               <input
                 type="text"
                 name="slug"
                 id="slug-input"
                 value={@slug_input}
-                class="input input-bordered join-item flex-1 font-mono text-sm"
+                class={[
+                  field_class(),
+                  "rounded-none first:rounded-l-md last:rounded-r-md flex-1 font-mono"
+                ]}
                 pattern="[a-z0-9](?:[a-z0-9-]{0,60}[a-z0-9])?"
                 required
               />
             </div>
           </label>
-          <button type="submit" class="btn btn-primary" disabled={@slug_input == @event.slug}>
+          <button
+            type="submit"
+            class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm bg-primary text-primary-content hover:bg-primary/90"
+            disabled={@slug_input == @event.slug}
+          >
             Salvar slug
           </button>
         </form>
@@ -216,7 +226,10 @@ defmodule RolezinhoWeb.EventEditLive do
           </div>
 
           <div>
-            <button type="submit" class="btn btn-primary">Salvar quando &amp; onde</button>
+            <button
+              type="submit"
+              class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm bg-primary text-primary-content hover:bg-primary/90"
+            >Salvar quando &amp; onde</button>
           </div>
         </.form>
       </section>
@@ -233,11 +246,14 @@ defmodule RolezinhoWeb.EventEditLive do
             name="content"
             id="event-content"
             rows="24"
-            class="w-full textarea textarea-bordered font-mono text-sm leading-relaxed"
+            class={["w-full font-mono leading-relaxed", field_class()]}
             phx-debounce="500"
           >{@content}</textarea>
           <div class="mt-3 flex gap-3">
-            <button type="submit" class="btn btn-primary">Salvar texto</button>
+            <button
+              type="submit"
+              class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm bg-primary text-primary-content hover:bg-primary/90"
+            >Salvar texto</button>
           </div>
         </form>
       </section>
@@ -256,7 +272,10 @@ defmodule RolezinhoWeb.EventEditLive do
               label="Vagas"
             />
           </div>
-          <button type="submit" class="btn btn-outline mb-2">Atualizar</button>
+          <button
+            type="submit"
+            class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm border border-base-300 hover:bg-base-200 mb-2"
+          >Atualizar</button>
         </form>
         <p class="text-xs text-base-content/60 mt-2">
           Não é possível reduzir abaixo de quantas pessoas já estão na lista. Atualmente: {filled_count(
@@ -287,13 +306,13 @@ defmodule RolezinhoWeb.EventEditLive do
               id="event-password-input"
               value={@password_input}
               placeholder="em branco = sem senha"
-              class="input input-bordered w-full font-mono text-sm"
+              class={[field_class(), "w-full font-mono"]}
               autocomplete="off"
             />
           </label>
           <button
             type="submit"
-            class="btn btn-primary"
+            class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm bg-primary text-primary-content hover:bg-primary/90"
             disabled={@password_input == (@event.password || "")}
           >
             Salvar senha
@@ -316,8 +335,11 @@ defmodule RolezinhoWeb.EventEditLive do
             phx-value-status={to_string(status)}
             disabled={@event.status == status}
             class={[
-              "btn btn-sm",
-              if(@event.status == status, do: "btn-primary", else: "btn-outline")
+              "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5",
+              if(@event.status == status,
+                do: "bg-primary text-primary-content hover:bg-primary/90",
+                else: "border border-base-300 hover:bg-base-200"
+              )
             ]}
           >
             {status_label(status)}
@@ -342,7 +364,7 @@ defmodule RolezinhoWeb.EventEditLive do
           type="button"
           phx-click="delete"
           data-confirm="Apagar este rolezinho? Isso é permanente."
-          class="btn btn-error btn-sm"
+          class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm bg-error text-error-content hover:bg-error/90 px-3 py-1.5"
         >
           Apagar rolezinho
         </button>

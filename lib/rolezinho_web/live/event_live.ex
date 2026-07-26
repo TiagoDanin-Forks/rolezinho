@@ -378,10 +378,22 @@ defmodule RolezinhoWeb.EventLive do
             <.link navigate={~p"/"} class="hover:text-base-content">← Rolezinhos</.link>
             <span>·</span>
             <span>/r/{@event.slug}</span>
-            <span :if={@event.status == :hidden} class="badge badge-warning badge-sm">Oculto</span>
-            <span :if={@event.status == :done} class="badge badge-neutral badge-sm">Concluído</span>
-            <span :if={@signups_locked?} class="badge badge-info badge-sm">Só pagamentos</span>
-            <span :if={@password_protected?} class="badge badge-outline badge-sm">Com senha</span>
+            <span
+              :if={@event.status == :hidden}
+              class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-warning/15 text-warning"
+            >Oculto</span>
+            <span
+              :if={@event.status == :done}
+              class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-base-300 text-base-content"
+            >Concluído</span>
+            <span
+              :if={@signups_locked?}
+              class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-info/15 text-info"
+            >Só pagamentos</span>
+            <span
+              :if={@password_protected?}
+              class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border border-base-300"
+            >Com senha</span>
           </div>
 
           <h1 class="text-3xl sm:text-4xl font-bold tracking-tight">{@event.title}</h1>
@@ -450,9 +462,9 @@ defmodule RolezinhoWeb.EventLive do
             type="button"
             phx-hook=".CopyText"
             data-text={@shareable_text}
-            class="btn btn-sm btn-outline"
+            class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 border border-base-300 hover:bg-base-200"
           >
-            <.icon name="hero-clipboard" class="size-4" /> Copiar lista
+            <.icon name="tabler-clipboard" class="size-4" /> Copiar lista
           </button>
           <button
             id="share-btn"
@@ -461,24 +473,24 @@ defmodule RolezinhoWeb.EventLive do
             data-title={@event.title}
             data-text={@shareable_text}
             data-url={@event_url}
-            class="btn btn-sm btn-outline"
+            class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 border border-base-300 hover:bg-base-200"
           >
-            <.icon name="hero-share" class="size-4" /> Compartilhar
+            <.icon name="tabler-share" class="size-4" /> Compartilhar
           </button>
           <a
             href={"/r/#{@event.slug}.txt"}
             target="_blank"
             rel="noopener"
-            class="btn btn-sm btn-ghost"
+            class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 hover:bg-base-200"
           >
-            <.icon name="hero-document-text" class="size-4" /> Texto puro
+            <.icon name="tabler-file-text" class="size-4" /> Texto puro
           </a>
           <.link
             :if={@current_admin?}
             navigate={~p"/admin/r/#{@event.slug}/edit"}
-            class="btn btn-sm btn-primary"
+            class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 bg-primary text-primary-content hover:bg-primary/90"
           >
-            <.icon name="hero-pencil-square" class="size-4" /> Editar
+            <.icon name="tabler-edit" class="size-4" /> Editar
           </.link>
         </div>
 
@@ -490,10 +502,10 @@ defmodule RolezinhoWeb.EventLive do
             type="button"
             phx-click="clone"
             data-confirm="Criar uma cópia deste rolezinho?"
-            class="btn btn-sm btn-outline"
+            class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 border border-base-300 hover:bg-base-200"
             title="Duplicar este rolezinho para editar em cima"
           >
-            <.icon name="hero-document-duplicate" class="size-4" /> Clonar
+            <.icon name="tabler-copy" class="size-4" /> Clonar
           </button>
         </div>
 
@@ -505,7 +517,7 @@ defmodule RolezinhoWeb.EventLive do
           <input
             id="share-password-toggle"
             type="checkbox"
-            class="checkbox checkbox-sm"
+            class={checkbox_class()}
             phx-click="toggle_share_password"
             checked={@show_password_in_share?}
           />
@@ -520,24 +532,24 @@ defmodule RolezinhoWeb.EventLive do
                 {filled_count(@event.main_list)} / {@event.main_capacity} vagas preenchidas
               </p>
             </div>
-            <div :if={@current_admin?} class="join">
+            <div :if={@current_admin?} class="inline-flex -space-x-px">
               <button
                 type="button"
                 phx-click="shrink_main"
                 disabled={@event.main_capacity <= max(filled_count(@event.main_list), 1)}
-                class="btn btn-sm join-item"
+                class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 rounded-none first:rounded-l-md last:rounded-r-md"
                 title="Diminuir uma vaga"
               >
-                <.icon name="hero-minus" class="size-4" />
+                <.icon name="tabler-minus" class="size-4" />
               </button>
-              <span class="btn btn-sm join-item pointer-events-none">Vagas: {@event.main_capacity}</span>
+              <span class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 rounded-none first:rounded-l-md last:rounded-r-md pointer-events-none">Vagas: {@event.main_capacity}</span>
               <button
                 type="button"
                 phx-click="grow_main"
-                class="btn btn-sm join-item"
+                class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 rounded-none first:rounded-l-md last:rounded-r-md"
                 title="Adicionar uma vaga"
               >
-                <.icon name="hero-plus" class="size-4" />
+                <.icon name="tabler-plus" class="size-4" />
               </button>
             </div>
           </div>
@@ -566,11 +578,18 @@ defmodule RolezinhoWeb.EventLive do
                       type="text"
                       name="name"
                       value={att.name}
-                      class="input input-sm flex-1"
+                      class={[field_class(), "px-2 py-1 flex-1"]}
                       autofocus
                     />
-                    <button type="submit" class="btn btn-sm btn-primary">Salvar</button>
-                    <button type="button" phx-click="cancel_edit" class="btn btn-sm btn-ghost">
+                    <button
+                      type="submit"
+                      class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 bg-primary text-primary-content hover:bg-primary/90"
+                    >Salvar</button>
+                    <button
+                      type="button"
+                      phx-click="cancel_edit"
+                      class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 hover:bg-base-200"
+                    >
                       Cancelar
                     </button>
                   </form>
@@ -593,8 +612,11 @@ defmodule RolezinhoWeb.EventLive do
                   phx-click="toggle_paid_main"
                   phx-value-index={i}
                   class={[
-                    "btn btn-xs",
-                    if(att.paid, do: "btn-success", else: "btn-outline")
+                    "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-2 py-1 text-xs",
+                    if(att.paid,
+                      do: "bg-success text-success-content hover:bg-success/90",
+                      else: "border border-base-300 hover:bg-base-200"
+                    )
                   ]}
                   title="Alternar pago"
                 >
@@ -605,10 +627,10 @@ defmodule RolezinhoWeb.EventLive do
                   type="button"
                   phx-click="start_edit_main"
                   phx-value-index={i}
-                  class="btn btn-xs btn-ghost"
+                  class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-2 py-1 text-xs hover:bg-base-200"
                   title="Editar nome"
                 >
-                  <.icon name="hero-pencil" class="size-3.5" />
+                  <.icon name="tabler-pencil" class="size-3.5" />
                 </button>
                 <button
                   :if={@current_admin? and String.trim(att.name) != "" and @editing_main != i}
@@ -616,10 +638,10 @@ defmodule RolezinhoWeb.EventLive do
                   phx-click="remove_main"
                   phx-value-index={i}
                   data-confirm="Remover essa pessoa?"
-                  class="btn btn-xs btn-ghost text-error"
+                  class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-2 py-1 text-xs hover:bg-base-200 text-error"
                   title="Remover"
                 >
-                  <.icon name="hero-x-mark" class="size-3.5" />
+                  <.icon name="tabler-x" class="size-3.5" />
                 </button>
               </div>
             </li>
@@ -640,10 +662,13 @@ defmodule RolezinhoWeb.EventLive do
                 name="name"
                 value={@new_main_name}
                 placeholder="Seu nome"
-                class="input input-bordered flex-1 min-w-0"
+                class={[field_class(), "flex-1 min-w-0"]}
                 required
               />
-              <button type="submit" class="btn btn-primary">Entrar na lista</button>
+              <button
+                type="submit"
+                class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm bg-primary text-primary-content hover:bg-primary/90"
+              >Entrar na lista</button>
             </form>
           </div>
 
@@ -698,11 +723,18 @@ defmodule RolezinhoWeb.EventLive do
                       type="text"
                       name="name"
                       value={att.name}
-                      class="input input-sm flex-1"
+                      class={[field_class(), "px-2 py-1 flex-1"]}
                       autofocus
                     />
-                    <button type="submit" class="btn btn-sm btn-primary">Salvar</button>
-                    <button type="button" phx-click="cancel_edit" class="btn btn-sm btn-ghost">Cancelar</button>
+                    <button
+                      type="submit"
+                      class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 bg-primary text-primary-content hover:bg-primary/90"
+                    >Salvar</button>
+                    <button
+                      type="button"
+                      phx-click="cancel_edit"
+                      class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 hover:bg-base-200"
+                    >Cancelar</button>
                   </form>
                 <% true -> %>
                   <span class={[
@@ -720,10 +752,10 @@ defmodule RolezinhoWeb.EventLive do
                   type="button"
                   phx-click="promote"
                   phx-value-index={i}
-                  class="btn btn-xs btn-primary"
+                  class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-2 py-1 text-xs bg-primary text-primary-content hover:bg-primary/90"
                   title="Promover para a lista principal"
                 >
-                  <.icon name="hero-arrow-up" class="size-3.5" /> Promover
+                  <.icon name="tabler-arrow-up" class="size-3.5" /> Promover
                 </button>
                 <button
                   :if={@current_admin? and @editing_wait != i}
@@ -731,8 +763,11 @@ defmodule RolezinhoWeb.EventLive do
                   phx-click="toggle_paid_wait"
                   phx-value-index={i}
                   class={[
-                    "btn btn-xs",
-                    if(att.paid, do: "btn-success", else: "btn-outline")
+                    "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-2 py-1 text-xs",
+                    if(att.paid,
+                      do: "bg-success text-success-content hover:bg-success/90",
+                      else: "border border-base-300 hover:bg-base-200"
+                    )
                   ]}
                   title="Alternar pago"
                 >
@@ -743,10 +778,10 @@ defmodule RolezinhoWeb.EventLive do
                   type="button"
                   phx-click="start_edit_wait"
                   phx-value-index={i}
-                  class="btn btn-xs btn-ghost"
+                  class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-2 py-1 text-xs hover:bg-base-200"
                   title="Editar nome"
                 >
-                  <.icon name="hero-pencil" class="size-3.5" />
+                  <.icon name="tabler-pencil" class="size-3.5" />
                 </button>
                 <button
                   :if={@current_admin? and @editing_wait != i}
@@ -754,10 +789,10 @@ defmodule RolezinhoWeb.EventLive do
                   phx-click="remove_wait"
                   phx-value-index={i}
                   data-confirm="Remover da reserva?"
-                  class="btn btn-xs btn-ghost text-error"
+                  class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-2 py-1 text-xs hover:bg-base-200 text-error"
                   title="Remover"
                 >
-                  <.icon name="hero-x-mark" class="size-3.5" />
+                  <.icon name="tabler-x" class="size-3.5" />
                 </button>
               </div>
             </li>
@@ -775,10 +810,13 @@ defmodule RolezinhoWeb.EventLive do
                 name="name"
                 value={@new_wait_name}
                 placeholder="Seu nome"
-                class="input input-bordered flex-1 min-w-0"
+                class={[field_class(), "flex-1 min-w-0"]}
                 required
               />
-              <button type="submit" class="btn btn-outline">Entrar na reserva</button>
+              <button
+                type="submit"
+                class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm border border-base-300 hover:bg-base-200"
+              >Entrar na reserva</button>
             </form>
           </div>
 
@@ -870,7 +908,7 @@ defmodule RolezinhoWeb.EventLive do
     ~H"""
     <section class="rounded-2xl border border-info/40 bg-info/10 p-4 sm:p-5">
       <div class="flex items-start gap-3">
-        <.icon name="hero-banknotes" class="size-5 text-info shrink-0 mt-0.5" />
+        <.icon name="tabler-cash-banknote" class="size-5 text-info shrink-0 mt-0.5" />
         <div class="space-y-1">
           <p class="font-semibold">Rolezinho fechado, só pagamentos.</p>
           <p class="text-sm text-base-content/80">
@@ -891,7 +929,7 @@ defmodule RolezinhoWeb.EventLive do
     ~H"""
     <section class="rounded-2xl border border-warning/40 bg-warning/10 p-4 sm:p-5">
       <div class="flex items-start gap-3">
-        <.icon name="hero-lock-closed" class="size-5 text-warning shrink-0 mt-0.5" />
+        <.icon name="tabler-lock" class="size-5 text-warning shrink-0 mt-0.5" />
         <div class="flex-1 min-w-0 space-y-3">
           <div>
             <p class="font-semibold">Rolezinho protegido por senha.</p>
@@ -921,10 +959,13 @@ defmodule RolezinhoWeb.EventLive do
               placeholder="Senha do rolezinho"
               autocomplete="off"
               required
-              class="input input-bordered flex-1 min-w-0"
+              class={[field_class(), "flex-1 min-w-0"]}
             />
-            <button type="submit" class="btn btn-warning">
-              <.icon name="hero-key" class="size-4" /> Desbloquear
+            <button
+              type="submit"
+              class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm bg-warning text-warning-content hover:bg-warning/90"
+            >
+              <.icon name="tabler-key" class="size-4" /> Desbloquear
             </button>
           </form>
         </div>
@@ -943,7 +984,7 @@ defmodule RolezinhoWeb.EventLive do
     ~H"""
     <section class="rounded-2xl border border-primary/20 bg-primary/5 p-4 sm:p-5 space-y-3 lg:col-span-2">
       <div :if={@meta.date || @meta.time} class="flex items-start gap-3">
-        <.icon name="hero-calendar" class="size-5 text-primary shrink-0 mt-0.5" />
+        <.icon name="tabler-calendar" class="size-5 text-primary shrink-0 mt-0.5" />
         <div class="min-w-0">
           <p class="font-semibold">Quando</p>
           <p class="text-base-content/80">{Meta.format_when(@meta)}</p>
@@ -951,7 +992,7 @@ defmodule RolezinhoWeb.EventLive do
       </div>
 
       <div :if={@meta.local} class="flex items-start gap-3">
-        <.icon name="hero-map-pin" class="size-5 text-primary shrink-0 mt-0.5" />
+        <.icon name="tabler-map-pin" class="size-5 text-primary shrink-0 mt-0.5" />
         <div class="min-w-0">
           <p class="font-semibold">Onde</p>
           <p class="text-base-content/80 break-words">{@meta.local}</p>
@@ -963,16 +1004,16 @@ defmodule RolezinhoWeb.EventLive do
           href={@google_calendar_url}
           target="_blank"
           rel="noopener"
-          class="btn btn-sm btn-primary"
+          class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 bg-primary text-primary-content hover:bg-primary/90"
         >
-          <.icon name="hero-calendar-days" class="size-4" /> Google Calendar
+          <.icon name="tabler-calendar-event" class="size-4" /> Google Calendar
         </a>
         <a
           href={"/r/" <> @slug <> "/calendar.ics"}
-          class="btn btn-sm btn-outline"
+          class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 border border-base-300 hover:bg-base-200"
           download
         >
-          <.icon name="hero-arrow-down-tray" class="size-4" /> Apple / .ics
+          <.icon name="tabler-download" class="size-4" /> Apple / .ics
         </a>
       </div>
     </section>
@@ -1003,10 +1044,10 @@ defmodule RolezinhoWeb.EventLive do
           phx-hook=".CopyText"
           data-text={@pix.raw}
           data-copied-label="Copiado!"
-          class="btn btn-xs btn-outline"
+          class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-2 py-1 text-xs border border-base-300 hover:bg-base-200"
           title="Copiar chave Pix"
         >
-          <.icon name="hero-clipboard" class="size-3.5" /> Copiar
+          <.icon name="tabler-clipboard" class="size-3.5" /> Copiar
         </button>
       </div>
     </aside>

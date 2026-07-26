@@ -157,8 +157,14 @@ defmodule RolezinhoWeb.EventNewLive do
           </div>
 
           <div class="flex gap-3 pt-2">
-            <button type="submit" class="btn btn-primary">Criar rolezinho</button>
-            <.link navigate={~p"/admin"} class="btn btn-ghost">Cancelar</.link>
+            <button
+              type="submit"
+              class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm bg-primary text-primary-content hover:bg-primary/90"
+            >Criar rolezinho</button>
+            <.link
+              navigate={~p"/admin"}
+              class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm hover:bg-base-200"
+            >Cancelar</.link>
           </div>
         </.form>
       </div>

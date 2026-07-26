@@ -32,19 +32,22 @@ defmodule RolezinhoWeb.Layouts do
           <%= if @current_admin? do %>
             <.link
               navigate={~p"/admin"}
-              class="btn btn-sm btn-ghost hidden sm:inline-flex"
+              class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 hover:bg-base-200 hidden sm:inline-flex"
             >
               Painel
             </.link>
             <.link
               href={~p"/admin/logout"}
               method="delete"
-              class="btn btn-sm btn-outline"
+              class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 border border-base-300 hover:bg-base-200"
             >
               Sair
             </.link>
           <% else %>
-            <.link href={~p"/admin/login"} class="btn btn-sm btn-ghost">
+            <.link
+              href={~p"/admin/login"}
+              class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 hover:bg-base-200"
+            >
               Admin
             </.link>
           <% end %>
@@ -88,7 +91,7 @@ defmodule RolezinhoWeb.Layouts do
         hidden
       >
         {gettext("Attempting to reconnect")}
-        <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
+        <.icon name="tabler-refresh" class="ml-1 size-3 motion-safe:animate-spin" />
       </.flash>
 
       <.flash
@@ -103,7 +106,7 @@ defmodule RolezinhoWeb.Layouts do
         hidden
       >
         {gettext("Attempting to reconnect")}
-        <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
+        <.icon name="tabler-refresh" class="ml-1 size-3 motion-safe:animate-spin" />
       </.flash>
     </div>
     """
@@ -123,7 +126,7 @@ defmodule RolezinhoWeb.Layouts do
         data-phx-theme="system"
         title="Sistema"
       >
-        <.icon name="hero-computer-desktop-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name="tabler-device-desktop" class="size-4 opacity-75 hover:opacity-100" />
       </button>
 
       <button
@@ -132,7 +135,7 @@ defmodule RolezinhoWeb.Layouts do
         data-phx-theme="light"
         title="Claro"
       >
-        <.icon name="hero-sun-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name="tabler-sun" class="size-4 opacity-75 hover:opacity-100" />
       </button>
 
       <button
@@ -141,7 +144,7 @@ defmodule RolezinhoWeb.Layouts do
         data-phx-theme="dark"
         title="Escuro"
       >
-        <.icon name="hero-moon-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name="tabler-moon" class="size-4 opacity-75 hover:opacity-100" />
       </button>
     </div>
     """

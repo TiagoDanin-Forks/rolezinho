@@ -48,8 +48,11 @@ defmodule RolezinhoWeb.AdminHomeLive do
           <h1 class="text-3xl sm:text-4xl font-bold tracking-tight">Painel do admin</h1>
           <p class="mt-2 text-base-content/70">Gerencie todos os rolezinhos aqui.</p>
         </div>
-        <.link navigate={~p"/admin/new"} class="btn btn-primary">
-          <.icon name="hero-plus" class="size-4" /> Criar rolezinho
+        <.link
+          navigate={~p"/admin/new"}
+          class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm bg-primary text-primary-content hover:bg-primary/90"
+        >
+          <.icon name="tabler-plus" class="size-4" /> Criar rolezinho
         </.link>
       </div>
 
@@ -91,10 +94,13 @@ defmodule RolezinhoWeb.AdminHomeLive do
             <p class="text-xs text-base-content/60 truncate">/r/{event.slug}</p>
           </div>
           <div class="flex items-center gap-2 shrink-0">
-            <.link navigate={~p"/r/#{event.slug}"} class="btn btn-sm btn-ghost">Abrir</.link>
+            <.link
+              navigate={~p"/r/#{event.slug}"}
+              class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 hover:bg-base-200"
+            >Abrir</.link>
             <.link
               navigate={~p"/admin/r/#{event.slug}/edit"}
-              class="btn btn-sm btn-primary"
+              class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 bg-primary text-primary-content hover:bg-primary/90"
             >
               Editar
             </.link>
@@ -104,10 +110,10 @@ defmodule RolezinhoWeb.AdminHomeLive do
               phx-click="clone"
               phx-value-slug={event.slug}
               data-confirm={"Criar uma cópia de \"" <> event.title <> "\"?"}
-              class="btn btn-sm btn-outline"
+              class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 border border-base-300 hover:bg-base-200"
               title="Clonar"
             >
-              <.icon name="hero-document-duplicate" class="size-4" /> Clonar
+              <.icon name="tabler-copy" class="size-4" /> Clonar
             </button>
           </div>
         </li>
