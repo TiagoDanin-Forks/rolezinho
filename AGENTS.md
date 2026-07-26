@@ -1,117 +1,115 @@
 # AGENTS.md
 
-Este arquivo orienta agentes de código ao trabalhar neste repositório. Ele é o
-índice: as regras detalhadas vivem nos documentos apontados na tabela abaixo.
+This file guides coding agents working in this repository. It is the index: the
+detailed rules live in the documents referenced in the table below.
 
-## O que é este projeto
+## What this project is
 
-**Rolezinho** — aplicação Phoenix + LiveView para organizar rolezinhos (encontros
-informais). Cada rolê vive em `/r/<slug>` e concentra data, local, lista de
-presença ao vivo, lista de reserva e QR Code Pix. O mesmo rolê sai em três
-formatos: página, texto puro (`/r/<slug>.txt`) e calendário
-(`/r/<slug>/calendar.ics`).
+**Rolezinho** — a Phoenix + LiveView app for organizing informal get-togethers. Each
+event lives at `/r/<slug>` and holds the date, location, a live attendance list, a
+waitlist, and a Pix QR code. The same event ships in three formats: page, plain text
+(`/r/<slug>.txt`), and calendar (`/r/<slug>/calendar.ics`).
 
-**Não há contas de usuário.** Convidados usam o app anonimamente a partir de um
-link; o organizador entra em `/admin/login` com uma senha única de ambiente. Esse
-modelo de acesso é a diferença mais importante em relação ao Phoenix padrão — não
-existe `current_scope` nem `current_user` aqui. Leia `SECURITY.md` antes de mexer
-em qualquer superfície de acesso.
+**There are no user accounts.** Guests use the app anonymously from a link; the
+organizer signs in at `/admin/login` with a single environment password. This access
+model is the most important difference from stock Phoenix — there is no `current_scope`
+and no `current_user` here. Read `SECURITY.md` before touching any access surface.
 
-Stack: Phoenix 1.8, LiveView 1.2, PostgreSQL, Tailwind v4 (tokens no `@theme` do
-`app.css`), ícones Tabler, Earmark para markdown, deploy em Fly.io.
+Stack: Phoenix 1.8, LiveView 1.2, PostgreSQL, Tailwind v4 (tokens in the `@theme` block
+of `app.css`), Tabler icons, Earmark for markdown, deployed on Fly.io.
 
-## Leia X quando Y
+## Read X when Y
 
-| Leia | Quando |
+| Read | When |
 |---|---|
-| `PRODUCT.md` | Ao decidir qualquer coisa de produto/UX: personas, jornadas, escopo, anti-referências |
-| `DESIGN.md` | Antes de qualquer trabalho de UI: tokens (cores dos dois temas, tipografia, raios, spacing), princípios visuais |
-| `SECURITY.md` | Antes de mexer em rota, evento, superfície de admin, conteúdo gateado por senha, `raw(...)` ou segredo |
-| `TODOS.md` | Para saber as pendências técnicas e de infra do projeto |
-| `MEMORY.md` | No início de sessões de trabalho: descobertas recentes ainda não promovidas a rules |
-| `docs/flow/README.md` | Antes de criar ou atualizar documentação de fluxo |
-| `docs/decisions/README.md` | Antes de registrar (ou contestar) uma decisão de arquitetura |
-| `.claude/rules/general.md` | Sempre — preferências gerais de desenvolvimento e comunicação |
-| `.claude/rules/elixir.md` | Ao escrever qualquer código Elixir |
-| `.claude/rules/elixir-antipatterns.md` | Ao escrever/revisar código Elixir — antipadrões de código |
-| `.claude/rules/elixir-design-antipatterns.md` | Ao modelar módulos, contextos e APIs internas |
-| `.claude/rules/phoenix.md` | Ao trabalhar em controllers, contextos, router, plugs, schemas |
-| `.claude/rules/liveview.md` | Ao trabalhar em LiveViews, componentes e templates HEEx |
-| `.claude/rules/testing.md` | Ao escrever ou alterar testes |
-| `.claude/rules/documentation.md` | Ao escrever ou atualizar docs em `docs/` |
-| `.claude/rules/design.md` | Antes de qualquer trabalho de UI — ponteiro para `PRODUCT.md` e `DESIGN.md` |
-| `.claude/rules/security.md` | Ao mexer em segurança — ponteiro para `SECURITY.md` |
-| `.claude/skills/flow-documenter/SKILL.md` | Ao documentar um fluxo/tela/feature em `docs/flow/` |
-| `.claude/skills/pr-description/SKILL.md` | Ao gerar descrição de PR |
-| `.claude/agents/flow-documenter.md` | Ao delegar a documentação de um fluxo |
-| `.claude/commands/pr.md` | Para gerar o PR da branch atual (`/pr`) |
-| `.claude/commands/major.md` / `minor.md` / `patch.md` | Para bump de versão semântica no `mix.exs` |
+| `PRODUCT.md` | Deciding anything about product/UX: personas, journeys, scope, anti-references |
+| `DESIGN.md` | Before any UI work: tokens (colors for both themes, typography, radii, spacing), visual principles |
+| `SECURITY.md` | Before touching a route, an event, an admin surface, password-gated content, `raw(...)`, or a secret |
+| `TODOS.md` | To learn the project's technical and infrastructure debt |
+| `MEMORY.md` | At the start of a work session: recent discoveries not yet promoted to rules |
+| `docs/flow/README.md` | Before creating or updating flow documentation |
+| `docs/decisions/README.md` | Before recording (or challenging) an architecture decision |
+| `.claude/rules/general.md` | Always — general development and communication preferences |
+| `.claude/rules/elixir.md` | Writing any Elixir code |
+| `.claude/rules/elixir-antipatterns.md` | Writing/reviewing Elixir code — code anti-patterns |
+| `.claude/rules/elixir-design-antipatterns.md` | Modeling modules, contexts, and internal APIs |
+| `.claude/rules/phoenix.md` | Working on controllers, contexts, the router, plugs, schemas |
+| `.claude/rules/liveview.md` | Working on LiveViews, components, and HEEx templates |
+| `.claude/rules/testing.md` | Writing or changing tests |
+| `.claude/rules/documentation.md` | Writing or updating docs in `docs/` |
+| `.claude/rules/design.md` | Before any UI work — pointer to `PRODUCT.md` and `DESIGN.md` |
+| `.claude/rules/security.md` | Touching security — pointer to `SECURITY.md` |
+| `.claude/skills/flow-documenter/SKILL.md` | Documenting a flow/screen/feature in `docs/flow/` |
+| `.claude/skills/pr-description/SKILL.md` | Generating a PR description |
+| `.claude/agents/flow-documenter.md` | Delegating the documentation of a flow |
+| `.claude/commands/pr.md` | Generating the current branch's PR (`/pr`) |
+| `.claude/commands/major.md` / `minor.md` / `patch.md` | Bumping the semantic version in `mix.exs` |
 
-## Regras de ouro
+## Golden rules
 
-1. **Dev soberano.** Por padrão quem commita é o dev: ao final de um bloco de
-   trabalho, sugira a mensagem de commit. Só execute `git commit` quando o dev
-   pedir diretamente. `git push` é **sempre** do dev. Nunca use `git stash`.
-2. **Plano antes de código.** Toda mudança não trivial começa com um plano
-   apresentado ao dev, que precisa aprovar antes da implementação.
-3. **Commits em inglês, conventional commits.** `feat:`, `fix:`, `chore:`,
+1. **The developer owns git.** By default the developer commits: at the end of a work
+   block, suggest the commit message. Only run `git commit` when the developer asks
+   directly. `git push` is **always** the developer's. Never use `git stash`.
+2. **Plan before code.** Every non-trivial change starts with a plan presented to the
+   developer, who must approve it before implementation.
+3. **Commits in English, conventional commits.** `feat:`, `fix:`, `chore:`,
    `refactor:`, `test:`, `docs:`.
-4. **Conversa, PRs, docs: tudo em pt-BR.**
-5. **Sem emojis** — em código, docs, commits, PRs e conversa.
-6. **Nunca mencionar IA** em mensagens de commit, títulos ou descrições de PR.
-7. **Nunca duplicar fonte de verdade.** Rules curtas apontam para o doc onde o
-   conteúdo mora. Se uma informação existe em dois lugares, um deles está errado
-   (ou vai ficar). Pares acoplados conhecidos: `DESIGN.md` ↔ `@theme` do
-   `app.css`.
+4. **Conversation, PRs, docs: all in English.**
+5. **No emojis** — in code, docs, commits, PRs, or conversation.
+6. **Never mention AI** in commit messages, PR titles, or PR descriptions.
+7. **Never duplicate a source of truth.** Short rules point to the doc where the content
+   lives. If a piece of information exists in two places, one of them is wrong (or soon
+   will be). Known coupled pairs: `DESIGN.md` ↔ the `@theme` block in `app.css`.
 
-## As três invariantes do projeto
+## The project's three invariants
 
-Quebrar qualquer uma destas é bug, não escolha de estilo:
+Breaking any of these is a bug, not a style choice:
 
-1. **`escape: true` no Earmark.** É o que impede XSS armazenado nos `raw(...)` que
-   renderizam markdown escrito por usuários. Nunca desligue; nunca crie um segundo
-   caminho de render de markdown. (`SECURITY.md`, seção 1)
-2. **Admin exige plug *e* `on_mount`.** O plug protege o request HTTP; o
-   `on_mount` protege a conexão do socket, que não passa pelo pipeline. Só um dos
-   dois deixa a superfície aberta pelo outro lado. (`SECURITY.md`, seção 2)
-3. **Gate de senha no servidor.** Conteúdo de rolê protegido que chega ao HTML e é
-   escondido por CSS já vazou. (`SECURITY.md`, seção 3)
+1. **`escape: true` in Earmark.** It's what prevents stored XSS in the `raw(...)` calls
+   that render user-written markdown. Never turn it off; never create a second markdown
+   rendering path. (`SECURITY.md`, section 1)
+2. **Admin requires the plug *and* the `on_mount`.** The plug protects the HTTP request;
+   the `on_mount` protects the socket connection, which doesn't pass through the
+   pipeline. Either one alone leaves the surface open from the other side.
+   (`SECURITY.md`, section 2)
+3. **Password gating on the server.** Protected event content that reaches the HTML and
+   is hidden by CSS has already leaked. (`SECURITY.md`, section 3)
 
-## Comandos essenciais
+## Essential commands
 
 ```bash
-mix setup              # instalar deps, criar/migrar DB, build de assets
-mix phx.server         # servidor dev em localhost:4000
-mix test               # rodar todos os testes (cria e migra o DB de teste automaticamente)
-mix test caminho/do/arquivo_test.exs   # rodar um arquivo de teste
-mix test --failed      # reexecutar apenas os testes que falharam
-mix precommit          # qualidade: compile --warnings-as-errors, deps.unlock --unused, format, test
-mix format             # formatar código
-mix ecto.gen.migration nome_em_snake_case   # gerar migração (sempre via CLI)
-mix ecto.reset         # dropar e recriar o DB de dev
-mix assets.build       # compilar assets (tailwind + esbuild)
+mix setup              # install deps, create/migrate the DB, build assets
+mix phx.server         # dev server at localhost:4000
+mix test               # run all tests (creates and migrates the test DB automatically)
+mix test path/to/file_test.exs   # run a single test file
+mix test --failed      # re-run only the tests that failed
+mix precommit          # quality: compile --warnings-as-errors, deps.unlock --unused, format, test
+mix format             # format code
+mix ecto.gen.migration name_in_snake_case   # generate a migration (always via the CLI)
+mix ecto.reset         # drop and recreate the dev DB
+mix assets.build       # compile assets (tailwind + esbuild)
 ```
 
-Em dev: LiveDashboard em `/dev/dashboard` e mailbox do Swoosh em `/dev/mailbox`.
-Depende de PostgreSQL em `localhost:5432` com user/senha `postgres`.
+In dev: LiveDashboard at `/dev/dashboard` and the Swoosh mailbox at `/dev/mailbox`.
+Requires PostgreSQL at `localhost:5432` with user/password `postgres`.
 
-## Ciclo de memória
+## Memory cycle
 
-- Descobertas de sessão (padrões novos, soluções não óbvias, convenções do
-  projeto) são anotadas em `MEMORY.md`.
-- Quando uma anotação se mostra estável e repetível ao longo de várias sessões, é
-  **promovida** para a rule correspondente em `.claude/rules/` (ou para um doc em
-  `docs/`) e removida do `MEMORY.md`.
-- Entradas erradas ou desatualizadas são corrigidas ou removidas — memória velha é
-  pior que memória nenhuma.
+- Session discoveries (new patterns, non-obvious solutions, project conventions) are
+  recorded in `MEMORY.md`.
+- Once a note proves stable and repeatable across several sessions, it is **promoted** to
+  the corresponding rule in `.claude/rules/` (or to a doc in `docs/`) and removed from
+  `MEMORY.md`.
+- Wrong or outdated entries are corrected or removed — stale memory is worse than no
+  memory.
 
 ---
 
-# Guidelines técnicas do Phoenix
+# Phoenix technical guidelines
 
-O que segue são as convenções técnicas do framework. Onde uma regra abaixo
-divergir de uma rule em `.claude/rules/` ou de um doc de raiz, **o documento do
-projeto vence** — ele conhece este código; as guidelines abaixo são genéricas.
+What follows are the framework's technical conventions. Where a rule below conflicts with
+a rule in `.claude/rules/` or with a root doc, **the project document wins** — it knows
+this codebase; the guidelines below are generic.
 
 ## Project guidelines
 

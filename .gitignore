@@ -1,3 +1,37 @@
+# =============================================================
+# Claude Code
+# -------------------------------------------------------------
+# Ignore everything inside .claude/ by default, then whitelist
+# the files that belong to the project (shared with the team).
+# =============================================================
+# Re-include .claude/ (the user's global gitignore excludes the
+# whole directory, which would block the whitelists below)
+!.claude/
+.claude/*
+!.claude/settings.json
+!.claude/rules/
+!.claude/skills/
+!.claude/agents/
+!.claude/commands/
+
+# User-local settings and personal overrides (never versioned)
+.claude/settings.local.json
+.claude/*.local.json
+CLAUDE.local.md
+
+# CLAUDE.md is intentionally NOT versioned: AGENTS.md is this project's
+# single entry point for agent instructions. Keeping CLAUDE.md out of the
+# repo prevents a second source of truth from drifting away from AGENTS.md.
+CLAUDE.md
+
+# =============================================================
+# OS
+# =============================================================
+.DS_Store
+
+# =============================================================
+# Elixir / Phoenix
+# =============================================================
 # The directory Mix will write compiled artifacts to.
 /_build/
 
@@ -35,4 +69,18 @@ rolezinho-*.tar
 npm-debug.log
 /assets/node_modules/
 
+# Elixir language server artifacts.
+/.elixir_ls/
+
+# Local event data (markdown dropped in by hand, not part of the app).
 priv/data/*.md
+
+# =============================================================
+# Secrets
+# -------------------------------------------------------------
+# Local secrets: API keys and credentials never enter the repository.
+# The expected variables are documented in README.md.
+# =============================================================
+.env
+.env.*
+!.env.example
