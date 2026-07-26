@@ -723,7 +723,30 @@ defmodule RolezinhoWeb.EventLive do
             >Com senha</span>
           </div>
 
-          <h1 class="text-3xl sm:text-4xl font-bold tracking-tight">{@event.title}</h1>
+          <!-- Screen actions belong beside the title. Loose between two cards
+               they read as an orphan with no owner. -->
+          <div class="flex items-start justify-between gap-3">
+            <h1 class="min-w-0 flex-1 text-2xl font-extrabold tracking-tight">{@event.title}</h1>
+
+            <div class="flex shrink-0 items-center gap-1.5">
+              <button
+                type="button"
+                phx-click={BottomSheet.show("share-sheet")}
+                class="grid size-11 place-items-center rounded-full bg-ink/[0.06] text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                aria-label="Compartilhar a lista"
+              >
+                <.icon name="tabler-share" class="size-[18px]" />
+              </button>
+              <.link
+                :if={@current_admin?}
+                navigate={~p"/admin/r/#{@event.slug}/edit"}
+                class="grid size-11 place-items-center rounded-full bg-ink/[0.06] text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                aria-label="Editar o rolê"
+              >
+                <.icon name="tabler-pencil" class="size-[18px]" />
+              </.link>
+            </div>
+          </div>
 
           <.payments_only_notice :if={@signups_locked?} />
 
@@ -733,82 +756,24 @@ defmodule RolezinhoWeb.EventLive do
             has_location?={@has_location?}
           />
 
-          <%= cond do %>
-            <% Meta.any?(@meta) and @pix -> %>
-              <div class="space-y-3">
-                <.when_where_panel
-                  meta={@meta}
-                  slug={@event.slug}
-                  google_calendar_url={@google_calendar_url}
-                />
-                <.pix_summary
-                  pix={@pix}
-                  amount={Cash.format_amount(@event.price_cents)}
-                  slug={@event.slug}
-                />
-              </div>
+          <!-- One card, and the description under it. The four-way cond this
+               replaces existed only to pair two panels that are now one. -->
+          <.event_details
+            :if={Meta.any?(@meta) or @pix}
+            meta={@meta}
+            slug={@event.slug}
+            google_calendar_url={@google_calendar_url}
+            pix={@pix}
+            amount={Cash.format_amount(@event.price_cents)}
+          />
 
-              <div
-                :if={@stripped_header != ""}
-                class="prose prose-sm sm:prose-base max-w-none prose-p:my-2 leading-relaxed"
-              >
-                {raw(render_markdown(@stripped_header))}
-              </div>
-            <% Meta.any?(@meta) -> %>
-              <.when_where_panel
-                meta={@meta}
-                slug={@event.slug}
-                google_calendar_url={@google_calendar_url}
-              />
-
-              <div
-                :if={@stripped_header != ""}
-                class="prose prose-sm sm:prose-base max-w-none prose-p:my-2 leading-relaxed"
-              >
-                {raw(render_markdown(@stripped_header))}
-              </div>
-            <% @pix -> %>
-              <div class="space-y-4">
-                <div
-                  :if={@stripped_header != ""}
-                  class="prose prose-sm sm:prose-base max-w-none prose-p:my-2 leading-relaxed"
-                >
-                  {raw(render_markdown(@stripped_header))}
-                </div>
-                <.pix_summary
-                  pix={@pix}
-                  amount={Cash.format_amount(@event.price_cents)}
-                  slug={@event.slug}
-                />
-              </div>
-            <% true -> %>
-              <div
-                :if={@stripped_header != ""}
-                class="prose prose-sm sm:prose-base max-w-none prose-p:my-2 leading-relaxed"
-              >
-                {raw(render_markdown(@stripped_header))}
-              </div>
-          <% end %>
+          <div
+            :if={@stripped_header != ""}
+            class="prose prose-sm sm:prose-base max-w-none prose-p:my-2 leading-relaxed"
+          >
+            {raw(render_markdown(@stripped_header))}
+          </div>
         </header>
-
-        <div class="flex items-center gap-1.5">
-          <button
-            type="button"
-            phx-click={BottomSheet.show("share-sheet")}
-            class="grid size-11 place-items-center rounded-full bg-ink/[0.06] text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-            aria-label="Compartilhar a lista"
-          >
-            <.icon name="tabler-share" class="size-[18px]" />
-          </button>
-          <.link
-            :if={@current_admin?}
-            navigate={~p"/admin/r/#{@event.slug}/edit"}
-            class="grid size-11 place-items-center rounded-full bg-ink/[0.06] text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-            aria-label="Editar o rolê"
-          >
-            <.icon name="tabler-pencil" class="size-[18px]" />
-          </.link>
-        </div>
 
         <!-- RN-52: repeating is the natural next move once a rolê is over, and
              it is the moment somebody looks for it. An unlabelled duplicate icon
@@ -1443,95 +1408,82 @@ defmodule RolezinhoWeb.EventLive do
     """
   end
 
-  # ---------- When/Where widget ----------
+  # ---------- Event details card ----------
 
+  # Where, when and how much — one card, one vocabulary. This used to be three
+  # stacked containers in three different styles (a tinted panel with a coloured
+  # border, two loose tiles, an orange link floating between them), which is what
+  # made the block read as a different product from the list below it.
+  #
+  # Facts are rows, not tiles: a row carries a label and a value at reading size,
+  # and stacking them lets the eye run down one edge. Money gets the tile,
+  # because the amount and the key are the two things somebody acts on.
   attr :meta, :map, required: true
   attr :slug, :string, required: true
   attr :google_calendar_url, :string, required: true, doc: "nil when no date is set"
+  attr :pix, :map, default: nil
+  attr :amount, :string, default: nil
 
-  defp when_where_panel(assigns) do
+  defp event_details(assigns) do
     ~H"""
-    <section class="rounded-2xl border border-primary/20 bg-primary/5 p-4 sm:p-5 space-y-3 lg:col-span-2">
-      <div :if={@meta.date || @meta.time} class="flex items-start gap-3">
-        <.icon name="tabler-calendar" class="size-5 text-primary shrink-0 mt-0.5" />
-        <div class="min-w-0">
-          <p class="font-semibold">Quando</p>
-          <p class="text-base-content/80">{Meta.format_when(@meta)}</p>
-        </div>
+    <section class="overflow-hidden rounded-card border border-hairline bg-base-100">
+      <div :if={@meta.date || @meta.time || @meta.local} class="px-3.5">
+        <.detail_row
+          :if={@meta.date || @meta.time}
+          label="Quando"
+          value={Meta.format_when(@meta)}
+          divider={!!@meta.local}
+        />
+        <.detail_row :if={@meta.local} label="Onde" value={@meta.local} divider={false} />
       </div>
 
-      <div :if={@meta.local} class="flex items-start gap-3">
-        <.icon name="tabler-map-pin" class="size-5 text-primary shrink-0 mt-0.5" />
-        <div class="min-w-0">
-          <p class="font-semibold">Onde</p>
-          <p class="text-base-content/80 break-words">{@meta.local}</p>
-        </div>
+      <div :if={@amount || @pix} class="space-y-2 px-3.5 pb-3.5 pt-1">
+        <.info_tile :if={@amount} label="Valor" value={@amount} />
+        <.info_tile
+          :if={@pix}
+          label="Chave Pix"
+          value={@pix.display}
+          action="Copiar"
+          id={"copy-pix-" <> @slug}
+          phx-hook=".CopyText"
+          data-text={@pix.key}
+          data-copied-label="Copiado!"
+        />
       </div>
 
-      <div :if={@google_calendar_url} class="flex flex-wrap gap-2 pt-1">
+      <!-- Secondary by construction: adding to a calendar and opening the QR are
+           things someone does once, so they sit on the tinted footer of the card
+           rather than competing with the list. -->
+      <div
+        :if={@google_calendar_url || @pix}
+        class="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-hairline bg-surface px-3.5 py-3"
+      >
+        <.link
+          :if={@pix}
+          navigate={~p"/r/#{@slug}/pagamento"}
+          class="inline-flex items-center gap-1.5 text-[11px] font-bold text-accent"
+        >
+          <.icon name="tabler-qrcode" class="size-4" /> Ver o QR Code
+        </.link>
         <a
+          :if={@google_calendar_url}
           href={@google_calendar_url}
           target="_blank"
           rel="noopener"
-          class="rounded-lg bg-ink px-2.5 py-1.5 text-[11px] font-bold text-ink-content"
+          class="inline-flex items-center gap-1.5 text-[11px] font-bold text-muted hover:text-ink"
         >
-          <.icon name="tabler-calendar-event" class="size-4" /> Google Calendar
+          <.icon name="tabler-calendar-plus" class="size-4" /> Agenda
         </a>
         <a
+          :if={@google_calendar_url}
           href={"/r/" <> @slug <> "/calendar.ics"}
-          class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 border border-base-300 hover:bg-base-200"
           download
+          class="inline-flex items-center gap-1.5 text-[11px] font-bold text-muted hover:text-ink"
         >
-          <.icon name="tabler-download" class="size-4" /> Apple / .ics
+          <.icon name="tabler-download" class="size-4" /> .ics
         </a>
       </div>
     </section>
-    """
-  end
-
-  # ---------- PIX panel ----------
-
-  # The amount and the key, compact. The QR code lives on the payment screen,
-  # which someone reaches right after joining: putting it here pushed the list
-  # itself — the reason this page exists — below the fold.
-  attr :pix, :map, required: true
-  attr :amount, :string, default: nil
-  attr :slug, :string, required: true
-
-  defp pix_summary(assigns) do
-    ~H"""
-    <div class="space-y-2">
-      <div :if={@amount} class="rounded-[14px] bg-tint px-3 py-2.5">
-        <div class="text-[10px] font-semibold uppercase text-muted">Valor</div>
-        <div class="mt-0.5 text-[15px] font-extrabold">{@amount}</div>
-      </div>
-
-      <div class="rounded-[14px] bg-tint px-3 py-2.5">
-        <div class="text-[10px] font-semibold uppercase text-muted">Chave Pix</div>
-        <div class="mt-0.5 flex items-center gap-2">
-          <span class="min-w-0 flex-1 truncate font-mono text-sm font-extrabold">
-            {@pix.display}
-          </span>
-          <button
-            type="button"
-            id={"copy-pix-" <> @slug}
-            phx-hook=".CopyText"
-            data-text={@pix.key}
-            data-copied-label="Copiado!"
-            class="shrink-0 text-[11px] font-bold text-accent"
-          >
-            Copiar
-          </button>
-        </div>
-      </div>
-
-      <.link
-        navigate={~p"/r/#{@slug}/pagamento"}
-        class="block text-center text-[11px] font-bold text-accent"
-      >
-        Ver o QR Code
-      </.link>
-    </div>
     """
   end
 

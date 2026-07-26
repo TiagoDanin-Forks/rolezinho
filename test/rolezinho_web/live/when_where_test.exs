@@ -84,8 +84,7 @@ defmodule RolezinhoWeb.WhenWhereTest do
       assert html =~ "Valor: 15"
 
       # Calendar buttons show when a date is set
-      assert html =~ "Google Calendar"
-      assert html =~ "Apple / .ics"
+      assert html =~ "Agenda"
       assert html =~ "calendar.google.com"
       assert html =~ ".ics"
     end
@@ -97,7 +96,7 @@ defmodule RolezinhoWeb.WhenWhereTest do
 
       refute html =~ ">Quando<"
       refute html =~ ">Onde<"
-      refute html =~ "Google Calendar"
+      refute html =~ "Agenda"
     end
 
     test "stacks the widget and the payment details in one column", %{conn: conn} do
@@ -116,7 +115,7 @@ defmodule RolezinhoWeb.WhenWhereTest do
       # this product does not have.
       refute html =~ "grid sm:grid-cols-2"
 
-      idx_widget = :binary.match(html, "Google Calendar") |> elem(0)
+      idx_widget = :binary.match(html, "Agenda") |> elem(0)
       idx_key = :binary.match(html, "Chave Pix") |> elem(0)
       idx_desc = :binary.match(html, "Pix: 91985609019") |> elem(0)
 
@@ -139,7 +138,7 @@ defmodule RolezinhoWeb.WhenWhereTest do
       assert html =~ "Praia"
       refute html =~ "Quando"
       # No calendar buttons when there is no date
-      refute html =~ "Google Calendar"
+      refute html =~ "Agenda"
     end
   end
 
