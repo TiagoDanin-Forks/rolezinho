@@ -51,7 +51,17 @@ defmodule RolezinhoWeb.EventNewLive do
       current_admin?={@current_admin?}
       page_title={@page_title}
     >
-      <div class="mx-auto max-w-[420px]">
+      <:action>
+        <button
+          type="submit"
+          form="new-event-form"
+          class="w-full rounded-cta bg-ink px-4 py-4 text-[15px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
+          Criar rolezinho
+        </button>
+      </:action>
+
+      <div>
         <header class="flex items-center gap-2">
           <.link
             navigate={~p"/"}
@@ -164,15 +174,6 @@ defmodule RolezinhoWeb.EventNewLive do
               e <code class="font-mono line-through">~riscado~</code>, como no WhatsApp.
             </p>
           </section>
-
-          <div class="sticky bottom-0 mt-4 bg-canvas pb-2 pt-3">
-            <button
-              type="submit"
-              class="w-full rounded-cta bg-ink px-4 py-4 text-[15px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-            >
-              Criar rolezinho
-            </button>
-          </div>
         </.form>
       </div>
     </Layouts.app>

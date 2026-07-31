@@ -5,9 +5,12 @@ defmodule RolezinhoWeb.HomeLiveTest do
 
   alias Rolezinho.Events
 
+  # `admin?: true` because these tests are about what the home page lists, and
+  # only an admin's events are born listed — everyone else's start hidden and
+  # open by link (see `Events.create/2`).
   defp create_event(attrs) do
     defaults = %{"main_size" => "5", "wait_size" => "2"}
-    {:ok, event} = Events.create(Map.merge(defaults, attrs))
+    {:ok, event} = Events.create(Map.merge(defaults, attrs), admin?: true)
     event
   end
 

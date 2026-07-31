@@ -16,8 +16,11 @@ Repo.delete_all(Event)
 today = Date.utc_today()
 in_days = fn days -> today |> Date.add(days) |> Date.to_iso8601() end
 
+# `admin?: true` so the seeded events land on the home page. Without it they
+# would all be born hidden, which is right for a real visitor's event but would
+# leave a freshly seeded home page empty.
 create = fn attrs ->
-  {:ok, event} = Events.create(attrs)
+  {:ok, event} = Events.create(attrs, admin?: true)
   event
 end
 

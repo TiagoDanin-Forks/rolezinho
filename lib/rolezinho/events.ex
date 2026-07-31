@@ -116,11 +116,11 @@ defmodule Rolezinho.Events do
   Expected keys (strings): `title`, `slug`, `description`, `local`, `date`,
   `time`, `main_size`, `wait_size`.
   """
-  def create(params) when is_map(params) do
+  def create(params, opts \\ []) when is_map(params) do
     with {:ok, attrs} <- validate_create_params(params) do
       changeset =
         %Event{}
-        |> Event.changeset(build_attrs(attrs))
+        |> Event.changeset(build_attrs(attrs, initial_status(opts)))
         # Set here rather than cast from params: accepting it as input would let
         # a visitor choose the secret that administers the event.
         |> Ecto.Changeset.put_change(:organizer_token, Token.generate_organizer())
@@ -267,13 +267,25 @@ defmodule Rolezinho.Events do
     end
   end
 
-  defp build_attrs(attrs) do
+  # Anything a non-admin creates is born hidden: it opens fine by link, so the
+  # person who made it can share it in their group, but it stays off the public
+  # home page. Otherwise the home page is a wall anyone can post to, and the
+  # first abuse is somebody else's problem to clean up.
+  #
+  # The caller decides, because the context does not know who is asking and
+  # should not — but the default is the safe one, so a new call site that forgets
+  # to say gets `hidden` rather than a public listing.
+  defp initial_status(opts) do
+    if Keyword.get(opts, :admin?, false), do: :active, else: :hidden
+  end
+
+  defp build_attrs(attrs, status) do
     empty_slots = for _ <- 1..attrs.main_size//1, do: %{name: "", paid: false}
 
     %{
       slug: attrs.slug,
       title: attrs.title,
-      status: :active,
+      status: status,
       header: Meta.build_header(attrs.meta, attrs.description),
       footer: "",
       main_capacity: attrs.main_size,

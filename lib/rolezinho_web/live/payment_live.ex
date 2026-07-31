@@ -106,23 +106,25 @@ defmodule RolezinhoWeb.PaymentLive do
       page_title={@page_title}
     >
       <:action>
-        <!-- RN-11: the app records a declaration, it does not verify a
+        <div class="space-y-2">
+          <!-- RN-11: the app records a declaration, it does not verify a
                transfer, so the label describes what the person did elsewhere. -->
-        <button
-          :if={@row && not @row.paid}
-          type="button"
-          phx-click="mark_paid"
-          class="w-full rounded-cta bg-ink px-4 py-4 text-[15px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-        >
-          Já fiz o Pix
-        </button>
+          <button
+            :if={@row && not @row.paid}
+            type="button"
+            phx-click="mark_paid"
+            class="w-full rounded-cta bg-ink px-4 py-4 text-[15px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            Já fiz o Pix
+          </button>
 
-        <.link
-          navigate={~p"/r/#{@event.slug}"}
-          class="block w-full rounded-cta border-[1.5px] border-ink/15 px-4 py-3.5 text-center text-[15px] font-bold text-ink"
-        >
-          {if @row && @row.paid, do: "Ver a lista", else: "Pago depois"}
-        </.link>
+          <.link
+            navigate={~p"/r/#{@event.slug}"}
+            class="block w-full rounded-cta border-[1.5px] border-ink/15 px-4 py-3.5 text-center text-[15px] font-bold text-ink"
+          >
+            {if @row && @row.paid, do: "Ver a lista", else: "Pago depois"}
+          </.link>
+        </div>
       </:action>
       <div class="mx-auto flex min-h-full max-w-[420px] flex-col">
         <header>
@@ -147,6 +149,7 @@ defmodule RolezinhoWeb.PaymentLive do
           <.pix_qr
             svg={Pix.qr_svg(@pix.key, width: 148)}
             pix_key={@pix.display}
+            copy_value={@pix.key}
             payee={@event.title}
             amount={@amount}
             class="mt-5"

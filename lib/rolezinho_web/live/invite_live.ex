@@ -136,21 +136,23 @@ defmodule RolezinhoWeb.InviteLive do
       page_title={@page_title}
     >
       <:action>
-        <button
-          :if={@can_join?}
-          type="button"
-          phx-click={BottomSheet.show("join-sheet")}
-          class="w-full rounded-cta bg-ink px-4 py-4 text-[15px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-        >
-          {join_label(@event)}
-        </button>
+        <div class="space-y-2">
+          <button
+            :if={@can_join?}
+            type="button"
+            phx-click={BottomSheet.show("join-sheet")}
+            class="w-full rounded-cta bg-ink px-4 py-4 text-[15px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            {join_label(@event)}
+          </button>
 
-        <.link
-          navigate={~p"/r/#{@event.slug}"}
-          class="block w-full rounded-cta border-[1.5px] border-ink/15 px-4 py-3.5 text-center text-[15px] font-bold text-ink"
-        >
-          {if @joined?, do: "Ver a lista", else: "Só ver a lista"}
-        </.link>
+          <.link
+            navigate={~p"/r/#{@event.slug}"}
+            class="block w-full rounded-cta border-[1.5px] border-ink/15 px-4 py-3.5 text-center text-[15px] font-bold text-ink"
+          >
+            {if @joined?, do: "Ver a lista", else: "Só ver a lista"}
+          </.link>
+        </div>
       </:action>
       <div class="mx-auto flex min-h-full max-w-[420px] flex-col">
         <header class="text-center">

@@ -301,7 +301,7 @@ defmodule RolezinhoWeb.EventLive do
           type="button"
           phx-click="start_edit_main"
           phx-value-index={@index}
-          class="grid size-11 shrink-0 place-items-center text-ink/35"
+          class="-mx-1.5 grid size-11 shrink-0 place-items-center text-ink/35"
           aria-label={"Editar #{@attendee.name}"}
         >
           <.icon name="tabler-pencil" class="size-4" />
@@ -312,7 +312,7 @@ defmodule RolezinhoWeb.EventLive do
           phx-click="remove_main"
           phx-value-index={@index}
           data-confirm={remove_confirm(@mine?, @attendee.name)}
-          class="grid size-11 shrink-0 place-items-center text-ink/35"
+          class="-ml-3.5 -mr-2 grid size-11 shrink-0 place-items-center text-ink/35"
           aria-label={if @mine?, do: "Sair da lista", else: "Remover #{@attendee.name}"}
         >
           <.icon name="tabler-x" class="size-4" />

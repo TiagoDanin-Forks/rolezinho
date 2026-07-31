@@ -17,11 +17,14 @@ defmodule RolezinhoWeb.EventCreateController do
   alias RolezinhoWeb.Plugs.Participant
 
   def create(conn, %{"event" => params}) do
-    case Events.create(params) do
+    # Only the admin's events go straight to the public home page. Everyone
+    # else's are born hidden and reachable by link, which is how they were going
+    # to be shared anyway (see `Events.create/2`).
+    case Events.create(params, admin?: conn.assigns.current_admin?) do
       {:ok, event} ->
         conn
         |> Participant.put_organizer_token(event.slug, event.organizer_token)
-        |> put_flash(:info, "Rolezinho criado! Manda o link no grupo.")
+        |> put_flash(:info, create_flash(conn.assigns.current_admin?))
         |> redirect(to: ~p"/r/#{event.slug}")
 
       {:error, _errors} ->
@@ -34,4 +37,11 @@ defmodule RolezinhoWeb.EventCreateController do
         |> redirect(to: ~p"/criar")
     end
   end
+
+  # Someone whose event will not show up on the home page needs to be told, or
+  # they will look for it there and conclude it was not created.
+  defp create_flash(true), do: "Rolezinho criado! Manda o link no grupo."
+
+  defp create_flash(false),
+    do: "Rolezinho criado! Ele abre por link — manda no grupo pra galera entrar."
 end

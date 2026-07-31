@@ -25,7 +25,12 @@ defmodule RolezinhoWeb.Components.UI.PixQR do
   attr :amount, :string, default: nil
   attr :payee, :string, default: nil
   attr :pix_key, :string, default: nil
-  attr :hint, :string, default: "Copy-and-paste Pix with the amount already filled in."
+
+  attr :copy_value, :string,
+    default: nil,
+    doc: "the canonical key, shown in a readonly field for manual copying"
+
+  attr :hint, :string, default: "Pix copia e cola com o valor já preenchido."
   attr :class, :any, default: nil
 
   slot :action, doc: "the copy button, rendered under the hint"
@@ -44,6 +49,18 @@ defmodule RolezinhoWeb.Components.UI.PixQR do
           {@pix_key}
         </div>
         <p :if={@hint} class="mt-1 text-[11px] leading-snug text-muted">{@hint}</p>
+        <!-- Readonly, not disabled: a disabled field cannot be focused or
+             selected, which is the whole point of showing the key here. The
+             canonical key is what a bank app accepts, so it is what gets
+             copied — never the formatted version shown above. -->
+        <input
+          :if={@copy_value}
+          type="text"
+          readonly
+          value={@copy_value}
+          aria-label="Chave Pix para copiar"
+          class="mt-2 w-full select-all rounded-row border border-hairline bg-canvas px-2 py-1.5 font-mono text-[11px] text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+        />
         <div :if={@action != []} class="mt-2">{render_slot(@action)}</div>
       </div>
     </div>

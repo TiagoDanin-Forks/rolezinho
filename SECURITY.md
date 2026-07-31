@@ -145,6 +145,12 @@ event and nothing else.
 - Creation is a controller action, not a LiveView event, because the token has to
   reach the session and a LiveView cannot write there. A creation path that skips
   the session hands out an event nobody can administer.
+- **Only the admin's events are born listed.** Anything created by anyone else
+  starts `hidden`: reachable by slug, absent from the public home page. Creation is
+  anonymous and unthrottled, so a listing that accepted every event would be a wall
+  anybody could post to. `Events.create/2` takes `admin?:` and defaults to the safe
+  status, so a new call site that forgets to pass it gets `hidden` rather than a
+  public listing.
 - Being the organizer of an event is not being an admin. Cloning, renaming a slug,
   resizing, and deleting stay admin-only; the organizer's powers are scoped to the
   one event whose token they hold (see `Rolezinho.Event.Policy`).

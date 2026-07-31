@@ -63,6 +63,37 @@ defmodule RolezinhoWeb.AdminFlowTest do
     assert token == event.organizer_token
   end
 
+  # A public home page that anyone can post to is a wall. Non-admin events open
+  # by link, which is how they get shared anyway, and stay off the listing.
+  test "an event created by a visitor is born hidden", %{conn: conn} do
+    post(conn, ~p"/criar", %{
+      "event" => %{"title" => "Do Zé", "slug" => "do-ze", "main_size" => "4"}
+    })
+
+    assert Events.find("do-ze").status == :hidden
+    refute "do-ze" in Enum.map(Events.list_open(), & &1.slug)
+  end
+
+  test "an event created by the admin is active", %{conn: conn} do
+    conn
+    |> admin_conn()
+    |> post(~p"/criar", %{
+      "event" => %{"title" => "Do Admin", "slug" => "do-admin", "main_size" => "4"}
+    })
+
+    assert Events.find("do-admin").status == :active
+    assert "do-admin" in Enum.map(Events.list_open(), & &1.slug)
+  end
+
+  test "a hidden event still opens by link for a visitor", %{conn: conn} do
+    post(conn, ~p"/criar", %{
+      "event" => %{"title" => "Do Zé", "slug" => "do-ze", "main_size" => "4"}
+    })
+
+    assert {:ok, _view, html} = live(conn, ~p"/r/do-ze")
+    assert html =~ "Do Zé"
+  end
+
   test "the create form is reachable without signing in", %{conn: conn} do
     assert {:ok, _view, html} = live(conn, ~p"/criar")
     assert html =~ "Criar rolezinho"
