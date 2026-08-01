@@ -33,6 +33,30 @@ defmodule RolezinhoWeb.EventEditLive do
     |> assign(:slug_input, event.slug)
     |> assign(:password_input, event.password || "")
     |> assign(:meta_form, to_form(Meta.to_form_params(meta), as: :meta))
+    |> assign(:payment_form, to_form(payment_form_params(event), as: :payment))
+  end
+
+  defp payment_form_params(%Event{price_cents: cents, pix_key: pix}) do
+    %{
+      "price" => price_input_value(cents),
+      "pix_key" => pix || ""
+    }
+  end
+
+  # Round-trips price_cents into the human-friendly string the create form and
+  # this edit form both use. 1500 -> "15", 1550 -> "15,50", nil/0 -> "".
+  defp price_input_value(nil), do: ""
+  defp price_input_value(0), do: ""
+
+  defp price_input_value(cents) when is_integer(cents) do
+    reais = div(cents, 100)
+    centavos = rem(cents, 100)
+
+    if centavos == 0 do
+      Integer.to_string(reais)
+    else
+      Integer.to_string(reais) <> "," <> String.pad_leading(Integer.to_string(centavos), 2, "0")
+    end
   end
 
   @impl true
@@ -59,6 +83,19 @@ defmodule RolezinhoWeb.EventEditLive do
         {:noreply,
          socket
          |> put_flash(:info, "Data, horário e local atualizados.")
+         |> assign_event(event)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Não deu pra salvar: #{inspect(reason)}")}
+    end
+  end
+
+  def handle_event("save_payment", %{"payment" => params}, socket) do
+    case Events.update_payment(socket.assigns.event, params) do
+      {:ok, event} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Valor e Pix atualizados.")
          |> assign_event(event)}
 
       {:error, reason} ->
@@ -237,6 +274,39 @@ defmodule RolezinhoWeb.EventEditLive do
               type="submit"
               class="rounded-row bg-ink px-4 py-2.5 text-xs font-bold text-ink-content transition-transform active:scale-[.97] disabled:opacity-40 disabled:pointer-events-none"
             >Salvar quando &amp; onde</button>
+          </div>
+        </.form>
+      </section>
+
+      <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
+        <h2 class="text-[13px] font-extrabold mb-3">Pagamento</h2>
+        <p class="text-xs text-base-content/60 mb-4">
+          Quanto cada pessoa paga e a chave Pix pra receber. Deixe em branco pra
+          remover. A chave aceita telefone, CPF, CNPJ, e-mail ou aleatória.
+        </p>
+
+        <.form
+          for={@payment_form}
+          id="payment-form"
+          phx-submit="save_payment"
+          class="space-y-4"
+        >
+          <.input
+            field={@payment_form[:price]}
+            label="Quanto cada um paga"
+            placeholder="ex.: 15"
+          />
+          <.input
+            field={@payment_form[:pix_key]}
+            label="Chave Pix"
+            placeholder="telefone, CPF, e-mail ou aleatória"
+          />
+
+          <div>
+            <button
+              type="submit"
+              class="rounded-row bg-ink px-4 py-2.5 text-xs font-bold text-ink-content transition-transform active:scale-[.97] disabled:opacity-40 disabled:pointer-events-none"
+            >Salvar pagamento</button>
           </div>
         </.form>
       </section>

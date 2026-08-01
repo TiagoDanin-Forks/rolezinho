@@ -584,6 +584,44 @@ defmodule Rolezinho.Events do
     end
   end
 
+  # ---------- Payment (price + pix_key) ----------
+
+  @doc """
+  Updates the event's payment fields (`price_cents` and `pix_key`).
+
+  Accepts a params map with string keys `"price"` and `"pix_key"`, matching
+  what the create form (`EventNewLive`) accepts. Blank values clear the fields,
+  which is how the organizer removes a Pix key or turns a paid event into a
+  free one.
+
+    * `"price"` — free-form (`"15"`, `"R$ 15"`, `"15,50"`). Nil/blank/invalid
+      clears `price_cents`.
+    * `"pix_key"` — any DICT-shaped key (phone, CPF, CNPJ, email, random).
+      Trimmed; blank clears `pix_key`.
+  """
+  @spec update_payment(Event.t(), map()) :: {:ok, Event.t()} | {:error, map()}
+  def update_payment(%Event{} = event, params) when is_map(params) do
+    attrs = %{
+      price_cents: parse_price(params["price"]),
+      pix_key: trimmed(params, "pix_key")
+    }
+
+    event
+    |> Event.changeset(attrs)
+    |> Repo.update()
+    |> case do
+      {:ok, saved} ->
+        broadcast(saved)
+        broadcast_home()
+        {:ok, saved}
+
+      {:error, changeset} ->
+        {:error, changeset_errors(changeset)}
+    end
+  end
+
+  # ---------- Password (continued) ----------
+
   @doc """
   Constant-time password check against the event's stored value. Returns true
   when the event has no password (i.e. is open to everyone).
