@@ -5,7 +5,7 @@ defmodule Rolezinho.MixProject do
     [
       app: :rolezinho,
       version: "0.1.0",
-      elixir: "~> 1.15",
+      elixir: "~> 1.17",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
@@ -40,7 +40,7 @@ defmodule Rolezinho.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
-      {:phoenix, "~> 1.8.8"},
+      {:phoenix, "~> 1.8.9"},
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.13"},
       {:postgrex, ">= 0.0.0"},
@@ -49,15 +49,17 @@ defmodule Rolezinho.MixProject do
       {:phoenix_live_view, "~> 1.2.0"},
       {:lazy_html, ">= 0.1.0", only: :test},
       {:phoenix_live_dashboard, "~> 0.8.3"},
+      {:phoenix_storybook, "~> 1.3"},
       {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
-      {:tailwind, "~> 0.3", runtime: Mix.env() == :dev},
-      {:heroicons,
-       github: "tailwindlabs/heroicons",
-       tag: "v2.2.0",
-       sparse: "optimized",
+      {:tailwind, "~> 0.5", runtime: Mix.env() == :dev},
+      {:tabler_icons,
+       github: "tabler/tabler-icons",
+       tag: "v3.45.0",
+       sparse: "icons",
        app: false,
        compile: false,
        depth: 1},
+      {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
       {:swoosh, "~> 1.16"},
       {:req, "~> 0.5"},
       {:telemetry_metrics, "~> 1.0"},
@@ -84,13 +86,20 @@ defmodule Rolezinho.MixProject do
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
-      "assets.build": ["compile", "tailwind rolezinho", "esbuild rolezinho"],
+      "assets.build": ["compile", "tailwind rolezinho", "esbuild rolezinho", "esbuild storybook"],
       "assets.deploy": [
         "tailwind rolezinho --minify",
         "esbuild rolezinho --minify",
+        "esbuild storybook --minify",
         "phx.digest"
       ],
-      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
+      precommit: [
+        "compile --warnings-as-errors",
+        "deps.unlock --unused",
+        "format --check-formatted",
+        "sobelow",
+        "test"
+      ]
     ]
   end
 end

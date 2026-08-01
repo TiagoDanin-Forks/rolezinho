@@ -10,11 +10,13 @@ defmodule Rolezinho.Events do
   import Ecto.Query, warn: false
 
   alias Ecto.Multi
+  alias Phoenix.PubSub
   alias Rolezinho.Event
+  alias Rolezinho.Event.FormField
   alias Rolezinho.Event.Meta
   alias Rolezinho.Event.Parser
+  alias Rolezinho.Event.Token
   alias Rolezinho.Repo
-  alias Phoenix.PubSub
 
   @pubsub Rolezinho.PubSub
 
@@ -31,11 +33,18 @@ defmodule Rolezinho.Events do
 
   # ---------- Listing ----------
 
-  @doc "Lists events shown on the public home page (active + payments_only)."
+  @doc """
+  Lists events shown on the public home page (active + payments_only).
+
+  Ordered by when they happen, not by name: someone opening the home screen
+  wants to know what is next, and alphabetical order puts tomorrow's event
+  below one three weeks away. Events with no date sort last — they cannot be
+  next if nobody has said when.
+  """
   def list_open do
     from(e in Event,
       where: e.status in ^Event.open_statuses(),
-      order_by: [asc: e.title]
+      order_by: [asc_nulls_last: e.starts_at, asc: e.title]
     )
     |> Repo.all()
   end
@@ -80,6 +89,19 @@ defmodule Rolezinho.Events do
     |> Repo.one()
   end
 
+  @doc """
+  Finds the event a given organizer token administers.
+
+  Returns `nil` for a blank token so that a browser sending no secret never
+  resolves to an event.
+  """
+  @spec get_by_organizer_token(String.t() | nil) :: Event.t() | nil
+  def get_by_organizer_token(token) when is_binary(token) and token != "" do
+    Repo.get_by(Event, organizer_token: token)
+  end
+
+  def get_by_organizer_token(_), do: nil
+
   @doc "Returns true when a slug already exists in any status."
   def slug_taken?(slug) do
     from(e in Event, where: e.slug == ^slug, select: 1)
@@ -94,9 +116,16 @@ defmodule Rolezinho.Events do
   Expected keys (strings): `title`, `slug`, `description`, `local`, `date`,
   `time`, `main_size`, `wait_size`.
   """
-  def create(params) when is_map(params) do
+  def create(params, opts \\ []) when is_map(params) do
     with {:ok, attrs} <- validate_create_params(params) do
-      case %Event{} |> Event.changeset(build_attrs(attrs)) |> Repo.insert() do
+      changeset =
+        %Event{}
+        |> Event.changeset(build_attrs(attrs, initial_status(opts)))
+        # Set here rather than cast from params: accepting it as input would let
+        # a visitor choose the secret that administers the event.
+        |> Ecto.Changeset.put_change(:organizer_token, Token.generate_organizer())
+
+      case Repo.insert(changeset) do
         {:ok, event} ->
           broadcast_home()
           {:ok, event}
@@ -118,33 +147,13 @@ defmodule Rolezinho.Events do
 
     errors = %{}
     errors = if title == "", do: put_error(errors, :title, "obrigatório"), else: errors
-
-    errors =
-      cond do
-        slug == "" ->
-          put_error(errors, :slug, "obrigatório")
-
-        not Regex.match?(Event.slug_regex(), slug) ->
-          put_error(errors, :slug, "use letras minúsculas, números e traços")
-
-        slug_taken?(slug) ->
-          put_error(errors, :slug, "já está em uso")
-
-        true ->
-          errors
-      end
+    errors = validate_slug(errors, slug)
 
     {main_size, errors} =
-      case parse_int(main_size_raw) do
-        {:ok, n} when n >= 1 and n <= 500 -> {n, errors}
-        _ -> {0, put_error(errors, :main_size, "número inteiro entre 1 e 500")}
-      end
+      validate_size(errors, main_size_raw, :main_size, 1, 500, "número inteiro entre 1 e 500")
 
     {wait_size, errors} =
-      case parse_int(wait_size_raw) do
-        {:ok, n} when n >= 0 and n <= 100 -> {n, errors}
-        _ -> {0, put_error(errors, :wait_size, "número inteiro entre 0 e 100")}
-      end
+      validate_size(errors, wait_size_raw, :wait_size, 0, 100, "número inteiro entre 0 e 100")
 
     if errors == %{} do
       {:ok,
@@ -155,20 +164,128 @@ defmodule Rolezinho.Events do
          meta: meta,
          main_size: main_size,
          wait_size: wait_size,
-         password: password
+         password: password,
+         category: trimmed(params, "category"),
+         local: trimmed(params, "local"),
+         starts_at: parse_datetime(params["starts_at"]) || combine_date_time(params),
+         ends_at: parse_datetime(params["ends_at"]),
+         price_cents: parse_price(params["price"]),
+         pix_key: trimmed(params, "pix_key")
        }}
     else
       {:error, errors}
     end
   end
 
-  defp build_attrs(attrs) do
+  defp trimmed(params, key) do
+    case params |> Map.get(key) |> to_string() |> String.trim() do
+      "" -> nil
+      value -> value
+    end
+  end
+
+  # The form asks for a date and a time separately, because that is how someone
+  # thinks about it. Stored as one instant, since "Wednesday 7pm" cannot be
+  # sorted or turned into a calendar entry.
+  #
+  # The pair is read as local time in Brasília (UTC-3, no DST), which is the
+  # wall clock everyone in the group is reading.
+  defp combine_date_time(params) do
+    with date when is_binary(date) <- params["date"],
+         {:ok, date} <- Date.from_iso8601(String.trim(date)),
+         {:ok, time} <- parse_time(params["time"]),
+         {:ok, naive} <- NaiveDateTime.new(date, time) do
+      naive |> DateTime.from_naive!("Etc/UTC") |> DateTime.add(3 * 3600, :second)
+    else
+      _ -> nil
+    end
+  end
+
+  # A date with no time means the whole day; midnight is the conventional way to
+  # say that in a timestamp.
+  defp parse_time(nil), do: {:ok, ~T[00:00:00]}
+
+  defp parse_time(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> {:ok, ~T[00:00:00]}
+      trimmed -> Time.from_iso8601(trimmed <> ":00")
+    end
+  end
+
+  defp parse_time(_), do: {:ok, ~T[00:00:00]}
+
+  defp parse_datetime(%DateTime{} = value), do: value
+
+  defp parse_datetime(value) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, datetime, _offset} -> datetime
+      {:error, _} -> nil
+    end
+  end
+
+  defp parse_datetime(_), do: nil
+
+  # People write an amount the way they say it: "15", "R$ 15", "15,00". All three
+  # mean the same thing, and rejecting two of them would be pedantry.
+  defp parse_price(value) when is_integer(value), do: value
+
+  defp parse_price(value) when is_binary(value) do
+    digits = String.replace(value, ~r/[^\d,.]/, "")
+
+    case Regex.run(~r/^(\d+)(?:[.,](\d{1,2}))?$/, digits) do
+      [_, reais] -> String.to_integer(reais) * 100
+      [_, reais, cents] -> String.to_integer(reais) * 100 + pad_cents(cents)
+      _ -> nil
+    end
+  end
+
+  defp parse_price(_), do: nil
+
+  defp pad_cents(cents) do
+    cents |> String.pad_trailing(2, "0") |> String.to_integer()
+  end
+
+  defp validate_slug(errors, ""), do: put_error(errors, :slug, "obrigatório")
+
+  defp validate_slug(errors, slug) do
+    cond do
+      not Regex.match?(Event.slug_regex(), slug) ->
+        put_error(errors, :slug, "use letras minúsculas, números e traços")
+
+      slug_taken?(slug) ->
+        put_error(errors, :slug, "já está em uso")
+
+      true ->
+        errors
+    end
+  end
+
+  defp validate_size(errors, raw, field, min, max, message) do
+    case parse_int(raw) do
+      {:ok, n} when n >= min and n <= max -> {n, errors}
+      _ -> {0, put_error(errors, field, message)}
+    end
+  end
+
+  # Anything a non-admin creates is born hidden: it opens fine by link, so the
+  # person who made it can share it in their group, but it stays off the public
+  # home page. Otherwise the home page is a wall anyone can post to, and the
+  # first abuse is somebody else's problem to clean up.
+  #
+  # The caller decides, because the context does not know who is asking and
+  # should not — but the default is the safe one, so a new call site that forgets
+  # to say gets `hidden` rather than a public listing.
+  defp initial_status(opts) do
+    if Keyword.get(opts, :admin?, false), do: :active, else: :hidden
+  end
+
+  defp build_attrs(attrs, status) do
     empty_slots = for _ <- 1..attrs.main_size//1, do: %{name: "", paid: false}
 
     %{
       slug: attrs.slug,
       title: attrs.title,
-      status: :active,
+      status: status,
       header: Meta.build_header(attrs.meta, attrs.description),
       footer: "",
       main_capacity: attrs.main_size,
@@ -176,7 +293,13 @@ defmodule Rolezinho.Events do
       wait_intro: "Lista de reserva",
       main_list: empty_slots,
       wait_list: [],
-      password: attrs.password
+      password: attrs.password,
+      category: attrs.category,
+      local: attrs.local,
+      starts_at: attrs.starts_at,
+      ends_at: attrs.ends_at,
+      price_cents: attrs.price_cents,
+      pix_key: attrs.pix_key
     }
   end
 
@@ -319,10 +442,23 @@ defmodule Rolezinho.Events do
       |> Map.merge(%{
         slug: clone_slug,
         title: source.title <> " Clonado",
-        status: :active
+        status: :active,
+        # RN-52: a repeat copies the setup, not the people. Carrying the list
+        # over would open next week's rolê with last week's names already
+        # confirmed — and the payment checks with them.
+        main_list: empty_slots(source.main_capacity),
+        wait_list: []
       })
 
-    case %Event{} |> Event.changeset(attrs) |> Repo.insert() do
+    changeset =
+      %Event{}
+      |> Event.changeset(attrs)
+      # The copy is its own event, so it gets its own secret: sharing one would
+      # let whoever organized the original administer the repeat, and the other
+      # way round.
+      |> Ecto.Changeset.put_change(:organizer_token, Token.generate_organizer())
+
+    case Repo.insert(changeset) do
       {:ok, clone} ->
         broadcast_home()
         {:ok, clone}
@@ -331,6 +467,12 @@ defmodule Rolezinho.Events do
         {:error, changeset_errors(changeset)}
     end
   end
+
+  defp empty_slots(capacity) when is_integer(capacity) and capacity > 0 do
+    for _ <- 1..capacity, do: %{name: "", paid: false}
+  end
+
+  defp empty_slots(_capacity), do: []
 
   defp unique_clone_slug(source_slug) do
     base = source_slug <> "-clonado"
@@ -458,17 +600,123 @@ defmodule Rolezinho.Events do
 
   # ---------- List operations ----------
 
-  def add_to_main(%Event{} = event, name) do
+  def add_to_main(%Event{} = event, name, opts \\ []) do
     with :ok <- ensure_signups_open(event),
-         {:ok, updated} <- Event.add_to_main(event, name) do
+         {:ok, updated} <- Event.add_to_main(event, name, opts) do
       save(updated)
     end
   end
 
-  def add_to_wait(%Event{} = event, name) do
+  def add_to_wait(%Event{} = event, name, opts \\ []) do
     with :ok <- ensure_signups_open(event),
-         {:ok, updated} <- Event.add_to_wait(event, name) do
+         {:ok, updated} <- Event.add_to_wait(event, name, opts) do
       save(updated)
+    end
+  end
+
+  @doc """
+  The questions this event's join form asks (RN-61).
+
+  Falls back to the default form, so an event that predates custom forms — or
+  one nobody configured — still asks for a name.
+  """
+  @spec form_fields(Event.t()) :: [FormField.t()]
+  def form_fields(%Event{form_fields: fields}), do: FormField.for_event(fields)
+
+  @doc """
+  Adds a question to the join form.
+
+  The id is derived from the label and kept unique, since it becomes both a form
+  field name and a key in the attendee's answers.
+  """
+  @spec add_form_field(Event.t(), map()) :: {:ok, Event.t()} | {:error, term()}
+  def add_form_field(%Event{} = event, params) do
+    fields = form_fields(event)
+    label = params |> Map.get("label", "") |> to_string() |> String.trim()
+    type = params |> Map.get("type", "text") |> to_string()
+
+    cond do
+      label == "" ->
+        {:error, :empty_label}
+
+      type not in FormField.types() ->
+        {:error, :invalid_type}
+
+      length(fields) >= max_form_fields() ->
+        {:error, :too_many_fields}
+
+      true ->
+        field = %FormField{
+          id: FormField.build_id(label, Enum.map(fields, & &1.id)),
+          label: label,
+          type: type,
+          required: Map.get(params, "required") in [true, "true", "on"],
+          locked: false
+        }
+
+        save(%{event | form_fields: fields ++ [field]})
+    end
+  end
+
+  @doc """
+  Removes a question from the join form.
+
+  Locked fields stay: the name identifies the row, so a list without it would
+  have nothing to display (RN-60).
+  """
+  @spec remove_form_field(Event.t(), String.t()) :: {:ok, Event.t()} | {:error, term()}
+  def remove_form_field(%Event{} = event, id) do
+    fields = form_fields(event)
+
+    case Enum.find(fields, &(&1.id == id)) do
+      nil -> {:error, :not_found}
+      %FormField{locked: true} -> {:error, :locked_field}
+      _ -> save(%{event | form_fields: Enum.reject(fields, &(&1.id == id))})
+    end
+  end
+
+  @doc """
+  Flips whether a question must be answered.
+
+  A locked field cannot become optional — a row with no name is not a row.
+  """
+  @spec toggle_form_field_required(Event.t(), String.t()) :: {:ok, Event.t()} | {:error, term()}
+  def toggle_form_field_required(%Event{} = event, id) do
+    fields = form_fields(event)
+
+    case Enum.find(fields, &(&1.id == id)) do
+      nil ->
+        {:error, :not_found}
+
+      %FormField{locked: true} ->
+        {:error, :locked_field}
+
+      _ ->
+        updated =
+          Enum.map(fields, fn field ->
+            if field.id == id, do: %{field | required: not field.required}, else: field
+          end)
+
+        save(%{event | form_fields: updated})
+    end
+  end
+
+  # Past this, the form stops being a form and becomes a survey nobody finishes.
+  defp max_form_fields, do: 8
+
+  @doc """
+  Adds someone plus their companions in one action (RN-04).
+
+  Returns `{:ok, event, placed}` with how many landed in each list, so the
+  caller can say what actually happened rather than assuming everyone got in.
+  """
+  @spec add_party(Event.t(), String.t(), pos_integer(), keyword()) ::
+          {:ok, Event.t(), map()} | {:error, term()}
+  def add_party(%Event{} = event, name, size, opts \\ []) do
+    with :ok <- ensure_signups_open(event),
+         {:ok, updated, placed} <- Event.add_party(event, name, size, opts),
+         {:ok, saved} <- save(updated) do
+      {:ok, saved, placed}
     end
   end
 

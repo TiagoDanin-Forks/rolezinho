@@ -1,4 +1,115 @@
-This is a web application written using the Phoenix web framework.
+# AGENTS.md
+
+This file guides coding agents working in this repository. It is the index: the
+detailed rules live in the documents referenced in the table below.
+
+## What this project is
+
+**Rolezinho** — a Phoenix + LiveView app for organizing informal get-togethers. Each
+event lives at `/r/<slug>` and holds the date, location, a live attendance list, a
+waitlist, and a Pix QR code. The same event ships in three formats: page, plain text
+(`/r/<slug>.txt`), and calendar (`/r/<slug>/calendar.ics`).
+
+**There are no user accounts.** Guests use the app anonymously from a link; the
+organizer signs in at `/admin/login` with a single environment password. This access
+model is the most important difference from stock Phoenix — there is no `current_scope`
+and no `current_user` here. Read `SECURITY.md` before touching any access surface.
+
+Stack: Phoenix 1.8, LiveView 1.2, PostgreSQL, Tailwind v4 (tokens in the `@theme` block
+of `app.css`), Tabler icons, Earmark for markdown, deployed on Fly.io.
+
+## Read X when Y
+
+| Read | When |
+|---|---|
+| `PRODUCT.md` | Deciding anything about product/UX: personas, journeys, scope, anti-references |
+| `DESIGN.md` | Before any UI work: tokens (colors for both themes, typography, radii, spacing), visual principles |
+| `SECURITY.md` | Before touching a route, an event, an admin surface, password-gated content, `raw(...)`, or a secret |
+| `TODOS.md` | To learn the project's technical and infrastructure debt |
+| `MEMORY.md` | At the start of a work session: recent discoveries not yet promoted to rules |
+| `docs/flow/README.md` | Before creating or updating flow documentation |
+| `docs/decisions/README.md` | Before recording (or challenging) an architecture decision |
+| `.claude/rules/general.md` | Always — general development and communication preferences |
+| `.claude/rules/elixir.md` | Writing any Elixir code |
+| `.claude/rules/elixir-antipatterns.md` | Writing/reviewing Elixir code — code anti-patterns |
+| `.claude/rules/elixir-design-antipatterns.md` | Modeling modules, contexts, and internal APIs |
+| `.claude/rules/phoenix.md` | Working on controllers, contexts, the router, plugs, schemas |
+| `.claude/rules/liveview.md` | Working on LiveViews, components, and HEEx templates |
+| `.claude/rules/testing.md` | Writing or changing tests |
+| `.claude/rules/documentation.md` | Writing or updating docs in `docs/` |
+| `.claude/rules/design.md` | Before any UI work — pointer to `PRODUCT.md` and `DESIGN.md` |
+| `.claude/rules/security.md` | Touching security — pointer to `SECURITY.md` |
+| `.claude/skills/flow-documenter/SKILL.md` | Documenting a flow/screen/feature in `docs/flow/` |
+| `.claude/skills/pr-description/SKILL.md` | Generating a PR description |
+| `.claude/agents/flow-documenter.md` | Delegating the documentation of a flow |
+| `.claude/commands/pr.md` | Generating the current branch's PR (`/pr`) |
+| `.claude/commands/major.md` / `minor.md` / `patch.md` | Bumping the semantic version in `mix.exs` |
+
+## Golden rules
+
+1. **The developer owns git.** By default the developer commits: at the end of a work
+   block, suggest the commit message. Only run `git commit` when the developer asks
+   directly. `git push` is **always** the developer's. Never use `git stash`.
+2. **Plan before code.** Every non-trivial change starts with a plan presented to the
+   developer, who must approve it before implementation.
+3. **Commits in English, conventional commits.** `feat:`, `fix:`, `chore:`,
+   `refactor:`, `test:`, `docs:`.
+4. **Conversation, PRs, docs: all in English.**
+5. **No emojis** — in code, docs, commits, PRs, or conversation.
+6. **Never mention AI** in commit messages, PR titles, or PR descriptions.
+7. **Never duplicate a source of truth.** Short rules point to the doc where the content
+   lives. If a piece of information exists in two places, one of them is wrong (or soon
+   will be). Known coupled pairs: `DESIGN.md` ↔ the `@theme` block in `app.css`.
+
+## The project's three invariants
+
+Breaking any of these is a bug, not a style choice:
+
+1. **`escape: true` in Earmark.** It's what prevents stored XSS in the `raw(...)` calls
+   that render user-written markdown. Never turn it off; never create a second markdown
+   rendering path. (`SECURITY.md`, section 1)
+2. **Admin requires the plug *and* the `on_mount`.** The plug protects the HTTP request;
+   the `on_mount` protects the socket connection, which doesn't pass through the
+   pipeline. Either one alone leaves the surface open from the other side.
+   (`SECURITY.md`, section 2)
+3. **Password gating on the server.** Protected event content that reaches the HTML and
+   is hidden by CSS has already leaked. (`SECURITY.md`, section 3)
+
+## Essential commands
+
+```bash
+mix setup              # install deps, create/migrate the DB, build assets
+mix phx.server         # dev server at localhost:4000
+mix test               # run all tests (creates and migrates the test DB automatically)
+mix test path/to/file_test.exs   # run a single test file
+mix test --failed      # re-run only the tests that failed
+mix precommit          # quality: compile --warnings-as-errors, deps.unlock --unused, format, test
+mix format             # format code
+mix ecto.gen.migration name_in_snake_case   # generate a migration (always via the CLI)
+mix ecto.reset         # drop and recreate the dev DB
+mix assets.build       # compile assets (tailwind + esbuild)
+```
+
+In dev: LiveDashboard at `/dev/dashboard` and the Swoosh mailbox at `/dev/mailbox`.
+Requires PostgreSQL at `localhost:5432` with user/password `postgres`.
+
+## Memory cycle
+
+- Session discoveries (new patterns, non-obvious solutions, project conventions) are
+  recorded in `MEMORY.md`.
+- Once a note proves stable and repeatable across several sessions, it is **promoted** to
+  the corresponding rule in `.claude/rules/` (or to a doc in `docs/`) and removed from
+  `MEMORY.md`.
+- Wrong or outdated entries are corrected or removed — stale memory is worse than no
+  memory.
+
+---
+
+# Phoenix technical guidelines
+
+What follows are the framework's technical conventions. Where a rule below conflicts with
+a rule in `.claude/rules/` or with a root doc, **the project document wins** — it knows
+this codebase; the guidelines below are generic.
 
 ## Project guidelines
 
@@ -9,11 +120,9 @@ This is a web application written using the Phoenix web framework.
 
 - **Always** begin your LiveView templates with `<Layouts.app flash={@flash} ...>` which wraps all inner content
 - The `MyAppWeb.Layouts` module is aliased in the `my_app_web.ex` file, so you can use it without needing to alias it again
-- Anytime you run into errors with no `current_scope` assign:
-  - You failed to follow the Authenticated Routes guidelines, or you failed to pass `current_scope` to `<Layouts.app>`
-  - **Always** fix the `current_scope` error by moving your routes to the proper `live_session` and ensure you pass `current_scope` as needed
+- **This project has no `current_scope`.** It has no user accounts: the identity assigns are `:current_admin?` (boolean) and `:unlocked_events` (MapSet of slugs), populated by `RolezinhoWeb.Plugs.Admin`. `<Layouts.app>` takes `current_admin?`, not `current_scope`. Ignore any upstream guidance about `current_scope` / `phx.gen.auth` — see `SECURITY.md` and `.claude/rules/phoenix.md`
 - Phoenix v1.8 moved the `<.flash_group>` component to the `Layouts` module. You are **forbidden** from calling `<.flash_group>` outside of the `layouts.ex` module
-- Out of the box, `core_components.ex` imports an `<.icon name="hero-x-mark" class="w-5 h-5"/>` component for hero icons. **Always** use the `<.icon>` component for icons, **never** use `Heroicons` modules or similar
+- `core_components.ex` imports an `<.icon name="tabler-x" class="w-5 h-5"/>` component for [Tabler icons](https://tabler.io/icons) (outline by default; `-filled` suffix for the filled variant). **Always** use the `<.icon>` component for icons, **never** use icon modules or inline SVG
 - **Always** use the imported `<.input>` component for form inputs from `core_components.ex` when available. `<.input>` is imported and using it will save steps and prevent errors
 - If you override the default input classes (`<.input class="myclass px-2 py-1 rounded-lg">)`) class with your own values, no default classes are inherited, so your
 custom classes must fully style the input
@@ -26,11 +135,12 @@ custom classes must fully style the input
       @import "tailwindcss" source(none);
       @source "../css";
       @source "../js";
-      @source "../../lib/my_app_web";
+      @source "../../lib/rolezinho_web";
 
-- **Always use and maintain this import syntax** in the app.css file for projects generated with `phx.new`
+- **Always use and maintain this import syntax** in the app.css file
 - **Never** use `@apply` when writing raw css
-- **Always** manually write your own tailwind-based components instead of using daisyUI for a unique, world-class design
+- **The design tokens live in the `@theme` block of `assets/css/app.css`** and are mirrored in `DESIGN.md` — the two are a coupled pair, change both in the same commit. Never put a raw hex/oklch value in a template. Dark theme is applied via `[data-theme="dark"]`, so a new color must be added to **both** themes
+- **Write your own Tailwind-based components** — this project uses no component library (no daisyUI). Shared components live in `components/core_components.ex`
 - Out of the box **only the app.js and app.css bundles are supported**
   - You cannot reference an external vendor'd script `src` or link `href` in the layouts
   - You must import the vendor deps into app.js and app.css to use them

@@ -6,92 +6,191 @@
 @source "../css";
 @source "../js";
 @source "../../lib/rolezinho_web";
+/* The stories carry classes that appear nowhere else (the surfaces components are
+   demoed against). Without this, those utilities are absent from the build and
+   /storybook renders them unstyled. */
+@source "../../storybook";
 /* Required for Tailwind to automatically pick up changes in colocated CSS files in dev */
 @source "../../_build/dev/phoenix-colocated/rolezinho/*/";
 
-/* A Tailwind plugin that makes "hero-#{ICON}" classes available.
-   The heroicons installation itself is managed by your mix.exs */
-@plugin "../vendor/heroicons";
+/* A Tailwind plugin that makes "tabler-#{ICON}" classes available (outline por
+   padrao; sufixo "-filled" para a variante preenchida). A instalacao dos icones
+   e gerenciada pela dep :tabler_icons no mix.exs. */
+@plugin "../vendor/tabler";
 
-/* daisyUI Tailwind Plugin. You can update this file by fetching the latest version with:
-   curl -sLO https://github.com/saadeghi/daisyui/releases/latest/download/daisyui.js
-   Make sure to look at the daisyUI changelog: https://daisyui.com/docs/changelog/ */
-@plugin "../vendor/daisyui" {
-  themes: false;
+/* Inter, self-hosted from priv/static/fonts (latin subset, ~24KB per weight).
+   The design's typography is Inter — display and title sit at weight 800, and the
+   system fallback does not carry that weight, so the hierarchy collapses without
+   these files. Self-hosted rather than linked: no external <link> is allowed (see
+   AGENTS.md) and no third party sees the reader's IP.
+   font-display: swap so text paints immediately on bad 4G. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/inter-latin-400.woff2") format("woff2");
 }
 
-/* daisyUI theme plugin. You can update this file by fetching the latest version with:
-  curl -sLO https://github.com/saadeghi/daisyui/releases/latest/download/daisyui-theme.js
-  We ship with two themes, a light one inspired on Phoenix colors and a dark one inspired
-  on Elixir colors. Build your own at: https://daisyui.com/theme-generator/ */
-@plugin "../vendor/daisyui-theme" {
-  name: "dark";
-  default: false;
-  prefersdark: true;
-  color-scheme: "dark";
-  --color-base-100: oklch(30.33% 0.016 252.42);
-  --color-base-200: oklch(25.26% 0.014 253.1);
-  --color-base-300: oklch(20.15% 0.012 254.09);
-  --color-base-content: oklch(97.807% 0.029 256.847);
-  --color-primary: oklch(58% 0.233 277.117);
-  --color-primary-content: oklch(96% 0.018 272.314);
-  --color-secondary: oklch(58% 0.233 277.117);
-  --color-secondary-content: oklch(96% 0.018 272.314);
-  --color-accent: oklch(60% 0.25 292.717);
-  --color-accent-content: oklch(96% 0.016 293.756);
-  --color-neutral: oklch(37% 0.044 257.287);
-  --color-neutral-content: oklch(98% 0.003 247.858);
-  --color-info: oklch(58% 0.158 241.966);
-  --color-info-content: oklch(97% 0.013 236.62);
-  --color-success: oklch(60% 0.118 184.704);
-  --color-success-content: oklch(98% 0.014 180.72);
-  --color-warning: oklch(66% 0.179 58.318);
-  --color-warning-content: oklch(98% 0.022 95.277);
-  --color-error: oklch(58% 0.253 17.585);
-  --color-error-content: oklch(96% 0.015 12.422);
-  --radius-selector: 0.25rem;
-  --radius-field: 0.25rem;
-  --radius-box: 0.5rem;
-  --size-selector: 0.21875rem;
-  --size-field: 0.21875rem;
-  --border: 1.5px;
-  --depth: 1;
-  --noise: 0;
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/inter-latin-500.woff2") format("woff2");
 }
 
-@plugin "../vendor/daisyui-theme" {
-  name: "light";
-  default: true;
-  prefersdark: false;
-  color-scheme: "light";
-  --color-base-100: oklch(98% 0 0);
-  --color-base-200: oklch(96% 0.001 286.375);
-  --color-base-300: oklch(92% 0.004 286.32);
-  --color-base-content: oklch(21% 0.006 285.885);
-  --color-primary: oklch(70% 0.213 47.604);
-  --color-primary-content: oklch(98% 0.016 73.684);
-  --color-secondary: oklch(55% 0.027 264.364);
-  --color-secondary-content: oklch(98% 0.002 247.839);
-  --color-accent: oklch(0% 0 0);
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/inter-latin-600.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/inter-latin-700.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("/fonts/inter-latin-800.woff2") format("woff2");
+}
+
+/* Design system tokens — source of truth: the DESIGN.md frontmatter (`colors`
+   and `colors-dark` sections). Never edit values here without updating
+   DESIGN.md first.
+   This block holds the light theme; the dark theme overrides the variables in
+   [data-theme=dark] right below. Declaring colors in @theme is what makes
+   Tailwind generate the matching utilities (bg-primary, text-base-content,
+   border-base-300, ...). */
+@theme {
+  /* The design vocabulary, named exactly as the handoff's Tailwind kit names it,
+     so markup can be copied from the kit without translation. Values are the
+     kit's hex palette converted to oklch:
+       ink #15130F · canvas #EDE7DE · surface #FBF6F1
+       tint #FDECDD · accent #F2751F · accent-ink #C85D15 */
+  --color-ink: oklch(18.76% 0.0085 84.57);
+  --color-canvas: oklch(93.02% 0.0137 78.26);
+  --color-surface: oklch(97.56% 0.0085 67.73);
+  --color-tint: oklch(95.26% 0.0272 63.96);
+  --color-accent: oklch(69.81% 0.1771 48.76);
+  --color-accent-ink: oklch(60.1% 0.1558 47.88);
+  --color-danger: oklch(55% 0.18 25);
+
+  /* Roles the kit leaves implicit: text on an ink/accent fill, and the hairline
+     used for card borders and dividers. */
+  --color-ink-content: oklch(100% 0 0);
   --color-accent-content: oklch(100% 0 0);
-  --color-neutral: oklch(44% 0.017 285.786);
-  --color-neutral-content: oklch(98% 0 0);
+  --color-danger-content: oklch(100% 0 0);
+  --color-hairline: oklch(83.05% 0.0193 75.3);
+
+  /* Supporting text, at the lightest tone that still clears WCAG AA (4.5:1) on
+     every surface of this theme — canvas, white, and tint. Written as a colour
+     rather than an ink opacity because the passing floor differs per theme
+     (60% here, 49% in dark), so a shared `text-ink/55` cannot satisfy both.
+     `DESIGN.md` forbids light grey for information; this is where that line
+     actually sits. */
+  --color-muted: oklch(51.5% 0.0072 84.57);
+
+  /* Inter, self-hosted (see the @font-face blocks above). The rest of the stack
+     is the fallback used only while the font loads. */
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* 12 / 16 / 18 / 24 — the kit's scale. `row` is a list row, `cta` the screen's
+     action button, `card` a surface, `sheet` the bottom sheet's top corners. */
+  --radius-row: 0.75rem;
+  --radius-cta: 1rem;
+  --radius-card: 1.125rem;
+  --radius-sheet: 1.5rem;
+
+  --shadow-card: 0 8px 24px oklch(18.76% 0.0085 84.57 / 0.06);
+  --shadow-cta: 0 6px 18px oklch(18.76% 0.0085 84.57 / 0.18);
+  --shadow-sheet: 0 -8px 24px oklch(18.76% 0.0085 84.57 / 0.12);
+
+  --ease-sheet: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Legacy vocabulary, kept as aliases so the screens that predate the design
+     system (HomeLive, EventLive, core_components) keep rendering while they are
+     migrated one at a time — see TODOS.md. New markup uses the names above. */
+  --color-primary: var(--color-accent);
+  --color-primary-content: var(--color-accent-content);
+  --color-primary-strong: var(--color-accent-ink);
+  --color-secondary: oklch(45% 0.012 80.52);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-neutral: var(--color-ink);
+  --color-neutral-content: var(--color-ink-content);
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: var(--color-surface);
+  --color-base-300: var(--color-canvas);
+  --color-base-400: var(--color-hairline);
+  --color-base-content: var(--color-ink);
+  --color-tint-content: var(--color-accent-ink);
   --color-info: oklch(62% 0.214 259.815);
   --color-info-content: oklch(97% 0.014 254.604);
-  --color-success: oklch(70% 0.14 182.503);
-  --color-success-content: oklch(98% 0.014 180.72);
+  --color-success: var(--color-accent);
+  --color-success-content: var(--color-accent-content);
   --color-warning: oklch(66% 0.179 58.318);
   --color-warning-content: oklch(98% 0.022 95.277);
-  --color-error: oklch(58% 0.253 17.585);
-  --color-error-content: oklch(96% 0.015 12.422);
-  --radius-selector: 0.25rem;
-  --radius-field: 0.25rem;
-  --radius-box: 0.5rem;
-  --size-selector: 0.21875rem;
-  --size-field: 0.21875rem;
-  --border: 1.5px;
-  --depth: 1;
-  --noise: 0;
+  --color-error: var(--color-danger);
+  --color-error-content: var(--color-danger-content);
+
+  --radius-selector: var(--radius-row);
+  --radius-field: var(--radius-cta);
+  --radius-box: var(--radius-card);
+  --radius-panel: var(--radius-sheet);
+
+  --shadow-raised: var(--shadow-cta);
+}
+
+/* Dark theme. The design handoff is light-only, so this is derived: the warm
+   hue of the neutral ramp is preserved and the lightness inverted, keeping the
+   same token roles. Orange stays the action color — it holds contrast on a warm
+   dark base, so there is no reason to shift the hue. */
+[data-theme="dark"] {
+  /* `ink` keeps its role as the high-contrast tone against the page, so it
+     inverts to near-white; `canvas` and `surface` swap direction with it. The
+     accent orange only lightens — it holds contrast on a warm dark base, so
+     there is no reason to shift its hue. */
+  --color-ink: oklch(95% 0.008 78.26);
+  --color-ink-content: oklch(15% 0.008 84.57);
+  --color-canvas: oklch(18.76% 0.0085 84.57);
+  --color-surface: oklch(22% 0.009 84.57);
+  --color-tint: oklch(30% 0.026 55);
+  --color-accent: oklch(72% 0.17 48.76);
+  --color-accent-ink: oklch(80% 0.14 55);
+  --color-accent-content: oklch(15% 0.008 84.57);
+  --color-danger: oklch(64% 0.17 25);
+  --color-danger-content: oklch(15% 0.008 84.57);
+  --color-hairline: oklch(45% 0.013 78);
+
+  /* The same role, inverted: light text held back from the foreground tone,
+     still clearing 4.5:1 on both the canvas and a raised surface. */
+  --color-muted: oklch(67% 0.006 78.26);
+
+  --color-secondary: oklch(72% 0.012 80.52);
+  --color-secondary-content: oklch(15% 0.008 84.57);
+  --color-base-100: oklch(22% 0.009 84.57);
+  --color-base-200: oklch(18.76% 0.0085 84.57);
+  --color-base-300: oklch(31% 0.011 80.52);
+  --color-base-content: oklch(95% 0.008 78.26);
+  --color-tint-content: oklch(85% 0.11 60);
+  --color-info: oklch(58% 0.158 241.966);
+  --color-info-content: oklch(97% 0.013 236.62);
+  --color-warning: oklch(66% 0.179 58.318);
+  --color-warning-content: oklch(98% 0.022 95.277);
+
+  --shadow-card: 0 8px 24px oklch(0% 0 0 / 0.4);
+  --shadow-cta: 0 6px 18px oklch(0% 0 0 / 0.5);
+  --shadow-sheet: 0 -8px 24px oklch(0% 0 0 / 0.45);
 }
 
 /* Add variants based on LiveView classes */
@@ -102,7 +201,65 @@
 /* Use the data attribute for dark mode  */
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
+/* Payment and identity as state variants rather than conditional class strings,
+   per the handoff's Tailwind rules: a row carries data-paid / data-me and the
+   styling follows from the attribute. Keeps the check's appearance in one place
+   instead of branching in every caller. */
+@custom-variant paid (&:where([data-paid="true"], [data-paid="true"] *));
+@custom-variant me (&:where([data-me="true"], [data-me="true"] *));
+
+/* Page background and text color. The canvas is deliberately darker than the
+   surfaces that sit on it — that contrast is what gives cards their shape,
+   since they carry no resting shadow. */
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Storybook sandbox (sandbox_class in lib/rolezinho_web/storybook.ex). Stories
+   render inside a wrapper div, not inside our <body>, so the typography and the
+   page canvas above never reach them — without this the catalog shows the
+   components in the browser's default font on a white background, which is not
+   what the design looks like. */
+.rolezinho {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
 /* Make LiveView wrapper divs transparent for layout */
 [data-phx-session], [data-phx-teleported-src] { display: contents }
+
+/* Skeleton shimmer. Spec from the design handoff: 1.2s ease-in-out infinite.
+   Honors prefers-reduced-motion by falling back to a static tone. */
+@keyframes rolezinho-shimmer {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.animate-shimmer {
+  animation: rolezinho-shimmer 1.2s ease-in-out infinite;
+}
+
+/* Bottom sheet entrance — the handoff's spec is .26s on --ease-sheet. */
+@keyframes sheet-in {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+/* The handoff ships this block with the design: motion is decoration here, and
+   a sheet that slides or a button that scales must not fight someone who asked
+   the OS to stop animating. The fade is what remains. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-shimmer { animation: none; opacity: 0.7; }
+
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
 
 /* This file is for your main application CSS */

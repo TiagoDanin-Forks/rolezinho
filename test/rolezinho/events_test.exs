@@ -193,14 +193,37 @@ defmodule Rolezinho.EventsTest do
       assert clone.status == :active
     end
 
-    test "copies header, capacity, main list, wait list, footer", %{event: event} do
+    test "copies the setup: header, capacity, footer", %{event: event} do
       assert {:ok, clone} = Events.clone(event)
 
       assert clone.header == event.header
       assert clone.main_capacity == event.main_capacity
-      assert Enum.map(clone.main_list, & &1.name) == Enum.map(event.main_list, & &1.name)
       assert clone.wait_enabled == event.wait_enabled
-      assert Enum.map(clone.wait_list, & &1.name) == Enum.map(event.wait_list, & &1.name)
+    end
+
+    test "starts with nobody on it (RN-52)", %{event: event} do
+      # A repeat is next week's rolê. Carrying the list over would open it with
+      # last week's names already confirmed, and their payment checks with them.
+      assert {:ok, clone} = Events.clone(event)
+
+      assert Enum.all?(clone.main_list, &(&1.name == ""))
+      refute Enum.any?(clone.main_list, & &1.paid)
+      assert clone.wait_list == []
+    end
+
+    test "keeps the same number of slots", %{event: event} do
+      assert {:ok, clone} = Events.clone(event)
+
+      assert length(clone.main_list) == event.main_capacity
+    end
+
+    test "gets its own organizer secret", %{event: event} do
+      # Sharing one would let whoever organized the original administer the
+      # repeat, and the other way round.
+      assert {:ok, clone} = Events.clone(event)
+
+      assert is_binary(clone.organizer_token)
+      refute clone.organizer_token == event.organizer_token
     end
 
     test "cloning twice appends a numeric suffix to disambiguate the slug", %{event: event} do

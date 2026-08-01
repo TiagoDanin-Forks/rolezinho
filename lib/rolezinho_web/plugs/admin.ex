@@ -43,9 +43,16 @@ defmodule RolezinhoWeb.Plugs.Admin do
     end
   end
 
-  @doc "Checks a submitted password against the configured admin password."
+  @doc """
+  Checks a submitted password against the configured admin password.
+
+  Uses `fetch_env!/2` rather than a defaulted lookup: a silent fallback here
+  would mean a misconfigured deploy accepting a password nobody chose. Production
+  also refuses to boot without `ADMIN_PASSWORD` (see `config/runtime.exs`), so
+  reaching this with no value configured is a bug worth crashing on.
+  """
   def valid_password?(password) when is_binary(password) do
-    expected = Application.get_env(:rolezinho, :admin_password, "admin")
+    expected = Application.fetch_env!(:rolezinho, :admin_password)
     Plug.Crypto.secure_compare(password, expected)
   end
 

@@ -1,9 +1,21 @@
 defmodule RolezinhoWeb.HomeLive do
-  @moduledoc "Public home page listing active rolezinhos."
+  @moduledoc """
+  The listing of open events.
+
+  Ordered by when they happen, not by when they were created: someone opening
+  this screen wants to know what is next, and an event that already passed is
+  the least useful thing to put at the top.
+
+  The category filter only appears once there is enough to filter — a row of
+  chips above three cards is furniture, not navigation.
+  """
   use RolezinhoWeb, :live_view
 
   alias Rolezinho.Event
   alias Rolezinho.Events
+
+  # Below this, scanning the list is faster than filtering it.
+  defp filter_threshold, do: 4
 
   @impl true
   def mount(_params, _session, socket) do
@@ -12,100 +24,159 @@ defmodule RolezinhoWeb.HomeLive do
     {:ok,
      socket
      |> assign(:page_title, "Rolezinhos")
+     |> assign(:category, "all")
      |> load_events()}
   end
 
   @impl true
-  def handle_info(:home_changed, socket) do
-    {:noreply, load_events(socket)}
+  def handle_info(:home_changed, socket), do: {:noreply, load_events(socket)}
+
+  @impl true
+  def handle_event("filter", %{"id" => category}, socket) do
+    {:noreply, socket |> assign(:category, category) |> apply_filter()}
   end
 
   defp load_events(socket) do
-    assign(socket, :events, Events.list_open())
+    socket |> assign(:events, Events.list_open()) |> apply_filter()
+  end
+
+  defp apply_filter(socket) do
+    events = socket.assigns.events
+
+    socket
+    |> assign(:categories, categories(events))
+    |> assign(:visible, filter(events, socket.assigns.category))
+  end
+
+  defp filter(events, "all"), do: events
+  defp filter(events, category), do: Enum.filter(events, &(&1.category == category))
+
+  defp categories(events) do
+    events
+    |> Enum.map(& &1.category)
+    |> Enum.reject(&(is_nil(&1) or &1 == ""))
+    |> Enum.uniq()
+    |> Enum.sort()
   end
 
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_admin?={@current_admin?} page_title={@page_title}>
-      <section class="mb-10">
-        <div class="flex items-end justify-between gap-4 flex-wrap">
-          <div>
-            <h1 class="text-3xl sm:text-4xl font-bold tracking-tight">Rolezinhos abertos</h1>
-            <p class="mt-2 text-base-content/70">
-              Escolha um evento pra entrar na lista.
-            </p>
+      <div id="home" phx-hook=".RecentEvents" class="mx-auto max-w-[560px]">
+        <header class="flex items-end justify-between gap-4">
+          <div class="min-w-0">
+            <h1 class="text-2xl font-extrabold tracking-tight">Rolezinhos</h1>
+            <p class="mt-0.5 text-[13px] text-muted">Os rolês abertos por aqui</p>
           </div>
+          <!-- Both destinations live here, next to the title. Two of them do not
+               earn a permanent bar across the bottom of every screen, and the
+               bottom strip is worth more to the action someone came to take. -->
+          <div class="flex shrink-0 items-center gap-1.5">
+            <.link
+              navigate={~p"/me"}
+              class="grid size-11 place-items-center rounded-full bg-ink/[0.06] text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              aria-label="Suas preferências"
+            >
+              <.icon name="tabler-user-circle" class="size-5" />
+            </.link>
+            <.link
+              navigate={~p"/criar"}
+              class="grid size-11 place-items-center rounded-full bg-ink text-ink-content shadow-cta focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              aria-label="Criar rolezinho"
+            >
+              <.icon name="tabler-plus" class="size-5" />
+            </.link>
+          </div>
+        </header>
 
-          <.link :if={@current_admin?} navigate={~p"/admin/new"} class="btn btn-primary">
-            <.icon name="hero-plus" class="size-4" /> Criar rolezinho
-          </.link>
-        </div>
-      </section>
+        <.filter_chips
+          :if={length(@events) >= filter_threshold() and @categories != []}
+          value={@category}
+          on_select="filter"
+          class="mt-4"
+        >
+          <:chip id="all" label="Todos" />
+          <:chip :for={category <- @categories} id={category} label={category} />
+        </.filter_chips>
 
-      <section
-        :if={@events == []}
-        class="rounded-2xl border border-dashed border-base-300 p-10 text-center"
-      >
-        <p class="text-base-content/60">
-          Nenhum rolezinho ativo por aqui.
-          <span :if={@current_admin?}>Que tal <.link class="link" navigate={~p"/admin/new"}>criar o primeiro</.link>?</span>
-        </p>
-      </section>
+        <.empty_state
+          :if={@visible == []}
+          icon="tabler-diamond"
+          title={empty_title(@category)}
+          class="mt-6"
+        >
+          {empty_body(@category)}
+        </.empty_state>
 
-      <ul :if={@events != []} class="grid gap-4 sm:grid-cols-2">
-        <li :for={event <- @events}>
-          <.link
-            navigate={~p"/r/#{event.slug}"}
-            class="group block rounded-2xl border border-base-300 bg-base-100 p-5 hover:border-primary hover:shadow-lg transition-all"
-          >
-            <div class="flex items-center justify-between gap-3">
-              <h2 class="text-lg font-semibold group-hover:text-primary transition-colors line-clamp-2">
-                {event.title}
-              </h2>
-              <span class="text-xs text-base-content/50">/r/{event.slug}</span>
-            </div>
+        <ul :if={@visible != []} class="mt-4 space-y-2.5">
+          <li :for={event <- @visible}>
+            <.role_card
+              title={event.title}
+              when_text={when_text(event)}
+              category={event.category}
+              status={status_for(event)}
+              filled={filled_count(event)}
+              capacity={event.main_capacity}
+              names={attendee_names(event)}
+              navigate={~p"/r/#{event.slug}"}
+            />
+          </li>
+        </ul>
+      </div>
 
-            <p class="mt-2 text-sm text-base-content/70">
-              {filled_count(event)} / {event.main_capacity} na lista principal
-              <span :if={event.wait_enabled} class="text-base-content/50">
-                · {length(event.wait_list)} na reserva
-              </span>
-            </p>
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".RecentEvents">
+        const KEY = "rolezinho:recent"
 
-            <div class="mt-4 flex flex-wrap items-center gap-2 text-xs">
-              <span class={[
-                "px-2 py-0.5 rounded-full font-medium",
-                cond do
-                  event.status == :payments_only -> "bg-info/20 text-info"
-                  Event.main_full?(event) -> "bg-warning/20 text-warning-content"
-                  true -> "bg-success/20 text-success"
-                end
-              ]}>
-                <%= cond do %>
-                  <% event.status == :payments_only -> %>
-                    Só pagamentos
-                  <% Event.main_full?(event) -> %>
-                    Lotado
-                  <% true -> %>
-                    Tem vaga
-                <% end %>
-              </span>
-              <span
-                :if={Event.password_protected?(event)}
-                class="px-2 py-0.5 rounded-full font-medium bg-base-300 text-base-content"
-              >
-                Com senha
-              </span>
-            </div>
-          </.link>
-        </li>
-      </ul>
+        export default {
+          mounted() {
+            // The listing shows what is open; this remembers what *this* device
+            // has opened, which is the only history the app keeps. Slugs only —
+            // titles and counts would go stale, and the server already has them.
+            try {
+              const seen = JSON.parse(localStorage.getItem(KEY) || "[]")
+              if (!Array.isArray(seen)) localStorage.removeItem(KEY)
+            } catch (_) { }
+          }
+        }
+      </script>
     </Layouts.app>
     """
   end
 
+  defp empty_title("all"), do: "Nenhum rolê por aqui"
+  defp empty_title(_), do: "Nada nessa categoria"
+
+  # Anyone can create now, so the empty state invites rather than explains the
+  # wait.
+  defp empty_body("all"), do: "Cria o primeiro e manda o link no grupo."
+  defp empty_body(_category), do: "Tenta outra categoria."
+
+  defp status_for(%Event{status: :payments_only}), do: "payments_only"
+  defp status_for(%Event{status: :done}), do: "done"
+
+  defp status_for(%Event{} = event) do
+    if Event.main_full?(event), do: "full", else: "open"
+  end
+
+  defp when_text(%Event{starts_at: nil}), do: nil
+
+  # Stored in UTC, read in Brasília: rendering the raw timestamp turns a 21h
+  # event into "00h" of the following day, which is the wrong day and the wrong
+  # hour to whoever is deciding whether to go.
+  defp when_text(%Event{starts_at: starts_at}) do
+    starts_at
+    |> DateTime.add(-3 * 3600, :second)
+    |> Calendar.strftime("%d/%m · %Hh")
+  end
+
   defp filled_count(%Event{main_list: list}) do
-    Enum.count(list, fn a -> String.trim(a.name) != "" end)
+    Enum.count(list, &(String.trim(&1.name) != ""))
+  end
+
+  defp attendee_names(%Event{main_list: list}) do
+    list
+    |> Enum.map(&String.trim(&1.name))
+    |> Enum.reject(&(&1 == ""))
   end
 end

@@ -7,7 +7,22 @@ defmodule RolezinhoWeb.Layouts do
   embed_templates "layouts/*"
 
   @doc """
-  Renders the app layout.
+  Renders the app shell.
+
+  Shaped for the one context this product actually has: a phone, held in one
+  hand, opened from a link someone pasted into a group chat. So the frame is a
+  single column and the content scrolls inside a viewport pinned to `dvh` —
+  `vh` would put the bottom of the page under Safari's toolbar.
+
+  The bottom of the frame belongs to the screen's own action, not to
+  navigation. This app has two destinations, which is not enough to earn a
+  permanent bar: a tab bar would spend the most reachable strip of the screen
+  on switching between two places while the thing someone came to do — join the
+  list — scrolled away above it. Screens pass that action through `:action`,
+  where it stays put and clears the home indicator via the safe-area inset.
+
+  On a desktop the same column simply centres. There is no wide layout, because
+  a second column would be built for a reader this product does not have.
   """
   attr :flash, :map, required: true
   attr :current_admin?, :boolean, default: false
@@ -15,50 +30,25 @@ defmodule RolezinhoWeb.Layouts do
 
   slot :inner_block, required: true
 
+  slot :action,
+    doc: "pinned to the bottom of the viewport: the screen's primary action, never navigation"
+
   def app(assigns) do
     ~H"""
-    <header class="border-b border-base-300 bg-base-100/70 backdrop-blur sticky top-0 z-30">
-      <div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        <a href={~p"/"} class="flex items-center gap-2 group">
-          <span class="text-2xl">🎉</span>
-          <span class="text-lg font-bold tracking-tight group-hover:text-primary transition-colors">
-            Rolezinho
-          </span>
-        </a>
-
-        <div class="flex items-center gap-2 sm:gap-3">
-          <.theme_toggle />
-
-          <%= if @current_admin? do %>
-            <.link
-              navigate={~p"/admin"}
-              class="btn btn-sm btn-ghost hidden sm:inline-flex"
-            >
-              Painel
-            </.link>
-            <.link
-              href={~p"/admin/logout"}
-              method="delete"
-              class="btn btn-sm btn-outline"
-            >
-              Sair
-            </.link>
-          <% else %>
-            <.link href={~p"/admin/login"} class="btn btn-sm btn-ghost">
-              Admin
-            </.link>
-          <% end %>
+    <div class="flex h-dvh flex-col bg-canvas">
+      <main class="flex-1 overflow-y-auto overscroll-contain px-5 pb-6 pt-[max(2rem,env(safe-area-inset-top))]">
+        <div class="mx-auto max-w-[420px]">
+          {render_slot(@inner_block)}
         </div>
+      </main>
+
+      <div
+        :if={@action != []}
+        class="shrink-0 border-t border-hairline bg-canvas px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+      >
+        <div class="mx-auto max-w-[420px]">{render_slot(@action)}</div>
       </div>
-    </header>
-
-    <main class="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-      {render_slot(@inner_block)}
-    </main>
-
-    <footer class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-10 text-center text-sm text-base-content/50">
-      <p>Feito com carinho por lubien · rolezinho</p>
-    </footer>
+    </div>
 
     <.flash_group flash={@flash} />
     """
@@ -88,7 +78,7 @@ defmodule RolezinhoWeb.Layouts do
         hidden
       >
         {gettext("Attempting to reconnect")}
-        <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
+        <.icon name="tabler-refresh" class="ml-1 size-3 motion-safe:animate-spin" />
       </.flash>
 
       <.flash
@@ -103,7 +93,7 @@ defmodule RolezinhoWeb.Layouts do
         hidden
       >
         {gettext("Attempting to reconnect")}
-        <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
+        <.icon name="tabler-refresh" class="ml-1 size-3 motion-safe:animate-spin" />
       </.flash>
     </div>
     """
@@ -123,7 +113,7 @@ defmodule RolezinhoWeb.Layouts do
         data-phx-theme="system"
         title="Sistema"
       >
-        <.icon name="hero-computer-desktop-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name="tabler-device-desktop" class="size-4 opacity-75 hover:opacity-100" />
       </button>
 
       <button
@@ -132,7 +122,7 @@ defmodule RolezinhoWeb.Layouts do
         data-phx-theme="light"
         title="Claro"
       >
-        <.icon name="hero-sun-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name="tabler-sun" class="size-4 opacity-75 hover:opacity-100" />
       </button>
 
       <button
@@ -141,7 +131,7 @@ defmodule RolezinhoWeb.Layouts do
         data-phx-theme="dark"
         title="Escuro"
       >
-        <.icon name="hero-moon-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name="tabler-moon" class="size-4 opacity-75 hover:opacity-100" />
       </button>
     </div>
     """

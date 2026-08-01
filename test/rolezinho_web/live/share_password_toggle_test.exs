@@ -77,7 +77,7 @@ defmodule RolezinhoWeb.SharePasswordToggleTest do
 
       {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
       refute html =~ "share-password-toggle"
-      refute html =~ "Mostrar senha no compartilhamento"
+      refute html =~ "Incluir a senha no texto"
     end
 
     test "hidden on events without a password", %{conn: conn} do
@@ -108,7 +108,7 @@ defmodule RolezinhoWeb.SharePasswordToggleTest do
         |> live(~p"/r/#{event.slug}")
 
       assert html =~ "share-password-toggle"
-      assert html =~ "Mostrar senha no compartilhamento"
+      assert html =~ "Incluir a senha no texto"
     end
 
     test "visible for unlocked non-admins on password-protected events", %{conn: conn} do

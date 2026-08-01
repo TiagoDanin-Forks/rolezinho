@@ -13,6 +13,7 @@ defmodule Rolezinho.Event do
 
   alias Rolezinho.Event
   alias Rolezinho.Event.Attendee
+  alias Rolezinho.Event.FormField
 
   @statuses [:active, :payments_only, :hidden, :done]
 
@@ -35,8 +36,26 @@ defmodule Rolezinho.Event do
     field :wait_intro, :string, default: "Lista de reserva"
     field :password, :string
 
+    # Structured replacements for what used to be parsed out of the markdown
+    # header. `header`/`footer` above are on their way out, once the v2 screens
+    # stop rendering them.
+    field :category, :string
+    field :local, :string
+    field :starts_at, :utc_datetime
+    field :ends_at, :utc_datetime
+    field :price_cents, :integer
+    field :pix_key, :string
+
+    # The organizer's secret for this event: whoever holds it administers this
+    # event and no other.
+    field :organizer_token, :string
+
     embeds_many :main_list, Attendee, on_replace: :delete
     embeds_many :wait_list, Attendee, on_replace: :delete
+
+    # What the join form asks. Left nil until the organizer configures it, so
+    # `FormField.for_event/1` can tell "never set up" from "asks nothing".
+    embeds_many :form_fields, FormField, on_replace: :delete
 
     timestamps(type: :utc_datetime)
   end
@@ -55,7 +74,15 @@ defmodule Rolezinho.Event do
           wait_intro: String.t(),
           wait_list: [Attendee.t()],
           footer: String.t(),
-          password: String.t() | nil
+          password: String.t() | nil,
+          category: String.t() | nil,
+          local: String.t() | nil,
+          starts_at: DateTime.t() | nil,
+          ends_at: DateTime.t() | nil,
+          price_cents: non_neg_integer() | nil,
+          pix_key: String.t() | nil,
+          organizer_token: String.t() | nil,
+          form_fields: [FormField.t()]
         }
 
   @doc """
@@ -73,16 +100,53 @@ defmodule Rolezinho.Event do
       :main_capacity,
       :wait_enabled,
       :wait_intro,
-      :password
+      :password,
+      :category,
+      :local,
+      :starts_at,
+      :ends_at,
+      :price_cents,
+      :pix_key
     ])
     |> update_change(:password, &normalize_password/1)
     |> cast_embed(:main_list, with: &Attendee.changeset/2)
     |> cast_embed(:wait_list, with: &Attendee.changeset/2)
+    |> cast_embed(:form_fields, with: &FormField.changeset/2)
     |> validate_required([:slug, :title, :status])
     |> update_change(:slug, &String.downcase(String.trim(&1 || "")))
     |> validate_format(:slug, @slug_regex, message: "use letras minúsculas, números e traços")
     |> validate_number(:main_capacity, greater_than_or_equal_to: 0)
+    # Upper bounds only: anonymous writes make an unbounded column a way to fill
+    # the page, but a minimum here would reject events that already exist. The
+    # 3-character floor the spec asks for belongs to the create form, which is
+    # the only place a title is authored from scratch.
+    |> validate_length(:title, max: 80)
+    |> validate_length(:local, max: 200)
+    |> validate_length(:category, max: 40)
+    |> validate_length(:pix_key, max: 100)
+    |> validate_number(:price_cents, greater_than_or_equal_to: 0)
+    |> validate_ends_after_starts()
     |> unique_constraint(:slug, message: "já está em uso")
+  end
+
+  # `organizer_token` is deliberately absent from the cast above: it is what
+  # authorizes administering this event, so accepting it from params would let a
+  # visitor hand themselves the secret. It is set once, at creation, by the
+  # context.
+  @doc false
+  def put_organizer_token(%Event{} = event, token) when is_binary(token) do
+    change(event, organizer_token: token)
+  end
+
+  defp validate_ends_after_starts(changeset) do
+    starts_at = get_field(changeset, :starts_at)
+    ends_at = get_field(changeset, :ends_at)
+
+    if starts_at && ends_at && DateTime.compare(ends_at, starts_at) != :gt do
+      add_error(changeset, :ends_at, "precisa ser depois do início")
+    else
+      changeset
+    end
   end
 
   @doc "Valid values for the `status` enum."
@@ -321,7 +385,7 @@ defmodule Rolezinho.Event do
 
   @doc "Adds an attendee to the first empty main slot."
   @spec add_to_main(t(), String.t()) :: {:ok, t()} | {:error, atom()}
-  def add_to_main(%Event{} = event, name) do
+  def add_to_main(%Event{} = event, name, opts \\ []) do
     name = clean_name(name)
 
     cond do
@@ -332,14 +396,119 @@ defmodule Rolezinho.Event do
         {:error, :main_full}
 
       true ->
-        list = replace_first_empty(event.main_list, %Attendee{name: name, paid: false})
+        list = replace_first_empty(event.main_list, new_attendee(name, opts))
         {:ok, %{event | main_list: list}}
     end
   end
 
+  # The participant id travels with the row from the moment it is created: it is
+  # what lets the person come back later and act on their own row.
+  defp new_attendee(name, opts) do
+    %Attendee{
+      name: name,
+      paid: false,
+      participant_id: Keyword.get(opts, :participant_id),
+      joined_at: DateTime.utc_now(:second),
+      values: Keyword.get(opts, :values, %{})
+    }
+  end
+
+  @doc """
+  Adds someone and their companions in one action (RN-04).
+
+  Each person becomes a row of their own, because a slot holds one person: a
+  single row saying "Márcia +2" would let three people occupy one place and the
+  count would lie. The companions are named after whoever brought them
+  ("Convidado de Márcia"), which is also who owes for them.
+
+  When the party does not fit, the overflow goes to the waiting list in the same
+  action rather than failing — someone bringing two friends should not have to
+  guess how many slots were left and retry.
+
+  Returns `{:ok, event, placed}` where `placed` says how many landed in each
+  list, so the caller can tell the person what actually happened.
+  """
+  @spec add_party(t(), String.t(), pos_integer(), keyword()) ::
+          {:ok, t(), %{main: non_neg_integer(), wait: non_neg_integer()}} | {:error, atom()}
+  def add_party(%Event{} = event, name, size, opts \\ []) when is_integer(size) do
+    name = clean_name(name)
+
+    cond do
+      name == "" -> {:error, :empty_name}
+      size < 1 or size > max_party_size() -> {:error, :invalid_party_size}
+      true -> place_party(event, name, size, opts)
+    end
+  end
+
+  @doc "The largest party one person can bring in a single join (RN-04)."
+  def max_party_size, do: 9
+
+  defp place_party(%Event{} = event, name, size, opts) do
+    names = party_names(name, size)
+    {for_main, overflow} = Enum.split(names, free_main_slots(event))
+
+    # Without a waiting list there is nowhere for the overflow to go. Taking the
+    # first few and silently dropping the rest would be worse than refusing:
+    # someone would believe their friends are in.
+    for_wait = if event.wait_enabled, do: overflow, else: []
+
+    cond do
+      for_main == [] and for_wait == [] and event.wait_enabled ->
+        {:error, :main_full}
+
+      for_main == [] and overflow != [] and not event.wait_enabled ->
+        {:error, :main_full}
+
+      overflow != [] and not event.wait_enabled ->
+        {:error, :party_does_not_fit}
+
+      true ->
+        # The answers belong to whoever filled in the form, and they are the
+        # first row placed — which is in the waiting list when the main one was
+        # already full.
+        wait_opts = if for_main == [], do: opts, else: Keyword.delete(opts, :values)
+
+        with {:ok, event} <- add_each(event, for_main, opts, &add_to_main/3),
+             {:ok, event} <- add_each(event, for_wait, wait_opts, &add_to_wait/3) do
+          {:ok, event, %{main: length(for_main), wait: length(for_wait)}}
+        end
+    end
+  end
+
+  # The person who joined keeps their name; everyone they brought is identified
+  # by them, since that is how the group refers to them and who settles up.
+  defp party_names(name, 1), do: [name]
+
+  defp party_names(name, size) do
+    [name | Enum.map(2..size, fn _ -> "Convidado de #{name}" end)]
+  end
+
+  # The whole party shares one participant_id: it came from one browser, and the
+  # person who joined is the one who can act on all of those rows.
+  defp add_each(event, names, opts, add) do
+    names
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, event}, fn {name, index}, {:ok, acc} ->
+      case add.(acc, name, row_opts(opts, index)) do
+        {:ok, updated} -> {:cont, {:ok, updated}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  # Only the person who filled in the form carries the answers. Copying them
+  # onto the companions would invent data nobody gave — the guests never
+  # answered a shirt size.
+  defp row_opts(opts, 0), do: opts
+  defp row_opts(opts, _index), do: Keyword.delete(opts, :values)
+
+  defp free_main_slots(%Event{main_list: list}) do
+    Enum.count(list, &(String.trim(&1.name) == ""))
+  end
+
   @doc "Adds an attendee to the end of the wait list."
-  @spec add_to_wait(t(), String.t()) :: {:ok, t()} | {:error, atom()}
-  def add_to_wait(%Event{} = event, name) do
+  @spec add_to_wait(t(), String.t(), keyword()) :: {:ok, t()} | {:error, atom()}
+  def add_to_wait(%Event{} = event, name, opts \\ []) do
     name = clean_name(name)
 
     cond do
@@ -350,7 +519,7 @@ defmodule Rolezinho.Event do
         {:error, :wait_disabled}
 
       true ->
-        {:ok, %{event | wait_list: event.wait_list ++ [%Attendee{name: name, paid: false}]}}
+        {:ok, %{event | wait_list: event.wait_list ++ [new_attendee(name, opts)]}}
     end
   end
 
@@ -413,7 +582,10 @@ defmodule Rolezinho.Event do
         {:error, :not_found}
 
       true ->
-        %Attendee{} = person = Enum.at(event.wait_list, index - 1)
+        # `paid` is cleared on the way in: nobody on the queue owes anything, so
+        # a truthy flag there can only be stale, and carrying it over would put
+        # someone on the main list already marked as having paid.
+        %Attendee{} = person = %{Enum.at(event.wait_list, index - 1) | paid: false}
         new_wait = List.delete_at(event.wait_list, index - 1)
         new_main = replace_first_empty(event.main_list, person)
         {:ok, %{event | main_list: new_main, wait_list: new_wait}}
@@ -459,12 +631,31 @@ defmodule Rolezinho.Event do
       wait_enabled: event.wait_enabled,
       wait_intro: event.wait_intro,
       password: event.password,
+      category: event.category,
+      local: event.local,
+      starts_at: event.starts_at,
+      ends_at: event.ends_at,
+      price_cents: event.price_cents,
+      pix_key: event.pix_key,
       main_list: Enum.map(event.main_list, &attendee_to_map/1),
-      wait_list: Enum.map(event.wait_list, &attendee_to_map/1)
+      wait_list: Enum.map(event.wait_list, &attendee_to_map/1),
+      form_fields: Enum.map(event.form_fields, &Map.from_struct/1)
     }
   end
 
-  defp attendee_to_map(%Attendee{name: n, paid: p}), do: %{name: n, paid: p}
+  # Every field of the row round-trips: this map is what a save rebuilds the
+  # event from, so anything omitted here is silently dropped on the next write.
+  # Losing participant_id would quietly unclaim the row from the person holding
+  # it.
+  defp attendee_to_map(%Attendee{} = attendee) do
+    %{
+      name: attendee.name,
+      paid: attendee.paid,
+      participant_id: attendee.participant_id,
+      joined_at: attendee.joined_at,
+      values: attendee.values
+    }
+  end
 
   # ---------- Rendering helpers ----------
 
@@ -473,8 +664,7 @@ defmodule Rolezinho.Event do
 
     slots
     |> Enum.with_index(1)
-    |> Enum.map(fn {%Attendee{} = att, i} -> render_attendee_line(i, att) end)
-    |> Enum.join("\n")
+    |> Enum.map_join("\n", fn {%Attendee{} = att, i} -> render_attendee_line(i, att) end)
   end
 
   defp render_wait_list([]), do: "1-"
@@ -482,8 +672,7 @@ defmodule Rolezinho.Event do
   defp render_wait_list(list) do
     list
     |> Enum.with_index(1)
-    |> Enum.map(fn {%Attendee{} = att, i} -> render_attendee_line(i, att) end)
-    |> Enum.join("\n")
+    |> Enum.map_join("\n", fn {%Attendee{} = att, i} -> render_attendee_line(i, att) end)
   end
 
   @hidden_name_placeholder "•••"

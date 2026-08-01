@@ -42,74 +42,93 @@ defmodule RolezinhoWeb.AdminHomeLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_admin?={@current_admin?} page_title={@page_title}>
-      <div class="flex items-end justify-between gap-4 flex-wrap mb-8">
-        <div>
-          <h1 class="text-3xl sm:text-4xl font-bold tracking-tight">Painel do admin</h1>
-          <p class="mt-2 text-base-content/70">Gerencie todos os rolezinhos aqui.</p>
-        </div>
-        <.link navigate={~p"/admin/new"} class="btn btn-primary">
-          <.icon name="hero-plus" class="size-4" /> Criar rolezinho
-        </.link>
-      </div>
+    <Layouts.app
+      flash={@flash}
+      current_admin?={@current_admin?}
+      page_title={@page_title}
+    >
+      <div class="mx-auto max-w-[420px]">
+        <header class="flex items-center justify-between gap-3">
+          <div>
+            <h1 class="text-2xl font-extrabold tracking-tight">Painel</h1>
+            <p class="mt-0.5 text-[13px] text-muted">Todos os rolês, em qualquer estado.</p>
+          </div>
+          <.link
+            navigate={~p"/criar"}
+            class="grid size-11 shrink-0 place-items-center rounded-full bg-ink text-ink-content shadow-cta focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            aria-label="Criar rolezinho"
+          >
+            <.icon name="tabler-plus" class="size-5" />
+          </.link>
+        </header>
 
-      <.event_section title="Ativos" empty="Nenhum rolezinho ativo." events={@active_events} />
-      <.event_section
-        title="Só pagamentos"
-        empty="Nenhum rolezinho em modo só pagamentos."
-        events={@payments_only_events}
-      />
-      <.event_section title="Ocultos" empty="Nenhum rolezinho oculto." events={@hidden_events} />
-      <.event_section title="Concluídos" empty="Nenhum rolezinho concluído." events={@done_events} />
+        <!-- Empty sections are dropped rather than shown as placeholders: with
+             four states, a panel of "nenhum" lines says less than a short list
+             of what actually exists. -->
+        <.event_section title="Ativos" events={@active_events} />
+        <.event_section title="Só pagamentos" events={@payments_only_events} />
+        <.event_section title="Ocultos" events={@hidden_events} />
+        <.event_section title="Concluídos" events={@done_events} />
+
+        <.empty_state
+          :if={everything_empty?(assigns)}
+          icon="tabler-diamond"
+          title="Nenhum rolê ainda"
+          class="mt-6"
+        >
+          Crie o primeiro e mande o link no grupo.
+        </.empty_state>
+      </div>
     </Layouts.app>
     """
   end
 
+  defp everything_empty?(assigns) do
+    Enum.all?(
+      [
+        assigns.active_events,
+        assigns.payments_only_events,
+        assigns.hidden_events,
+        assigns.done_events
+      ],
+      &(&1 == [])
+    )
+  end
+
   attr :title, :string, required: true
-  attr :empty, :string, required: true
   attr :events, :list, required: true
 
   defp event_section(assigns) do
     ~H"""
-    <section class="mb-10">
-      <h2 class="text-xl font-semibold mb-3">{@title}</h2>
+    <section :if={@events != []} class="mt-6">
+      <.section_header title={@title} count={length(@events)} />
 
-      <div
-        :if={@events == []}
-        class="rounded-xl border border-dashed border-base-300 p-6 text-sm text-base-content/60"
-      >
-        {@empty}
-      </div>
-
-      <ul :if={@events != []} class="space-y-2">
+      <ul class="mt-2 space-y-2">
         <li
           :for={event <- @events}
-          class="flex items-center justify-between gap-3 rounded-xl border border-base-300 bg-base-100 p-4 hover:border-primary/50 transition-colors"
+          class="flex items-center gap-2.5 rounded-card border border-hairline bg-base-100 p-3.5 shadow-card"
         >
-          <div class="min-w-0">
-            <p class="font-medium truncate">{event.title}</p>
-            <p class="text-xs text-base-content/60 truncate">/r/{event.slug}</p>
-          </div>
-          <div class="flex items-center gap-2 shrink-0">
-            <.link navigate={~p"/r/#{event.slug}"} class="btn btn-sm btn-ghost">Abrir</.link>
-            <.link
-              navigate={~p"/admin/r/#{event.slug}/edit"}
-              class="btn btn-sm btn-primary"
-            >
-              Editar
-            </.link>
-            <span class="h-6 w-px bg-base-300 mx-1" aria-hidden="true" />
-            <button
-              type="button"
-              phx-click="clone"
-              phx-value-slug={event.slug}
-              data-confirm={"Criar uma cópia de \"" <> event.title <> "\"?"}
-              class="btn btn-sm btn-outline"
-              title="Clonar"
-            >
-              <.icon name="hero-document-duplicate" class="size-4" /> Clonar
-            </button>
-          </div>
+          <.link navigate={~p"/r/#{event.slug}"} class="min-w-0 flex-1">
+            <p class="truncate text-[13px] font-bold">{event.title}</p>
+            <p class="truncate font-mono text-[11px] text-muted">/r/{event.slug}</p>
+          </.link>
+          <.link
+            navigate={~p"/admin/r/#{event.slug}/edit"}
+            class="grid size-11 shrink-0 place-items-center rounded-full bg-ink/[0.06] text-ink"
+            aria-label={"Editar #{event.title}"}
+          >
+            <.icon name="tabler-pencil" class="size-4" />
+          </.link>
+          <button
+            type="button"
+            phx-click="clone"
+            phx-value-slug={event.slug}
+            data-confirm={"Criar uma cópia de \"" <> event.title <> "\"?"}
+            class="grid size-11 shrink-0 place-items-center rounded-full bg-ink/[0.06] text-ink"
+            aria-label={"Clonar #{event.title}"}
+          >
+            <.icon name="tabler-copy" class="size-4" />
+          </button>
         </li>
       </ul>
     </section>

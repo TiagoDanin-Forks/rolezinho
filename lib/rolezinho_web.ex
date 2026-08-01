@@ -87,6 +87,40 @@ defmodule RolezinhoWeb do
       # Core UI components
       import RolezinhoWeb.CoreComponents
 
+      # Design system components (one module per component under components/ui/,
+      # cataloged in /storybook — see DESIGN.md, section 5)
+      import RolezinhoWeb.Components.UI.AlertBanner
+      import RolezinhoWeb.Components.UI.Avatar
+      # Only the component: show/1 and hide/1 would collide with CoreComponents,
+      # so they stay qualified (BottomSheet.show("join")).
+      import RolezinhoWeb.Components.UI.BottomSheet, only: [bottom_sheet: 1]
+      import RolezinhoWeb.Components.UI.Button
+      import RolezinhoWeb.Components.UI.Card
+      import RolezinhoWeb.Components.UI.Coachmark
+      import RolezinhoWeb.Components.UI.DateTimeField
+      import RolezinhoWeb.Components.UI.EmptyState
+      import RolezinhoWeb.Components.UI.EventCard
+      import RolezinhoWeb.Components.UI.FieldConfigRow
+      import RolezinhoWeb.Components.UI.FilterChips
+      import RolezinhoWeb.Components.UI.IconButton
+      import RolezinhoWeb.Components.UI.InfoTile
+      import RolezinhoWeb.Components.UI.InviteCard
+      import RolezinhoWeb.Components.UI.ParticipantRow
+      import RolezinhoWeb.Components.UI.PixQR
+      import RolezinhoWeb.Components.UI.ProgressBar
+      import RolezinhoWeb.Components.UI.RoleCard
+      import RolezinhoWeb.Components.UI.SearchField
+      import RolezinhoWeb.Components.UI.SectionHeader
+      import RolezinhoWeb.Components.UI.SegmentedControl
+      import RolezinhoWeb.Components.UI.SharePreview
+      import RolezinhoWeb.Components.UI.Skeleton
+      import RolezinhoWeb.Components.UI.StatusPill
+      import RolezinhoWeb.Components.UI.Stepper
+      import RolezinhoWeb.Components.UI.SwipeActions
+      import RolezinhoWeb.Components.UI.TextField
+      import RolezinhoWeb.Components.UI.Toast
+      import RolezinhoWeb.Components.UI.ToggleChip
+
       # Common modules used in templates
       alias Phoenix.LiveView.JS
       alias RolezinhoWeb.Layouts

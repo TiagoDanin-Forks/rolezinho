@@ -84,8 +84,7 @@ defmodule RolezinhoWeb.WhenWhereTest do
       assert html =~ "Valor: 15"
 
       # Calendar buttons show when a date is set
-      assert html =~ "Google Calendar"
-      assert html =~ "Apple / .ics"
+      assert html =~ "Agenda"
       assert html =~ "calendar.google.com"
       assert html =~ ".ics"
     end
@@ -97,10 +96,10 @@ defmodule RolezinhoWeb.WhenWhereTest do
 
       refute html =~ ">Quando<"
       refute html =~ ">Onde<"
-      refute html =~ "Google Calendar"
+      refute html =~ "Agenda"
     end
 
-    test "lays out widget and QR side-by-side when both exist", %{conn: conn} do
+    test "stacks the widget and the payment details in one column", %{conn: conn} do
       _event =
         create_event(%{
           "slug" => "side-by-side",
@@ -112,15 +111,16 @@ defmodule RolezinhoWeb.WhenWhereTest do
 
       {:ok, _view, html} = live(conn, ~p"/r/side-by-side")
 
-      # Both panels are on the same grid row.
-      # We assert the sequence: opening the 2-col grid, widget markup, then QR markup.
-      assert html =~ "grid sm:grid-cols-2"
-      idx_widget = :binary.match(html, "Google Calendar") |> elem(0)
-      idx_svg = :binary.match(html, "<svg") |> elem(0)
+      # One column, phone-shaped: a second column would be built for a reader
+      # this product does not have.
+      refute html =~ "grid sm:grid-cols-2"
+
+      idx_widget = :binary.match(html, "Agenda") |> elem(0)
+      idx_key = :binary.match(html, "Chave Pix") |> elem(0)
       idx_desc = :binary.match(html, "Pix: 91985609019") |> elem(0)
-      # Widget and QR appear before the description block.
+
       assert idx_widget < idx_desc
-      assert idx_svg < idx_desc
+      assert idx_key < idx_desc
     end
 
     test "shows only the parts that are set", %{conn: conn} do
@@ -138,7 +138,7 @@ defmodule RolezinhoWeb.WhenWhereTest do
       assert html =~ "Praia"
       refute html =~ "Quando"
       # No calendar buttons when there is no date
-      refute html =~ "Google Calendar"
+      refute html =~ "Agenda"
     end
   end
 

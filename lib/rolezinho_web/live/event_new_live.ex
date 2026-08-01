@@ -2,8 +2,6 @@ defmodule RolezinhoWeb.EventNewLive do
   @moduledoc "Admin form to create a new rolezinho."
   use RolezinhoWeb, :live_view
 
-  alias Rolezinho.Events
-
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
@@ -17,8 +15,11 @@ defmodule RolezinhoWeb.EventNewLive do
       "title" => "",
       "slug" => "",
       "local" => "",
+      "category" => "",
       "date" => "",
       "time" => "",
+      "price" => "",
+      "pix_key" => "",
       "description" => "",
       "main_size" => "18",
       "wait_size" => "3",
@@ -42,124 +43,137 @@ defmodule RolezinhoWeb.EventNewLive do
     {:noreply, assign_form(socket, params, %{})}
   end
 
-  def handle_event("save", %{"event" => params}, socket) do
-    case Events.create(params) do
-      {:ok, event} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Rolezinho criado!")
-         |> push_navigate(to: ~p"/r/#{event.slug}")}
-
-      {:error, errors} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Verifique os campos.")
-         |> assign_form(params, errors)}
-    end
-  end
-
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_admin?={@current_admin?} page_title={@page_title}>
-      <div class="max-w-xl mx-auto">
-        <h1 class="text-3xl font-bold tracking-tight mb-2">Criar rolezinho</h1>
-        <p class="text-base-content/70 mb-8">
-          Preencha os dados abaixo. Depois você pode editar o texto livremente.
-        </p>
+    <Layouts.app
+      flash={@flash}
+      current_admin?={@current_admin?}
+      page_title={@page_title}
+    >
+      <:action>
+        <button
+          type="submit"
+          form="new-event-form"
+          class="w-full rounded-cta bg-ink px-4 py-4 text-[15px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
+          Criar rolezinho
+        </button>
+      </:action>
+
+      <div>
+        <header class="flex items-center gap-2">
+          <.link
+            navigate={~p"/"}
+            class="grid size-11 shrink-0 place-items-center rounded-full bg-ink/[0.06] text-ink"
+            aria-label="Voltar"
+          >
+            <.icon name="tabler-arrow-left" class="size-[18px]" />
+          </.link>
+          <h1 class="text-2xl font-extrabold tracking-tight">Criar rolezinho</h1>
+        </header>
 
         <.form
           for={@form}
           id="new-event-form"
+          action={~p"/criar"}
+          method="post"
           phx-change="validate"
-          phx-submit="save"
-          class="space-y-4"
+          class="mt-5"
         >
-          <.input
-            field={@form[:title]}
-            label="Nome do rolezinho"
-            placeholder="ex.: Vôlei ver-o-beach"
-            required
-          />
+          <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card">
+            <h2 class="text-[13px] font-extrabold">O rolê</h2>
 
-          <.input
-            field={@form[:slug]}
-            label="Slug (URL)"
-            placeholder="volei-ver-o-beach"
-            required
-          />
-          <p class="text-xs text-base-content/60 -mt-3">
-            Vai virar <code>/r/{@form[:slug].value || "seu-slug"}</code>. Letras minúsculas, números e traços.
-          </p>
+            <div class="mt-3.5 space-y-3">
+              <.input
+                field={@form[:title]}
+                label="Nome"
+                placeholder="ex.: Vôlei ver-o-beach"
+                required
+              />
+              <.input field={@form[:slug]} label="Link" placeholder="volei-ver-o-beach" required />
+              <p class="-mt-2 text-[11px] text-muted">
+                Vira <code class="font-mono">/r/{@form[:slug].value || "seu-link"}</code>
+              </p>
+              <.input field={@form[:local]} label="Onde" placeholder="ex.: Rua Caripunas" />
+              <.input
+                field={@form[:category]}
+                label="Categoria"
+                placeholder="ex.: esporte, coworking, social"
+              />
 
-          <.input
-            field={@form[:local]}
-            label="Local (opcional)"
-            placeholder="ex.: Rua Caripunas"
-          />
+              <div class="grid grid-cols-2 gap-2">
+                <.input field={@form[:date]} type="date" label="Quando" />
+                <.input field={@form[:time]} type="time" label="Que horas" />
+              </div>
+            </div>
+          </section>
 
-          <div class="grid grid-cols-2 gap-4">
-            <.input
-              field={@form[:date]}
-              type="date"
-              label="Data (BRT, opcional)"
-            />
-            <.input
-              field={@form[:time]}
-              type="time"
-              label="Horário (BRT, opcional)"
-            />
-          </div>
-          <p class="text-xs text-base-content/60 -mt-3">
-            Data e hora usam o fuso de Brasília (BRT). Ambos são opcionais.
-          </p>
-
-          <.input
-            field={@form[:description]}
-            type="textarea"
-            label="Descrição (valor, Pix, observações...)"
-            rows="6"
-            placeholder="Valor: 15\nPix: 91984933238\n*PAGAMENTO APENAS NO PIX*"
-          />
-
-          <div class="grid grid-cols-2 gap-4">
-            <.input
-              field={@form[:main_size]}
-              type="number"
-              label="Vagas na lista principal"
-              min="1"
-              max="500"
-              required
-            />
-            <.input
-              field={@form[:wait_size]}
-              type="number"
-              label="Vagas iniciais na reserva"
-              min="0"
-              max="100"
-            />
-          </div>
-          <p class="text-xs text-base-content/60 -mt-3">
-            Coloque 0 para desativar a lista de reserva. A reserva é infinita depois de criada.
-          </p>
-
-          <div>
-            <.input
-              field={@form[:password]}
-              label="Senha (opcional)"
-              placeholder="em branco = sem senha"
-              autocomplete="off"
-            />
-            <p class="text-xs text-base-content/60 mt-1">
-              Se preenchida, quem quiser ver o local ou entrar na lista precisa
-              digitar essa senha. Ótima pra bloquear bots — não precisa ser forte.
+          <section class="mt-3 rounded-card border border-hairline bg-base-100 p-4 shadow-card">
+            <h2 class="text-[13px] font-extrabold">Rateio</h2>
+            <p class="mt-0.5 text-[11px] text-muted">
+              Deixe em branco se o rolê for de graça.
             </p>
-          </div>
 
-          <div class="flex gap-3 pt-2">
-            <button type="submit" class="btn btn-primary">Criar rolezinho</button>
-            <.link navigate={~p"/admin"} class="btn btn-ghost">Cancelar</.link>
-          </div>
+            <div class="mt-3.5 space-y-3">
+              <.input field={@form[:price]} label="Quanto cada um paga" placeholder="ex.: 15" />
+              <.input
+                field={@form[:pix_key]}
+                label="Chave Pix"
+                placeholder="telefone, CPF, e-mail ou aleatória"
+              />
+            </div>
+          </section>
+
+          <section class="mt-3 rounded-card border border-hairline bg-base-100 p-4 shadow-card">
+            <h2 class="text-[13px] font-extrabold">Vagas</h2>
+
+            <div class="mt-3.5 grid grid-cols-2 gap-2">
+              <.input
+                field={@form[:main_size]}
+                type="number"
+                label="Na lista"
+                min="1"
+                max="500"
+                required
+              />
+              <.input field={@form[:wait_size]} type="number" label="Na espera" min="0" max="100" />
+            </div>
+            <p class="mt-2 text-[11px] text-muted">
+              0 na espera desliga a fila. Depois de criada, ela não tem limite.
+            </p>
+          </section>
+
+          <section class="mt-3 rounded-card border border-hairline bg-base-100 p-4 shadow-card">
+            <h2 class="text-[13px] font-extrabold">Senha</h2>
+            <p class="mt-0.5 text-[11px] text-muted">
+              Em branco, qualquer um com o link entra. Com senha, o link sozinho não basta.
+            </p>
+
+            <div class="mt-3.5">
+              <.input field={@form[:password]} label="Senha da lista" autocomplete="off" />
+            </div>
+          </section>
+
+          <section class="mt-3 rounded-card border border-hairline bg-base-100 p-4 shadow-card">
+            <h2 class="text-[13px] font-extrabold">Recado pro grupo</h2>
+            <p class="mt-0.5 text-[11px] leading-relaxed text-muted">
+              O que levar, onde estacionar, qualquer coisa que ajude. Aparece na página do rolê.
+            </p>
+
+            <div class="mt-3.5">
+              <.input field={@form[:description]} type="textarea" rows="4" />
+            </div>
+
+            <!-- The syntax is the group's own, so the hint names it rather than
+                 teaching markdown: someone who formats messages already knows
+                 this and does not need to be told it is markdown. -->
+            <p class="mt-2 text-[11px] text-muted">
+              Dá pra usar <code class="font-mono font-bold">*negrito*</code>,
+              <code class="font-mono italic">_itálico_</code>
+              e <code class="font-mono line-through">~riscado~</code>, como no WhatsApp.
+            </p>
+          </section>
         </.form>
       </div>
     </Layouts.app>

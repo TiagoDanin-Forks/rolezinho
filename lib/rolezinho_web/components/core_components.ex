@@ -8,18 +8,16 @@ defmodule RolezinhoWeb.CoreComponents do
   with doc strings and declarative assigns. You may customize and style
   them in any way you want, based on your application growth and needs.
 
-  The foundation for styling is Tailwind CSS, a utility-first CSS framework,
-  augmented with daisyUI, a Tailwind CSS plugin that provides UI components
-  and themes. Here are useful references:
-
-    * [daisyUI](https://daisyui.com/docs/intro/) - a good place to get
-      started and see the available components.
+  The foundation for styling is Tailwind CSS, a utility-first CSS framework.
+  The design tokens (colors, radii) live in the `@theme` block of
+  `assets/css/app.css` and generate the `*-primary`, `*-base-100` and
+  `*-base-content` utilities used here. Here are useful references:
 
     * [Tailwind CSS](https://tailwindcss.com) - the foundational framework
       we build on. You will use it for layout, sizing, flexbox, grid, and
       spacing.
 
-    * [Heroicons](https://heroicons.com) - see `icon/1` for usage.
+    * [Tabler Icons](https://tabler.io/icons) - see `icon/1` for usage.
 
     * [Phoenix.Component](https://phoenix-live-view.hexdocs.pm/Phoenix.Component.html) -
       the component system used by Phoenix. Some components, such as `<.link>`
@@ -63,23 +61,24 @@ defmodule RolezinhoWeb.CoreComponents do
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
-      class="toast toast-top toast-end z-50"
+      class="fixed top-4 right-4 z-50 cursor-pointer"
       {@rest}
     >
       <div class={[
-        "alert w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap",
-        @kind == :info && "alert-info",
-        @kind == :error && "alert-error"
+        "flex items-start gap-3 rounded-lg p-4 shadow-lg ring-1 ring-black/5",
+        "w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap",
+        @kind == :info && "bg-info text-info-content",
+        @kind == :error && "bg-error text-error-content"
       ]}>
-        <.icon :if={@kind == :info} name="hero-information-circle" class="size-5 shrink-0" />
-        <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5 shrink-0" />
+        <.icon :if={@kind == :info} name="tabler-info-circle" class="size-5 shrink-0" />
+        <.icon :if={@kind == :error} name="tabler-alert-circle" class="size-5 shrink-0" />
         <div>
           <p :if={@title} class="font-semibold">{@title}</p>
           <p>{msg}</p>
         </div>
         <div class="flex-1" />
         <button type="button" class="group self-start cursor-pointer" aria-label={gettext("close")}>
-          <.icon name="hero-x-mark" class="size-5 opacity-40 group-hover:opacity-70" />
+          <.icon name="tabler-x" class="size-5 opacity-40 group-hover:opacity-70" />
         </button>
       </div>
     </div>
@@ -101,11 +100,19 @@ defmodule RolezinhoWeb.CoreComponents do
   slot :inner_block, required: true
 
   def button(%{rest: rest} = assigns) do
-    variants = %{"primary" => "btn-primary", nil => "btn-primary btn-soft"}
+    variants = %{
+      "primary" => "bg-primary text-primary-content hover:bg-primary/90",
+      nil => "bg-primary/10 text-primary hover:bg-primary/20"
+    }
 
     assigns =
       assign_new(assigns, :class, fn ->
-        ["btn", Map.fetch!(variants, assigns[:variant])]
+        [
+          "inline-flex items-center justify-center gap-1.5 rounded-md px-4 py-2",
+          "text-sm font-medium transition-colors cursor-pointer",
+          "disabled:opacity-50 disabled:pointer-events-none",
+          Map.fetch!(variants, assigns[:variant])
+        ]
       end)
 
     if rest[:href] || rest[:navigate] || rest[:patch] do
@@ -212,7 +219,7 @@ defmodule RolezinhoWeb.CoreComponents do
       end)
 
     ~H"""
-    <div class="fieldset mb-2">
+    <div class="mb-2">
       <label for={@id}>
         <input
           type="hidden"
@@ -221,14 +228,14 @@ defmodule RolezinhoWeb.CoreComponents do
           disabled={@rest[:disabled]}
           form={@rest[:form]}
         />
-        <span class="label">
+        <span class="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
             id={@id}
             name={@name}
             value="true"
             checked={@checked}
-            class={@class || "checkbox checkbox-sm"}
+            class={@class || checkbox_class()}
             {@rest}
           />{@label}
         </span>
@@ -240,13 +247,16 @@ defmodule RolezinhoWeb.CoreComponents do
 
   def input(%{type: "select"} = assigns) do
     ~H"""
-    <div class="fieldset mb-2">
+    <div class="mb-2">
       <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
+        <span :if={@label} class="mb-1 block text-sm font-medium">{@label}</span>
         <select
           id={@id}
           name={@name}
-          class={[@class || "w-full select", @errors != [] && (@error_class || "select-error")]}
+          class={[
+            @class || ["w-full", field_class()],
+            @errors != [] && (@error_class || "border-error")
+          ]}
           multiple={@multiple}
           {@rest}
         >
@@ -261,15 +271,15 @@ defmodule RolezinhoWeb.CoreComponents do
 
   def input(%{type: "textarea"} = assigns) do
     ~H"""
-    <div class="fieldset mb-2">
+    <div class="mb-2">
       <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
+        <span :if={@label} class="mb-1 block text-sm font-medium">{@label}</span>
         <textarea
           id={@id}
           name={@name}
           class={[
-            @class || "w-full textarea",
-            @errors != [] && (@error_class || "textarea-error")
+            @class || ["w-full", field_class()],
+            @errors != [] && (@error_class || "border-error")
           ]}
           {@rest}
         >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
@@ -282,17 +292,17 @@ defmodule RolezinhoWeb.CoreComponents do
   # All other inputs text, datetime-local, url, password, etc. are handled here...
   def input(assigns) do
     ~H"""
-    <div class="fieldset mb-2">
+    <div class="mb-2">
       <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
+        <span :if={@label} class="mb-1 block text-sm font-medium">{@label}</span>
         <input
           type={@type}
           name={@name}
           id={@id}
           value={Phoenix.HTML.Form.normalize_value(@type, @value)}
           class={[
-            @class || "w-full input",
-            @errors != [] && (@error_class || "input-error")
+            @class || ["w-full", field_class()],
+            @errors != [] && (@error_class || "border-error")
           ]}
           {@rest}
         />
@@ -302,11 +312,32 @@ defmodule RolezinhoWeb.CoreComponents do
     """
   end
 
+  @doc """
+  Classes base dos campos de texto (input, select, textarea).
+
+  Fonte única para os templates que precisam estilizar um `<input>` cru fora do
+  `<.input>` — como os formulários inline das listas de presença. Sem isso a
+  mesma lista de utilitários acaba copiada em cada tela e as bordas divergem.
+  """
+  def field_class do
+    "rounded-md border border-base-300 bg-base-100 px-3 py-2 text-sm " <>
+      "placeholder:text-base-content/40 focus:outline-none focus:ring-2 " <>
+      "focus:ring-primary/50 focus:border-primary"
+  end
+
+  @doc """
+  Classes base dos checkboxes, dimensionadas para alinhar com o texto ao lado.
+  """
+  def checkbox_class do
+    "size-4 rounded border-base-300 text-primary accent-primary " <>
+      "focus:ring-2 focus:ring-primary/50"
+  end
+
   # Helper used by inputs to generate form errors
   defp error(assigns) do
     ~H"""
     <p class="mt-1.5 flex gap-2 items-center text-sm text-error">
-      <.icon name="hero-exclamation-circle" class="size-5" />
+      <.icon name="tabler-alert-circle" class="size-5" />
       {render_slot(@inner_block)}
     </p>
     """
@@ -367,25 +398,29 @@ defmodule RolezinhoWeb.CoreComponents do
       end
 
     ~H"""
-    <table class="table table-zebra">
-      <thead>
+    <table class="w-full text-left text-sm">
+      <thead class="border-b border-base-300 text-base-content/70">
         <tr>
-          <th :for={col <- @col}>{col[:label]}</th>
-          <th :if={@action != []}>
+          <th :for={col <- @col} class="p-3 font-medium">{col[:label]}</th>
+          <th :if={@action != []} class="p-3">
             <span class="sr-only">{gettext("Actions")}</span>
           </th>
         </tr>
       </thead>
       <tbody id={@id} phx-update={is_struct(@rows, Phoenix.LiveView.LiveStream) && "stream"}>
-        <tr :for={row <- @rows} id={@row_id && @row_id.(row)}>
+        <tr
+          :for={row <- @rows}
+          id={@row_id && @row_id.(row)}
+          class="border-b border-base-300 last:border-0 even:bg-base-200/50"
+        >
           <td
             :for={col <- @col}
             phx-click={@row_click && @row_click.(row)}
-            class={@row_click && "hover:cursor-pointer"}
+            class={["p-3", @row_click && "hover:cursor-pointer"]}
           >
             {render_slot(col, @row_item.(row))}
           </td>
-          <td :if={@action != []} class="w-0 font-semibold">
+          <td :if={@action != []} class="w-0 p-3 font-semibold">
             <div class="flex gap-4">
               <%= for action <- @action do %>
                 {render_slot(action, @row_item.(row))}
@@ -414,9 +449,9 @@ defmodule RolezinhoWeb.CoreComponents do
 
   def list(assigns) do
     ~H"""
-    <ul class="list">
-      <li :for={item <- @item} class="list-row">
-        <div class="list-col-grow">
+    <ul class="divide-y divide-base-300">
+      <li :for={item <- @item} class="flex items-center gap-4 py-3">
+        <div class="grow">
           <div class="font-bold">{item.title}</div>
           <div>{render_slot(item)}</div>
         </div>
@@ -426,27 +461,27 @@ defmodule RolezinhoWeb.CoreComponents do
   end
 
   @doc """
-  Renders a [Heroicon](https://heroicons.com).
+  Renders a [Tabler icon](https://tabler.io/icons).
 
-  Heroicons come in three styles – outline, solid, and mini.
-  By default, the outline style is used, but solid and mini may
-  be applied by using the `-solid` and `-mini` suffix.
+  The outline style is the default; use the `-filled` suffix for the filled
+  variant.
 
-  You can customize the size and colors of the icons by setting
-  width, height, and background color classes.
+  You can customize the size and colors of the icons by setting width, height,
+  and text color classes — the icon inherits its color via `currentColor`.
 
-  Icons are extracted from the `deps/heroicons` directory and bundled within
-  your compiled app.css by the plugin in `assets/vendor/heroicons.js`.
+  Icons are extracted from the `deps/tabler_icons` directory and bundled within
+  your compiled app.css by the plugin in `assets/vendor/tabler.js`.
 
   ## Examples
 
-      <.icon name="hero-x-mark" />
-      <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
+      <.icon name="tabler-x" />
+      <.icon name="tabler-refresh" class="ml-1 size-3 motion-safe:animate-spin" />
+      <.icon name="tabler-heart-filled" class="size-5 text-primary" />
   """
   attr :name, :string, required: true
   attr :class, :any, default: "size-4"
 
-  def icon(%{name: "hero-" <> _} = assigns) do
+  def icon(%{name: "tabler-" <> _} = assigns) do
     ~H"""
     <span class={[@name, @class]} />
     """

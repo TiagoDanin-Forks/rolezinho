@@ -1,0 +1,3 @@
+
+Config.Secrets: Hardcoded Secret,config/config.exs:13,43CA9AD
+Config.CSP: Missing Content-Security-Policy,lib/rolezinho_web/router.ex:13,57957B6

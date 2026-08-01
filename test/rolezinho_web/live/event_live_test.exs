@@ -40,21 +40,21 @@ defmodule RolezinhoWeb.EventLiveTest do
 
       {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
 
-      # The 2 empty slots are still rendered as "vaga aberta" rows in the UI.
+      # The 2 empty slots are still rendered as their own rows in the UI, since a
+      # slot is a position that exists whether or not anyone is in it.
       # The compact "N vagas: URL" summary lives in the shareable text only.
-      assert html =~ "vaga aberta"
+      assert html =~ "Vaga livre"
       # The shareable text (data-text) does have the compact summary.
       assert html =~ "2 vagas: http"
     end
 
     test "anyone can add themselves to the main list", %{conn: conn, event: event} do
-      {:ok, view, _html} = live(conn, ~p"/r/#{event.slug}")
+      # Joining goes through a real request: the participant id has to land in
+      # the session, and a LiveView cannot write to it.
+      post(conn, ~p"/r/#{event.slug}/join", %{"name" => "Alice"})
 
-      view
-      |> form("#add-main-form", %{"name" => "Alice"})
-      |> render_submit()
-
-      assert render(view) =~ "Alice"
+      {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
+      assert html =~ "Alice"
     end
 
     test "anyone can add themselves to the wait list", %{conn: conn, event: event} do
@@ -67,21 +67,55 @@ defmodule RolezinhoWeb.EventLiveTest do
       assert render(view) =~ "Waiter"
     end
 
-    test "anyone can promote wait list to main", %{conn: conn, event: event} do
-      # Fill main to leave 2 spots
+    # RN-31: promoting is a decision about who gets in, so it belongs to whoever
+    # runs the rolê. A visitor is not offered it, and cannot send it either — the
+    # button being absent is not what stops them.
+    test "a visitor is not offered promotion", %{conn: conn, event: event} do
       {:ok, _} = Events.add_to_main(event, "A")
       event = Events.find(event.slug)
       {:ok, _} = Events.add_to_wait(event, "W1")
 
       {:ok, view, _html} = live(conn, ~p"/r/#{event.slug}")
 
+      refute has_element?(view, "button[phx-click=\"promote\"]")
+    end
+
+    test "a visitor forging the promote message is refused", %{conn: conn, event: event} do
+      {:ok, _} = Events.add_to_main(event, "A")
+      event = Events.find(event.slug)
+      {:ok, _} = Events.add_to_wait(event, "W1")
+
+      {:ok, view, _html} = live(conn, ~p"/r/#{event.slug}")
+
+      render_click(view, "promote", %{"index" => "1"})
+
+      assert Events.find(event.slug).wait_list |> Enum.map(& &1.name) == ["W1"]
+    end
+
+    test "the admin promotes from the queue", %{conn: conn, event: event} do
+      {:ok, _} = Events.add_to_main(event, "A")
+      event = Events.find(event.slug)
+      {:ok, _} = Events.add_to_wait(event, "W1")
+
+      {:ok, view, _html} = live(admin_conn(conn), ~p"/r/#{event.slug}")
+
       view
       |> element("button[phx-click=\"promote\"][phx-value-index=\"1\"]")
       |> render_click()
 
-      assert render(view) =~ "W1"
-      # No more wait list entries
-      refute render(view) =~ "1 pessoa"
+      reloaded = Events.find(event.slug)
+      assert Enum.map(reloaded.main_list, & &1.name) |> Enum.member?("W1")
+      assert reloaded.wait_list == []
+    end
+
+    # Payment is settled on the main list, so a queued row has no check to offer
+    # and nothing to report.
+    test "the queue has no payment control", %{conn: conn, event: event} do
+      {:ok, _} = Events.add_to_wait(event, "W1")
+
+      {:ok, view, _html} = live(admin_conn(conn), ~p"/r/#{event.slug}")
+
+      refute has_element?(view, "button[phx-click=\"toggle_paid_wait\"]")
     end
 
     test "does not show admin-only controls when not logged in", %{conn: conn, event: event} do
@@ -234,7 +268,7 @@ defmodule RolezinhoWeb.EventLiveTest do
   end
 
   describe "pix panel" do
-    test "renders a QR code and phone when the description has a Pix key", %{conn: conn} do
+    test "renders the key and a way to the QR when the description has a Pix key", %{conn: conn} do
       {:ok, _} =
         Rolezinho.Events.create(%{
           "title" => "Com Pix",
@@ -244,11 +278,13 @@ defmodule RolezinhoWeb.EventLiveTest do
           "wait_size" => "0"
         })
 
-      {:ok, _view, html} = live(conn, ~p"/r/com-pix")
+      {:ok, view, html} = live(conn, ~p"/r/com-pix")
 
-      assert html =~ "<svg"
+      # The key is here; the QR code itself lives on the payment screen, so the
+      # list — the reason this page exists — is not pushed below the fold.
       assert html =~ "(91) 98560-9019"
-      assert html =~ "Copiar chave"
+      assert has_element?(view, "#copy-pix-com-pix")
+      assert has_element?(view, ~s{a[href="/r/com-pix/pagamento"]}, "Ver o QR Code")
     end
 
     test "omits the pix panel when no key is detected", %{conn: conn} do
