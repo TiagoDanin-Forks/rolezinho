@@ -12,15 +12,16 @@ identity session, and no per-record owner. This changes the nature of security w
 here, and ignoring the difference is the easiest way to write wrong code in this
 project.
 
-There are five access levels:
+There are six access levels:
 
 | Level | How it's obtained | What it can do |
 | --- | --- | --- |
-| **Anonymous visitor** | open the URL | view public events; join a list |
+| **Anonymous visitor** | open the URL | view public events and public groups; join a list |
 | **Session with an unlocked event** | enter the correct password for a specific event (`POST /r/:slug/unlock`) | everything a visitor can, on the protected event whose password they entered |
+| **Session with an unlocked group** | enter the correct password for a specific group (`POST /g/:slug/unlock`) | view the group's contents; edit the group's name and password; create events *into* the group; and — as a cascade — view every event that belongs to that group, without needing each event's own password |
 | **Participant** | join a list; the browser keeps the row's `participant_id` in the signed session | mark payment and leave — **on their own row only** |
 | **Organizer** | hold an event's `organizer_token` | administer that event and no other: mark anyone, remove anyone, promote, edit details, close |
-| **Admin** | enter `ADMIN_PASSWORD` at `/admin/login` | the same, on every event — an operational bypass, not the normal path |
+| **Admin** | enter `ADMIN_PASSWORD` at `/admin/login` | the same, on every event and every group — an operational bypass, not the normal path |
 
 Every one of these is a bearer secret: there are no accounts, so whoever
 presents the value is treated as that party. Both live in the **signed** session
@@ -46,6 +47,15 @@ Direct consequences, which hold as rules:
 - **`organizer_token` is never cast from params.** It is set once, at creation.
   Accepting it as input would let a visitor pick the secret that administers the
   event.
+- **`group_id` on an event is never cast from params either.** The Events
+  context takes it from `opts` after the caller has been authorized against
+  the group's password gate. Accepting it as input would let anyone drop an
+  event into any group by id.
+- **A group has no organizer token.** The group's password *is* the bearer
+  secret that lets a non-admin manage it — there is nothing else. A group
+  created without one can only be edited by the platform admin, which is a
+  deliberate cost surfaced to the creator at the moment they submit (see
+  §3).
 - **The identifier is the slug, and it is public.** It appears in the URL pasted
   into the group. There is nothing to hide in it, and it authorizes nothing.
 
@@ -210,6 +220,35 @@ Rules when touching this:
   display, rate limiting) and it stops being shareable in the group — that's a
   product decision, not a technical tweak. Record it as an ADR in
   `docs/decisions/`.
+
+### Group passwords
+
+A group's password (`groups.password`) is the same shape and has the same
+semantics as an event's password. Everything above about "friction, not
+secrecy" applies unchanged. There are two rules specific to groups:
+
+- **The group page shows *nothing* about the group until the password lands.**
+  A password-protected `/g/:slug` renders the unlock panel and only the
+  unlock panel: no name, no crumb, no counts, no event list, no tab title
+  giving it away. The rule is server-side (`Group.accessible?/3`) and holds
+  even for the tab title (`GroupLive.page_title_for/2`).
+- **Group unlock cascades to the events in that group.** An event that lives
+  in a password-protected group is fully unlocked for a session that has the
+  group unlocked — regardless of the event's own password field, if any.
+  Every surface that gates on password (the event LiveView, `/r/:slug.txt`,
+  `/r/:slug/calendar.ics`) evaluates the group gate first: an unlocked group
+  grants access; a locked group withholds it entirely even if the event
+  itself carries no password of its own. Direct-URL access to an event in a
+  locked group redirects the visitor to `/g/:group-slug` so there is exactly
+  one place the password is entered.
+- **Passwordless groups have no non-admin edit surface at all.** The
+  editable-by check (`Group.editable_by?/3`) returns `false` for a non-admin
+  on a passwordless group, and the create-event controller refuses to attach
+  a new event to one from a non-admin caller. This is the tradeoff the
+  creator agrees to at the moment they submit the create form without a
+  password (a `window.confirm` makes them acknowledge it), and it is the
+  only path by which the passwordless-groups-are-admin-only rule stays
+  true.
 
 ## 4. Mass assignment
 

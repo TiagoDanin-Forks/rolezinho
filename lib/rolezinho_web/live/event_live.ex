@@ -12,6 +12,8 @@ defmodule RolezinhoWeb.EventLive do
   alias Rolezinho.Event.Policy
   alias Rolezinho.Event.WhatsMarkup
   alias Rolezinho.Events
+  alias Rolezinho.Group
+  alias Rolezinho.Groups
   alias Rolezinho.Pix
   alias RolezinhoWeb.Components.UI.BottomSheet
   alias RolezinhoWeb.Plugs.Participant
@@ -28,17 +30,84 @@ defmodule RolezinhoWeb.EventLive do
          |> push_navigate(to: ~p"/")}
 
       event ->
-        if connected?(socket), do: Events.subscribe(slug)
+        # Events in a password-protected group inherit the group's gate. If the
+        # visitor hasn't unlocked the group yet, send them there — that's the
+        # single entry point for the group's contents (SECURITY.md §3). Admins
+        # see everything and bypass the redirect.
+        case gated_by_group(event, socket) do
+          {:redirect, group_slug} ->
+            {:ok,
+             socket
+             |> put_flash(
+               :info,
+               "Esse rolê faz parte de um grupo protegido. Digite a senha do grupo pra ver."
+             )
+             |> push_navigate(to: ~p"/g/#{group_slug}")}
 
-        {:ok,
-         socket
-         |> assign(:show_password_in_share?, false)
-         |> assign_event(event)
-         |> assign(:new_main_name, "")
-         |> assign(:new_wait_name, "")
-         |> assign(:editing_main, nil)
-         |> assign(:editing_wait, nil)
-         |> assign(:confirming_removal, nil)}
+          :ok ->
+            if connected?(socket), do: Events.subscribe(slug)
+
+            {:ok,
+             socket
+             |> assign(:show_password_in_share?, false)
+             |> assign_event(event)
+             |> assign(:new_main_name, "")
+             |> assign(:new_wait_name, "")
+             |> assign(:editing_main, nil)
+             |> assign(:editing_wait, nil)
+             |> assign(:confirming_removal, nil)}
+        end
+    end
+  end
+
+  # Only redirect when the group is password-protected *and* the visitor is not
+  # yet unlocked (and not admin). A group with no password sets no gate on its
+  # events — they keep their own individual password behaviour, if any.
+  defp gated_by_group(%Event{group_id: nil}, _socket), do: :ok
+
+  defp gated_by_group(%Event{group_id: gid}, socket) do
+    with %Group{} = group <- Groups.get(gid),
+         true <- Group.password_protected?(group),
+         false <- socket.assigns.current_admin?,
+         false <- MapSet.member?(socket.assigns.unlocked_groups, group.slug) do
+      {:redirect, group.slug}
+    else
+      _ -> :ok
+    end
+  end
+
+  # Group unlock cascades to the events inside: if the caller entered the
+  # group's password, they get to see the events even if the events themselves
+  # have their own password set. This is the "inherited auth" the product spec
+  # calls for.
+  defp compute_unlocked?(%Event{} = event, socket) do
+    cond do
+      socket.assigns.current_admin? -> true
+      group_password_bypass?(event, socket) -> true
+      group_password_gates?(event) -> false
+      not Event.password_protected?(event) -> true
+      MapSet.member?(socket.assigns.unlocked_events, event.slug) -> true
+      true -> false
+    end
+  end
+
+  defp group_password_bypass?(%Event{group_id: nil}, _socket), do: false
+
+  defp group_password_bypass?(%Event{group_id: gid}, socket) do
+    with %Group{} = group <- Groups.get(gid),
+         true <- Group.password_protected?(group) do
+      MapSet.member?(socket.assigns.unlocked_groups, group.slug)
+    else
+      _ -> false
+    end
+  end
+
+  defp group_password_gates?(%Event{group_id: nil}), do: false
+
+  defp group_password_gates?(%Event{group_id: gid}) do
+    case Groups.get(gid) do
+      %Group{} = group -> Group.password_protected?(group)
+      _ -> false
     end
   end
 
@@ -46,10 +115,15 @@ defmodule RolezinhoWeb.EventLive do
     url = url_for(event)
     {meta, stripped_header} = Meta.extract(event.header)
 
-    unlocked? =
-      socket.assigns.current_admin? or
-        not Event.password_protected?(event) or
-        MapSet.member?(socket.assigns.unlocked_events, event.slug)
+    # `unlocked?` is what tells the template whether to show the location,
+    # names, description, calendar buttons, join form and so on. Mirroring the
+    # controllers: an unlocked group bypasses everything; a locked group gates
+    # everything; only after that does the event's own password come in.
+    #
+    # Note: `mount/3` already sends the visitor to the group's unlock panel
+    # when the group gate is closed and the caller isn't admin. This branch is
+    # what makes the LiveView do the right thing anyway if that ever changes.
+    unlocked? = compute_unlocked?(event, socket)
 
     # When the visitor hasn't unlocked, hide everything that could reveal
     # sensitive info: the location line, the free-form description block, the

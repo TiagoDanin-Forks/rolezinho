@@ -10,6 +10,13 @@ event lives at `/r/<slug>` and holds the date, location, a live attendance list,
 waitlist, and a Pix QR code. The same event ships in three formats: page, plain text
 (`/r/<slug>.txt`), and calendar (`/r/<slug>/calendar.ics`).
 
+Events can be bundled under a **group** at `/g/<slug>`. A group has a name, a
+slug (immutable after creation), an optional password, and a public/hidden
+visibility flag. Events inside a group don't appear on the home page — their
+group does. When a group has a password, its page shows only an unlock form
+until the password lands, and the events inside inherit that gate. See
+`SECURITY.md` §3 before touching any of it.
+
 **There are no user accounts.** Guests use the app anonymously from a link; the
 organizer signs in at `/admin/login` with a single environment password. This access
 model is the most important difference from stock Phoenix — there is no `current_scope`
@@ -61,7 +68,7 @@ of `app.css`), Tabler icons, Earmark for markdown, deployed on Fly.io.
    lives. If a piece of information exists in two places, one of them is wrong (or soon
    will be). Known coupled pairs: `DESIGN.md` ↔ the `@theme` block in `app.css`.
 
-## The project's three invariants
+## The project's four invariants
 
 Breaking any of these is a bug, not a style choice:
 
@@ -72,8 +79,14 @@ Breaking any of these is a bug, not a style choice:
    the `on_mount` protects the socket connection, which doesn't pass through the
    pipeline. Either one alone leaves the surface open from the other side.
    (`SECURITY.md`, section 2)
-3. **Password gating on the server.** Protected event content that reaches the HTML and
-   is hidden by CSS has already leaked. (`SECURITY.md`, section 3)
+3. **Password gating on the server.** Protected event *and group* content that reaches
+   the HTML and is hidden by CSS has already leaked. On a locked group, that means
+   nothing about the group renders — no name, no tab title, no event list.
+   (`SECURITY.md`, section 3)
+4. **Group unlock cascades; group lock gates every surface.** An unlocked group grants
+   full access to every event inside it; a locked group withholds it on every surface
+   (page, `.txt`, `.ics`). The evaluation lives in one place per surface — mirror it if
+   you add a new one. (`SECURITY.md`, section 3, "Group passwords")
 
 ## Essential commands
 

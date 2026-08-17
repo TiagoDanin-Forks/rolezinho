@@ -16,6 +16,8 @@ defmodule RolezinhoWeb.JoinController do
   alias Rolezinho.Event.Policy
   alias Rolezinho.Event.Token
   alias Rolezinho.Events
+  alias Rolezinho.Group
+  alias Rolezinho.Groups
   alias RolezinhoWeb.Plugs.Admin
   alias RolezinhoWeb.Plugs.Participant
 
@@ -107,14 +109,43 @@ defmodule RolezinhoWeb.JoinController do
   defp parse_size(_), do: 1
 
   # A password-gated event has to be unlocked before anyone can join it, or the
-  # gate would only be hiding the list rather than protecting it.
+  # gate would only be hiding the list rather than protecting it. The same
+  # applies when the event lives in a password-protected group: joining is one
+  # of the operations the group gate is supposed to prevent.
   defp ensure_unlocked(conn, %Event{} = event) do
+    admin? = conn.assigns.current_admin?
+
     unlocked? =
-      conn.assigns.current_admin? or
-        not Event.password_protected?(event) or
-        MapSet.member?(Admin.unlocked_events(conn), event.slug)
+      cond do
+        admin? -> true
+        group_password_bypass?(conn, event) -> true
+        group_password_gates?(event) -> false
+        not Event.password_protected?(event) -> true
+        MapSet.member?(Admin.unlocked_events(conn), event.slug) -> true
+        true -> false
+      end
 
     if unlocked?, do: :ok, else: {:error, :locked}
+  end
+
+  defp group_password_bypass?(_conn, %Event{group_id: nil}), do: false
+
+  defp group_password_bypass?(conn, %Event{group_id: gid}) do
+    with %Group{} = group <- Groups.get(gid),
+         true <- Group.password_protected?(group) do
+      MapSet.member?(Admin.unlocked_groups(conn), group.slug)
+    else
+      _ -> false
+    end
+  end
+
+  defp group_password_gates?(%Event{group_id: nil}), do: false
+
+  defp group_password_gates?(%Event{group_id: gid}) do
+    case Groups.get(gid) do
+      %Group{} = group -> Group.password_protected?(group)
+      _ -> false
+    end
   end
 
   defp ensure_open(conn, %Event{} = event) do

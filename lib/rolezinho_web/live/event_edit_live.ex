@@ -5,6 +5,7 @@ defmodule RolezinhoWeb.EventEditLive do
   alias Rolezinho.Event
   alias Rolezinho.Event.Meta
   alias Rolezinho.Events
+  alias Rolezinho.Groups
 
   @impl true
   def mount(%{"slug" => slug}, _session, socket) do
@@ -34,6 +35,7 @@ defmodule RolezinhoWeb.EventEditLive do
     |> assign(:password_input, event.password || "")
     |> assign(:meta_form, to_form(Meta.to_form_params(meta), as: :meta))
     |> assign(:payment_form, to_form(payment_form_params(event), as: :payment))
+    |> assign(:groups, Groups.list_all())
   end
 
   defp payment_form_params(%Event{price_cents: cents, pix_key: pix}) do
@@ -126,6 +128,24 @@ defmodule RolezinhoWeb.EventEditLive do
      socket
      |> put_flash(:info, "Status atualizado.")
      |> assign_event(event)}
+  end
+
+  def handle_event("set_group", %{"group_id" => raw}, socket) do
+    group_id = parse_group_id(raw)
+
+    case Events.set_group(socket.assigns.event, group_id) do
+      {:ok, event} ->
+        message =
+          if is_nil(group_id), do: "Rolê removido do grupo.", else: "Rolê movido pro grupo."
+
+        {:noreply,
+         socket
+         |> put_flash(:info, message)
+         |> assign_event(event)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Não deu pra mover: #{inspect(reason)}")}
+    end
   end
 
   def handle_event("delete", _params, socket) do
@@ -447,6 +467,35 @@ defmodule RolezinhoWeb.EventEditLive do
         </dl>
       </section>
 
+      <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
+        <h2 class="text-[13px] font-extrabold mb-3">Grupo</h2>
+        <p class="text-[11px] text-muted mb-3">
+          Mover esse rolê pra outro grupo (ou pra fora de qualquer grupo). Apenas
+          admin — usuários com senha do grupo só criam rolês dentro dele, não os
+          movem depois.
+        </p>
+
+        <form phx-change="set_group" id="group-form" class="flex flex-wrap items-end gap-3">
+          <label class="flex-1 min-w-64">
+            <span class="label text-sm mb-1">Grupo</span>
+            <select
+              name="group_id"
+              id="event-group-select"
+              class={[field_class(), "w-full"]}
+            >
+              <option value="" selected={is_nil(@event.group_id)}>Nenhum</option>
+              <option
+                :for={group <- @groups}
+                value={group.id}
+                selected={@event.group_id == group.id}
+              >
+                {group.name} (/g/{group.slug})
+              </option>
+            </select>
+          </label>
+        </form>
+      </section>
+
       <section class="rounded-2xl border border-error/40 bg-error/5 p-5">
         <h2 class="font-semibold text-error mb-2">Zona perigosa</h2>
         <p class="text-sm text-base-content/70 mb-3">
@@ -477,6 +526,19 @@ defmodule RolezinhoWeb.EventEditLive do
   defp status_label(:payments_only), do: "Só pagamentos"
   defp status_label(:hidden), do: "Oculto"
   defp status_label(:done), do: "Concluído"
+
+  # An empty string is how the <select> represents "no group".
+  defp parse_group_id(""), do: nil
+  defp parse_group_id(nil), do: nil
+
+  defp parse_group_id(raw) when is_binary(raw) do
+    case Integer.parse(raw) do
+      {id, ""} -> id
+      _ -> nil
+    end
+  end
+
+  defp parse_group_id(id) when is_integer(id), do: id
 
   defp filled_count(%Event{main_list: list}) do
     Enum.count(list, fn a -> String.trim(a.name) != "" end)

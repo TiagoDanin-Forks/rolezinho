@@ -81,3 +81,19 @@ be useful without rereading the session.
   decision**, not by oversight: the admin must be able to read it back to re-share
   it, and the share text can embed it. Do not "fix" it with hashing without treating
   that as a product change.
+- 2026-08-16: **Group password gating has two symmetric evaluations, and both
+  must be kept in sync.** For any surface that renders an event
+  (`EventLive`, `RawController`, `CalendarController`), the unlock decision is:
+  admin → open; group unlocked → open (bypasses the event's own password too);
+  group locked → closed (even if the event has no password of its own); then
+  fall back to the event's own password. `EventLive.mount/3` additionally
+  redirects a locked-group visitor to `/g/:slug` so the password is entered in
+  one place. Adding a fourth surface means copying the same five clauses —
+  centralising them in a helper is fine, but the invariant is that the
+  evaluation exists on every surface, not that it exists in one module.
+- 2026-08-16: **`group_id` on `Event` is not cast.** Same reasoning as
+  `organizer_token` — accepting it from params would let anyone drop an event
+  into any group by id. Set it explicitly via `Event.put_group_id/2` (used by
+  `Events.set_group/2`) or via `put_change` inside `Events.create/2` after the
+  caller has been authorized against the group's password gate (which the
+  create controller does).

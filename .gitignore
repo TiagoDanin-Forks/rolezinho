@@ -84,3 +84,4 @@ priv/data/*.md
 .env
 .env.*
 !.env.example
+.sprite

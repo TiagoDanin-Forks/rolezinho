@@ -6,6 +6,8 @@ defmodule RolezinhoWeb.CalendarController do
   alias Rolezinho.Event
   alias Rolezinho.Event.Meta
   alias Rolezinho.Events
+  alias Rolezinho.Group
+  alias Rolezinho.Groups
   alias RolezinhoWeb.Plugs.Admin
 
   def show(conn, %{"slug" => slug}) do
@@ -73,14 +75,40 @@ defmodule RolezinhoWeb.CalendarController do
     end
   end
 
+  # The .ics carries LOCATION and DESCRIPTION, so "unlocked" here means the
+  # same thing as on the event page: admin bypasses, an unlocked group grants
+  # full access, a locked group withholds it entirely, and only after clearing
+  # the group gate does the event's own password (if any) come into play.
   defp ensure_unlocked(conn, %Event{} = event) do
     admin? = conn.assigns[:current_admin?] == true
 
     cond do
       admin? -> :ok
+      group_password_bypass?(conn, event) -> :ok
+      group_password_gates?(conn, event) -> {:error, :locked}
       not Event.password_protected?(event) -> :ok
       MapSet.member?(Admin.unlocked_events(conn), event.slug) -> :ok
       true -> {:error, :locked}
+    end
+  end
+
+  defp group_password_bypass?(_conn, %Event{group_id: nil}), do: false
+
+  defp group_password_bypass?(conn, %Event{group_id: gid}) do
+    with %Group{} = group <- Groups.get(gid),
+         true <- Group.password_protected?(group) do
+      MapSet.member?(Admin.unlocked_groups(conn), group.slug)
+    else
+      _ -> false
+    end
+  end
+
+  defp group_password_gates?(_conn, %Event{group_id: nil}), do: false
+
+  defp group_password_gates?(_conn, %Event{group_id: gid}) do
+    case Groups.get(gid) do
+      %Group{} = group -> Group.password_protected?(group)
+      _ -> false
     end
   end
 end

@@ -3,14 +3,19 @@ defmodule RolezinhoWeb.EventNewLive do
   use RolezinhoWeb, :live_view
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(params, _session, socket) do
+    group_slug = params |> Map.get("group", "") |> to_string() |> String.trim()
+    group = if group_slug != "", do: Rolezinho.Groups.find(group_slug), else: nil
+
     {:ok,
      socket
      |> assign(:page_title, "Criar rolezinho")
-     |> assign_form(default_params(), %{})}
+     |> assign(:group, group)
+     |> assign(:group_slug, if(group, do: group.slug, else: ""))
+     |> assign_form(default_params(group_slug), %{})}
   end
 
-  defp default_params do
+  defp default_params(group_slug) do
     %{
       "title" => "",
       "slug" => "",
@@ -23,7 +28,8 @@ defmodule RolezinhoWeb.EventNewLive do
       "description" => "",
       "main_size" => "18",
       "wait_size" => "3",
-      "password" => ""
+      "password" => "",
+      "group" => group_slug
     }
   end
 
@@ -81,6 +87,25 @@ defmodule RolezinhoWeb.EventNewLive do
           phx-change="validate"
           class="mt-5"
         >
+          <!--
+            The group binding travels as a hidden field so the controller can
+            authorize it. It is a name, not an id: a name we validate against
+            the caller's session on submit. Ids would let anyone drop into any
+            group by number.
+          -->
+          <input type="hidden" name="event[group]" value={@group_slug} />
+
+          <div
+            :if={@group}
+            class="mb-3 flex items-center gap-2.5 rounded-card border border-hairline bg-accent/[0.08] p-3.5 text-[12px]"
+          >
+            <.icon name="tabler-users-group" class="size-4 shrink-0 text-accent" />
+            <p class="leading-tight">
+              Criando dentro do grupo <strong>{@group.name}</strong>. Esse rolê
+              não aparece na home — só na página do grupo.
+            </p>
+          </div>
+
           <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card">
             <h2 class="text-[13px] font-extrabold">O rolê</h2>
 

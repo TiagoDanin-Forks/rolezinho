@@ -3,6 +3,7 @@ defmodule RolezinhoWeb.AdminHomeLive do
   use RolezinhoWeb, :live_view
 
   alias Rolezinho.Events
+  alias Rolezinho.Groups
 
   @impl true
   def mount(_params, _session, socket) do
@@ -37,6 +38,7 @@ defmodule RolezinhoWeb.AdminHomeLive do
     |> assign(:payments_only_events, Events.list_payments_only())
     |> assign(:hidden_events, Events.list_hidden())
     |> assign(:done_events, Events.list_done())
+    |> assign(:groups, Groups.list_all())
   end
 
   @impl true
@@ -62,6 +64,8 @@ defmodule RolezinhoWeb.AdminHomeLive do
           </.link>
         </header>
 
+        <.group_section groups={@groups} />
+
         <!-- Empty sections are dropped rather than shown as placeholders: with
              four states, a panel of "nenhum" lines says less than a short list
              of what actually exists. -->
@@ -73,10 +77,10 @@ defmodule RolezinhoWeb.AdminHomeLive do
         <.empty_state
           :if={everything_empty?(assigns)}
           icon="tabler-diamond"
-          title="Nenhum rolê ainda"
+          title="Nada por aqui ainda"
           class="mt-6"
         >
-          Crie o primeiro e mande o link no grupo.
+          Crie o primeiro rolê ou grupo.
         </.empty_state>
       </div>
     </Layouts.app>
@@ -89,10 +93,42 @@ defmodule RolezinhoWeb.AdminHomeLive do
         assigns.active_events,
         assigns.payments_only_events,
         assigns.hidden_events,
-        assigns.done_events
+        assigns.done_events,
+        assigns.groups
       ],
       &(&1 == [])
     )
+  end
+
+  attr :groups, :list, required: true
+
+  defp group_section(assigns) do
+    ~H"""
+    <section :if={@groups != []} class="mt-6">
+      <.section_header title="Grupos" count={length(@groups)} />
+
+      <ul class="mt-2 space-y-2">
+        <li
+          :for={group <- @groups}
+          class="flex items-center gap-2.5 rounded-card border border-hairline bg-base-100 p-3.5 shadow-card"
+        >
+          <.link navigate={~p"/g/#{group.slug}"} class="min-w-0 flex-1">
+            <p class="truncate text-[13px] font-bold">{group.name}</p>
+            <p class="truncate font-mono text-[11px] text-muted">
+              /g/{group.slug} · {group.visibility}<span :if={group.password}> · com senha</span>
+            </p>
+          </.link>
+          <.link
+            navigate={~p"/admin/g/#{group.slug}/edit"}
+            class="grid size-11 shrink-0 place-items-center rounded-full bg-ink/[0.06] text-ink"
+            aria-label={"Editar #{group.name}"}
+          >
+            <.icon name="tabler-pencil" class="size-4" />
+          </.link>
+        </li>
+      </ul>
+    </section>
+    """
   end
 
   attr :title, :string, required: true

@@ -36,6 +36,8 @@ defmodule RolezinhoWeb.Router do
       live "/r/:slug/convite", InviteLive, :show
       live "/r/:slug/pagamento", PaymentLive, :show
       live "/criar", EventNewLive, :new
+      live "/g/criar", GroupNewLive, :new
+      live "/g/:slug", GroupLive, :show
     end
 
     get "/r/txt/:slug", RawController, :show
@@ -43,6 +45,8 @@ defmodule RolezinhoWeb.Router do
     post "/r/:slug/unlock", EventUnlockController, :unlock
     post "/r/:slug/join", JoinController, :create
     post "/criar", EventCreateController, :create
+    post "/g/criar", GroupCreateController, :create
+    post "/g/:slug/unlock", GroupUnlockController, :unlock
 
     get "/admin/login", AdminSessionController, :new
     post "/admin/login", AdminSessionController, :create
@@ -57,6 +61,7 @@ defmodule RolezinhoWeb.Router do
       live "/", AdminHomeLive, :index
       live "/r/:slug/edit", EventEditLive, :edit
       live "/r/:slug/formulario", FormConfigLive, :show
+      live "/g/:slug/edit", GroupEditLive, :edit
     end
   end
 

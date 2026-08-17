@@ -1,6 +1,10 @@
 defmodule RolezinhoWeb.HomeLive do
   @moduledoc """
-  The listing of open events.
+  The listing of open events and public groups.
+
+  Groups sit at the top of the list — they bundle a batch of events under one
+  link, so visually representing them separately is what tells someone "that
+  is a lot of things, not one thing". Ungrouped events follow.
 
   Ordered by when they happen, not by when they were created: someone opening
   this screen wants to know what is next, and an event that already passed is
@@ -13,6 +17,7 @@ defmodule RolezinhoWeb.HomeLive do
 
   alias Rolezinho.Event
   alias Rolezinho.Events
+  alias Rolezinho.Groups
 
   # Below this, scanning the list is faster than filtering it.
   defp filter_threshold, do: 4
@@ -37,7 +42,10 @@ defmodule RolezinhoWeb.HomeLive do
   end
 
   defp load_events(socket) do
-    socket |> assign(:events, Events.list_open()) |> apply_filter()
+    socket
+    |> assign(:events, Events.list_open())
+    |> assign(:groups, Groups.list_public())
+    |> apply_filter()
   end
 
   defp apply_filter(socket) do
@@ -69,7 +77,7 @@ defmodule RolezinhoWeb.HomeLive do
             <h1 class="text-2xl font-extrabold tracking-tight">Rolezinhos</h1>
             <p class="mt-0.5 text-[13px] text-muted">Os rolês abertos por aqui</p>
           </div>
-          <!-- Both destinations live here, next to the title. Two of them do not
+          <!-- Three destinations live here, next to the title. Three of them do not
                earn a permanent bar across the bottom of every screen, and the
                bottom strip is worth more to the action someone came to take. -->
           <div class="flex shrink-0 items-center gap-1.5">
@@ -81,6 +89,13 @@ defmodule RolezinhoWeb.HomeLive do
               <.icon name="tabler-user-circle" class="size-5" />
             </.link>
             <.link
+              navigate={~p"/g/criar"}
+              class="grid size-11 place-items-center rounded-full bg-ink/[0.06] text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              aria-label="Criar grupo"
+            >
+              <.icon name="tabler-users-group" class="size-5" />
+            </.link>
+            <.link
               navigate={~p"/criar"}
               class="grid size-11 place-items-center rounded-full bg-ink text-ink-content shadow-cta focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
               aria-label="Criar rolezinho"
@@ -89,6 +104,27 @@ defmodule RolezinhoWeb.HomeLive do
             </.link>
           </div>
         </header>
+
+        <ul :if={@groups != []} id="group-list" class="mt-4 space-y-2.5">
+          <li :for={group <- @groups}>
+            <.link
+              navigate={~p"/g/#{group.slug}"}
+              class="flex items-center gap-3 rounded-card border border-hairline bg-base-100 p-4 shadow-card transition-transform active:scale-[.99]"
+            >
+              <div class="grid size-11 shrink-0 place-items-center rounded-[14px] bg-accent text-accent-content">
+                <.icon name="tabler-users-group" class="size-5" />
+              </div>
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-[15px] font-extrabold tracking-tight">{group.name}</p>
+                <p class="mt-0.5 truncate text-[11px] text-muted">
+                  <span class="font-mono">/g/{group.slug}</span>
+                  <span :if={group.password} class="ml-1.5">· com senha</span>
+                </p>
+              </div>
+              <.icon name="tabler-chevron-right" class="size-4 shrink-0 text-ink/30" />
+            </.link>
+          </li>
+        </ul>
 
         <.filter_chips
           :if={length(@events) >= filter_threshold() and @categories != []}
@@ -101,7 +137,7 @@ defmodule RolezinhoWeb.HomeLive do
         </.filter_chips>
 
         <.empty_state
-          :if={@visible == []}
+          :if={@visible == [] and @groups == []}
           icon="tabler-diamond"
           title={empty_title(@category)}
           class="mt-6"

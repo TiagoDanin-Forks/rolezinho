@@ -36,6 +36,10 @@ defmodule Rolezinho.Events do
   @doc """
   Lists events shown on the public home page (active + payments_only).
 
+  Events belonging to a group are excluded: the group represents them on the
+  home page instead. See `Rolezinho.Groups.list_public/0` for the group
+  listing that appears above these on the home screen.
+
   Ordered by when they happen, not by name: someone opening the home screen
   wants to know what is next, and alphabetical order puts tomorrow's event
   below one three weeks away. Events with no date sort last — they cannot be
@@ -43,7 +47,7 @@ defmodule Rolezinho.Events do
   """
   def list_open do
     from(e in Event,
-      where: e.status in ^Event.open_statuses(),
+      where: e.status in ^Event.open_statuses() and is_nil(e.group_id),
       order_by: [asc_nulls_last: e.starts_at, asc: e.title]
     )
     |> Repo.all()
@@ -118,12 +122,19 @@ defmodule Rolezinho.Events do
   """
   def create(params, opts \\ []) when is_map(params) do
     with {:ok, attrs} <- validate_create_params(params) do
+      # `group_id` is deliberately absent from `params` and taken from `opts`
+      # instead: accepting it as input would let anyone drop an event into any
+      # group by id. The controller resolves the group by slug and authorizes
+      # against the group's password gate before forwarding it here.
+      group_id = Keyword.get(opts, :group_id)
+
       changeset =
         %Event{}
         |> Event.changeset(build_attrs(attrs, initial_status(opts)))
         # Set here rather than cast from params: accepting it as input would let
         # a visitor choose the secret that administers the event.
         |> Ecto.Changeset.put_change(:organizer_token, Token.generate_organizer())
+        |> Ecto.Changeset.put_change(:group_id, group_id)
 
       case Repo.insert(changeset) do
         {:ok, event} ->
@@ -777,6 +788,34 @@ defmodule Rolezinho.Events do
   end
 
   def resize_main(%Event{} = event, new_size), do: save(Event.resize_main(event, new_size))
+
+  # ---------- Group membership ----------
+
+  @doc """
+  Moves an event into a group (by group id) or out of one (nil).
+
+  Admin-only upstream. A non-admin never reaches this: creating an event with
+  a group is the only path they have to associate the two, and that path
+  authorizes on the group's password unlock at request time (see
+  `RolezinhoWeb.EventCreateController`).
+  """
+  @spec set_group(Event.t(), integer() | nil) :: {:ok, Event.t()} | {:error, term()}
+  def set_group(%Event{group_id: same} = event, same), do: {:ok, event}
+
+  def set_group(%Event{} = event, group_id) when is_integer(group_id) or is_nil(group_id) do
+    event
+    |> Event.put_group_id(group_id)
+    |> Repo.update()
+    |> case do
+      {:ok, saved} ->
+        broadcast(saved)
+        broadcast_home()
+        {:ok, saved}
+
+      {:error, changeset} ->
+        {:error, changeset_errors(changeset)}
+    end
+  end
 
   # ---------- Broadcasts ----------
 

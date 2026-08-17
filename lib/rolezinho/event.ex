@@ -50,6 +50,11 @@ defmodule Rolezinho.Event do
     # event and no other.
     field :organizer_token, :string
 
+    # Optional group this event belongs to. When set, the event is not listed
+    # on the public home page (its group is) and, when the group has a
+    # password, the event inherits the group's gate on its own page.
+    belongs_to :group, Rolezinho.Group
+
     embeds_many :main_list, Attendee, on_replace: :delete
     embeds_many :wait_list, Attendee, on_replace: :delete
 
@@ -82,6 +87,7 @@ defmodule Rolezinho.Event do
           price_cents: non_neg_integer() | nil,
           pix_key: String.t() | nil,
           organizer_token: String.t() | nil,
+          group_id: integer() | nil,
           form_fields: [FormField.t()]
         }
 
@@ -137,6 +143,14 @@ defmodule Rolezinho.Event do
   def put_organizer_token(%Event{} = event, token) when is_binary(token) do
     change(event, organizer_token: token)
   end
+
+  # `group_id` is also kept out of `cast` for mass-assignment reasons: a form
+  # POST could otherwise stuff an event into any group by id. The Events
+  # context is what sets it, either at creation (with an authorization check
+  # against the group) or when an admin moves an event between groups.
+  @doc false
+  def put_group_id(%Event{} = event, nil), do: change(event, group_id: nil)
+  def put_group_id(%Event{} = event, id) when is_integer(id), do: change(event, group_id: id)
 
   defp validate_ends_after_starts(changeset) do
     starts_at = get_field(changeset, :starts_at)
