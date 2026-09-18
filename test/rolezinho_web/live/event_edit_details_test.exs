@@ -637,6 +637,183 @@ defmodule RolezinhoWeb.EventEditDetailsTest do
     end
   end
 
+  describe "wait list controls" do
+    # "Na espera" lives in the same "Vagas" card as the main-list size, and
+    # both save with the same button. `wait_size > 0` maps to `wait_enabled:
+    # true`, mirroring the create form's convention.
+
+    test "the resize form carries both main and wait size inputs", %{conn: conn} do
+      event = create_event(%{})
+      {:ok, view, _html} = live(admin_conn(conn), ~p"/admin/r/#{event.slug}/edit")
+
+      assert has_element?(view, "#resize-form input[name='main_size']")
+      assert has_element?(view, "#resize-form input[name='wait_size']")
+    end
+
+    test "setting wait_size to 0 disables the wait list", %{conn: conn} do
+      {:ok, event} =
+        Events.create(
+          %{
+            "title" => "T",
+            "slug" => "wl-#{System.unique_integer([:positive])}",
+            "main_size" => "3",
+            "wait_size" => "5"
+          },
+          admin?: true
+        )
+
+      assert event.wait_enabled
+
+      {:ok, view, _html} = live(admin_conn(conn), ~p"/admin/r/#{event.slug}/edit")
+
+      view
+      |> form("#resize-form", %{"main_size" => "3", "wait_size" => "0"})
+      |> render_submit()
+
+      refute Events.find(event.slug).wait_enabled
+    end
+
+    test "setting wait_size > 0 turns the wait list back on", %{conn: conn} do
+      {:ok, event} =
+        Events.create(
+          %{
+            "title" => "T",
+            "slug" => "wl2-#{System.unique_integer([:positive])}",
+            "main_size" => "3",
+            "wait_size" => "0"
+          },
+          admin?: true
+        )
+
+      refute event.wait_enabled
+
+      {:ok, view, _html} = live(admin_conn(conn), ~p"/admin/r/#{event.slug}/edit")
+
+      view
+      |> form("#resize-form", %{"main_size" => "3", "wait_size" => "3"})
+      |> render_submit()
+
+      assert Events.find(event.slug).wait_enabled
+    end
+
+    test "the wait_size input reflects the current wait_enabled state", %{conn: conn} do
+      {:ok, on} =
+        Events.create(
+          %{
+            "title" => "On",
+            "slug" => "wl-on",
+            "main_size" => "3",
+            "wait_size" => "3"
+          },
+          admin?: true
+        )
+
+      {:ok, off} =
+        Events.create(
+          %{
+            "title" => "Off",
+            "slug" => "wl-off",
+            "main_size" => "3",
+            "wait_size" => "0"
+          },
+          admin?: true
+        )
+
+      {:ok, _view, on_html} = live(admin_conn(conn), ~p"/admin/r/#{on.slug}/edit")
+      # Any non-zero value is fine — there is no runtime capacity for the
+      # wait list, the input is a shorthand for the boolean toggle.
+      refute on_html =~ ~s(name="wait_size" id="wait-size-input" value="0")
+
+      {:ok, _view, off_html} = live(admin_conn(conn), ~p"/admin/r/#{off.slug}/edit")
+      assert off_html =~ ~s(value="0")
+    end
+
+    test "an out-of-range wait_size is rejected without silently succeeding",
+         %{conn: conn} do
+      event = create_event(%{})
+      {:ok, view, _html} = live(admin_conn(conn), ~p"/admin/r/#{event.slug}/edit")
+
+      html =
+        view
+        |> form("#resize-form", %{"main_size" => "3", "wait_size" => "999"})
+        |> render_submit()
+
+      assert html =~ "Tamanhos inválidos"
+    end
+  end
+
+  describe "shared text respects wait_enabled" do
+    # This is the second half of the ask: when the organizer has turned the
+    # wait list off, the pasteable text the app generates should stop
+    # mentioning it. `Event.to_text/3` already gates the whole `Lista de
+    # reserva` + `Entrar na espera` block on `wait_enabled`; these tests
+    # pin that so a refactor cannot regress it.
+
+    alias Rolezinho.Event
+    alias Rolezinho.Event.Attendee
+
+    defp event_with_wait(enabled?) do
+      %Event{
+        title: "Vôlei",
+        slug: "volei",
+        status: :active,
+        main_capacity: 3,
+        main_list: [
+          %Attendee{name: "Alice"},
+          %Attendee{name: ""},
+          %Attendee{name: ""}
+        ],
+        wait_enabled: enabled?,
+        wait_intro: "Lista de reserva",
+        wait_list: []
+      }
+    end
+
+    test "wait_enabled: false hides the intro, the queue, and the CTA" do
+      text = Event.to_text(event_with_wait(false), "https://x/r/volei")
+
+      refute text =~ "Lista de reserva"
+      refute text =~ "Entrar na espera"
+    end
+
+    test "wait_enabled: true does keep the intro and CTA" do
+      text = Event.to_text(event_with_wait(true), "https://x/r/volei")
+
+      assert text =~ "Lista de reserva"
+      assert text =~ "Entrar na espera"
+    end
+
+    test "disabling via the edit form makes the share preview stop mentioning it",
+         %{conn: conn} do
+      {:ok, event} =
+        Events.create(
+          %{
+            "title" => "Compartilhado",
+            "slug" => "share-" <> Integer.to_string(System.unique_integer([:positive])),
+            "main_size" => "3",
+            "wait_size" => "3"
+          },
+          admin?: true
+        )
+
+      # Before disabling: the share preview does mention the wait list.
+      {:ok, _view, before_html} = live(conn, ~p"/r/#{event.slug}")
+      assert before_html =~ "Entrar na espera"
+
+      # Disable via the edit form.
+      {:ok, view, _html} = live(admin_conn(conn), ~p"/admin/r/#{event.slug}/edit")
+
+      view
+      |> form("#resize-form", %{"main_size" => "3", "wait_size" => "0"})
+      |> render_submit()
+
+      # After disabling: the wait list block is gone from the share preview.
+      {:ok, _view, after_html} = live(conn, ~p"/r/#{event.slug}")
+      refute after_html =~ "Entrar na espera"
+      refute after_html =~ "Lista de reserva"
+    end
+  end
+
   describe "Pix key still opts out of password managers" do
     test "carries every ignore attribute", %{conn: conn} do
       event = create_event(%{})

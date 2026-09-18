@@ -39,6 +39,11 @@ defmodule RolezinhoWeb.EventEditLive do
     socket
     |> assign(:event, event)
     |> assign(:main_size_input, to_string(event.main_capacity))
+    # Mirror the create form's convention: 0 = wait list off, anything > 0
+    # means it is on. The number itself is a hint (there is no runtime
+    # capacity), so on the edit form we show a nominal 3 when the wait list
+    # is on and 0 when it is off.
+    |> assign(:wait_size_input, if(event.wait_enabled, do: "3", else: "0"))
     # One form to save every free-text/date field: title, description, meta
     # (local/date/time), payment (price/pix_key), password, and slug. Its
     # `phx-submit` (`save_details`) does slug rename first when the slug
@@ -160,18 +165,28 @@ defmodule RolezinhoWeb.EventEditLive do
     end
   end
 
-  def handle_event("resize_main", %{"main_size" => size}, socket) do
-    case Integer.parse(String.trim(size)) do
-      {n, ""} when n >= 1 and n <= 500 ->
-        {:ok, event} = Events.resize_main(socket.assigns.event, n)
+  def handle_event("resize_lists", %{"main_size" => main_raw} = params, socket) do
+    wait_raw = Map.get(params, "wait_size", "0")
 
+    with {:ok, main_size} <- parse_int_in_range(main_raw, 1, 500),
+         {:ok, wait_size} <- parse_int_in_range(wait_raw, 0, 100),
+         {:ok, event} <-
+           Events.resize_lists(socket.assigns.event, main_size, wait_size > 0) do
+      {:noreply,
+       socket
+       |> put_flash(:info, "Vagas atualizadas.")
+       |> assign_event(event)}
+    else
+      {:error, :invalid_range} ->
         {:noreply,
-         socket
-         |> put_flash(:info, "Tamanho da lista atualizado.")
-         |> assign_event(event)}
+         put_flash(
+           socket,
+           :error,
+           "Tamanhos inválidos. Na lista: 1–500. Na espera: 0–100."
+         )}
 
-      _ ->
-        {:noreply, put_flash(socket, :error, "Tamanho inválido.")}
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Não deu pra atualizar: #{inspect(reason)}")}
     end
   end
 
@@ -402,9 +417,9 @@ defmodule RolezinhoWeb.EventEditLive do
       </section>
 
       <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
-        <h2 class="text-[13px] font-extrabold mb-3">Tamanho da lista principal</h2>
-        <form phx-submit="resize_main" class="flex items-end gap-3">
-          <div class="flex-1 max-w-40">
+        <h2 class="text-[13px] font-extrabold mb-3">Vagas</h2>
+        <form phx-submit="resize_lists" id="resize-form" class="space-y-3">
+          <div class="grid grid-cols-2 gap-2">
             <.input
               type="number"
               name="main_size"
@@ -412,19 +427,31 @@ defmodule RolezinhoWeb.EventEditLive do
               value={@main_size_input}
               min="1"
               max="500"
-              label="Vagas"
+              label="Na lista"
+            />
+            <.input
+              type="number"
+              name="wait_size"
+              id="wait-size-input"
+              value={@wait_size_input}
+              min="0"
+              max="100"
+              label="Na espera"
             />
           </div>
-          <button
-            type="submit"
-            class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm border border-base-300 hover:bg-base-200 mb-2"
-          >Atualizar</button>
+          <p class="text-[11px] text-muted">
+            0 na espera desliga a fila. Não é possível reduzir a lista abaixo
+            de quantas pessoas já estão nela. Atualmente: {filled_count(@event)}.
+          </p>
+          <div>
+            <button
+              type="submit"
+              class="rounded-row bg-ink px-4 py-2.5 text-xs font-bold text-ink-content transition-transform active:scale-[.97] disabled:opacity-40 disabled:pointer-events-none"
+            >
+              Atualizar
+            </button>
+          </div>
         </form>
-        <p class="text-xs text-base-content/60 mt-2">
-          Não é possível reduzir abaixo de quantas pessoas já estão na lista. Atualmente: {filled_count(
-            @event
-          )}.
-        </p>
       </section>
 
       <.link
@@ -545,6 +572,13 @@ defmodule RolezinhoWeb.EventEditLive do
       </section>
     </Layouts.app>
     """
+  end
+
+  defp parse_int_in_range(raw, min, max) do
+    case Integer.parse(String.trim(to_string(raw))) do
+      {n, ""} when n >= min and n <= max -> {:ok, n}
+      _ -> {:error, :invalid_range}
+    end
   end
 
   # `rename_slug/2` no-ops when the slug is unchanged, so we could always

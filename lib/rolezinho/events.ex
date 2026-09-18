@@ -891,6 +891,24 @@ defmodule Rolezinho.Events do
 
   def resize_main(%Event{} = event, new_size), do: save(Event.resize_main(event, new_size))
 
+  @doc """
+  Resizes the main list and toggles the wait list, atomically.
+
+  `wait_enabled?` mirrors the create form's convention: any non-empty wait
+  size flips it on, a zero flips it off. The wait list has no runtime
+  capacity in this project (see `PRODUCT.md`) — the flag is the only knob.
+  Existing wait-list entries are preserved either way; disabling only stops
+  new joins from queueing.
+  """
+  @spec resize_lists(Event.t(), integer(), boolean()) :: {:ok, Event.t()} | {:error, term()}
+  def resize_lists(%Event{} = event, new_main_size, wait_enabled?)
+      when is_integer(new_main_size) and is_boolean(wait_enabled?) do
+    event
+    |> Event.resize_main(new_main_size)
+    |> Map.put(:wait_enabled, wait_enabled?)
+    |> save()
+  end
+
   # ---------- Group membership ----------
 
   @doc """
