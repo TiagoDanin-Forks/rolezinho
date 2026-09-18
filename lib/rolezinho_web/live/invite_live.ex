@@ -205,6 +205,13 @@ defmodule RolezinhoWeb.InviteLive do
         >
           <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
 
+          <!--
+            Same treatment as the join sheet on `EventLive`: opt out of every
+            mainstream identity autofill. The `.JoinDefaults` hook below
+            prefills from the /me profile via localStorage, which is a
+            strictly better UX than a password manager popover over a small
+            sheet.
+          -->
           <label class="block">
             <span class="mb-1 block text-[11px] font-bold text-muted">Seu nome *</span>
             <input
@@ -213,14 +220,19 @@ defmodule RolezinhoWeb.InviteLive do
               data-profile="name"
               required
               maxlength="60"
-              autocomplete="name"
+              autocomplete="off"
+              data-1p-ignore="true"
+              data-lpignore="true"
+              data-bwignore="true"
+              data-form-type="other"
               placeholder="Como te chamam no grupo"
               class="w-full rounded-row border border-ink/12 bg-base-100 px-3.5 py-3 text-[13px] font-semibold text-ink outline-none placeholder:font-normal placeholder:text-ink/35 focus:border-accent focus:ring-2 focus:ring-accent/20"
             />
           </label>
 
           <!-- RN-60/61/62: the questions this organizer chose to ask. Answers
-               are scoped to this event and never rendered in the public list. -->
+               are scoped to this event and never rendered in the public list.
+               Autofill off for the same reason as the name field. -->
           <label :for={field <- @extra_fields} class="mt-3 block">
             <span class="mb-1 block text-[11px] font-bold text-muted">
               {field.label}{if field.required, do: " *"}
@@ -230,6 +242,11 @@ defmodule RolezinhoWeb.InviteLive do
               name={field.id}
               required={field.required}
               maxlength="200"
+              autocomplete="off"
+              data-1p-ignore="true"
+              data-lpignore="true"
+              data-bwignore="true"
+              data-form-type="other"
               placeholder={field.placeholder}
               class="w-full rounded-row border border-ink/12 bg-base-100 px-3.5 py-3 text-[13px] font-semibold text-ink outline-none placeholder:font-normal placeholder:text-ink/35 focus:border-accent focus:ring-2 focus:ring-accent/20"
             />
