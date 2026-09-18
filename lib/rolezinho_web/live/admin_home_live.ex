@@ -20,8 +20,16 @@ defmodule RolezinhoWeb.AdminHomeLive do
 
   @impl true
   def handle_event("clone", %{"slug" => slug}, socket) do
+    # `created_by_user_id` on the clone points at the caller (the admin who
+    # clicked "clonar"), not at the original author — the durable-organizer
+    # rule (ADR-0002) then lets them manage the repeat from any device they
+    # sign in from. `nil` is fine too (password-bypass admin without a
+    # GitHub session): the event still exists, just without the durable
+    # ownership pointer.
+    created_by = current_user_id(socket)
+
     with event when not is_nil(event) <- Rolezinho.Events.find(slug),
-         {:ok, clone} <- Rolezinho.Events.clone(event) do
+         {:ok, clone} <- Rolezinho.Events.clone(event, created_by_user_id: created_by) do
       {:noreply,
        socket
        |> put_flash(:info, "Rolezinho clonado. Ajuste e salve.")
@@ -29,6 +37,13 @@ defmodule RolezinhoWeb.AdminHomeLive do
     else
       _ ->
         {:noreply, put_flash(socket, :error, "Não deu pra clonar.")}
+    end
+  end
+
+  defp current_user_id(socket) do
+    case socket.assigns[:current_user] do
+      %Rolezinho.Accounts.User{id: id} -> id
+      _ -> nil
     end
   end
 

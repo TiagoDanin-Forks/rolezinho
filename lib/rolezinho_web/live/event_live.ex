@@ -701,7 +701,14 @@ defmodule RolezinhoWeb.EventLive do
   def handle_event("clone", _params, socket) do
     require_admin!(socket)
 
-    case Events.clone(socket.assigns.event) do
+    # ADR-0002: the clone's `created_by_user_id` points at the caller (the
+    # admin performing the repeat), so they can manage it from any device
+    # they sign into. `nil` when the admin is on the password-bypass path
+    # without a GitHub session — the event still gets created, just without
+    # the durable-ownership pointer.
+    created_by = socket.assigns[:current_user_id]
+
+    case Events.clone(socket.assigns.event, created_by_user_id: created_by) do
       {:ok, clone} ->
         {:noreply,
          socket

@@ -184,6 +184,70 @@ defmodule RolezinhoWeb.EventLiveTest do
       assert Rolezinho.Events.find("#{event.slug}-clonado").title == event.title
     end
 
+    test "cloning an event in a group keeps the copy in the same group", %{
+      conn: conn,
+      event: event
+    } do
+      {:ok, group} =
+        Rolezinho.Groups.create(%{
+          "name" => "Grupo",
+          "slug" => "g-#{System.unique_integer([:positive])}"
+        })
+
+      {:ok, event} = Events.set_group(event, group.id)
+
+      {:ok, view, _html} = live(conn, ~p"/r/#{event.slug}")
+
+      view
+      |> element("button[phx-click=\"clone\"]")
+      |> render_click()
+
+      clone = Rolezinho.Events.find("#{event.slug}-clonado")
+      assert clone.group_id == group.id
+    end
+
+    test "the signed-in admin becomes the owner of the clone", %{
+      conn: conn,
+      event: event
+    } do
+      # Admin session is orthogonal to a signed-in user (SECURITY.md), so an
+      # admin can also be signed in with GitHub. When they clone, the clone
+      # gets `created_by_user_id` = their user id — not the source's owner,
+      # not nil.
+      {:ok, user} =
+        Rolezinho.Accounts.find_or_create_by_github(%{
+          "github_id" => System.unique_integer([:positive]),
+          "github_login" => "admin-user"
+        })
+
+      conn = Plug.Conn.put_session(conn, :current_user_id, user.id)
+
+      {:ok, view, _html} = live(conn, ~p"/r/#{event.slug}")
+
+      view
+      |> element("button[phx-click=\"clone\"]")
+      |> render_click()
+
+      clone = Rolezinho.Events.find("#{event.slug}-clonado")
+      assert clone.created_by_user_id == user.id
+    end
+
+    test "an admin without a signed-in user still clones (nil owner)", %{
+      conn: conn,
+      event: event
+    } do
+      # Admin uses the password bypass, no GitHub session — clone still
+      # works, just with no durable-ownership pointer.
+      {:ok, view, _html} = live(conn, ~p"/r/#{event.slug}")
+
+      view
+      |> element("button[phx-click=\"clone\"]")
+      |> render_click()
+
+      clone = Rolezinho.Events.find("#{event.slug}-clonado")
+      assert is_nil(clone.created_by_user_id)
+    end
+
     test "admin can remove someone and everyone shifts up", %{conn: conn, event: event} do
       {:ok, event} = Events.add_to_main(event, "Bianca")
       {:ok, _event} = Events.add_to_main(event, "Carlos")

@@ -245,6 +245,66 @@ defmodule Rolezinho.EventsTest do
       {:ok, clone} = Events.clone(event)
       assert Repo.get_by(Event, slug: clone.slug).title == "Vôlei"
     end
+
+    test "copies the source's group_id (a repeat belongs to the same group)",
+         %{event: event} do
+      {:ok, group} =
+        Rolezinho.Groups.create(%{
+          "name" => "Meu grupo",
+          "slug" => "meu-grupo-#{System.unique_integer([:positive])}"
+        })
+
+      {:ok, in_group} = Events.set_group(event, group.id)
+
+      assert {:ok, clone} = Events.clone(in_group)
+      assert clone.group_id == group.id
+    end
+
+    test "copies a nil group_id too (ungrouped stays ungrouped)", %{event: event} do
+      # sanity: `event` is not in a group
+      assert is_nil(event.group_id)
+
+      assert {:ok, clone} = Events.clone(event)
+      assert is_nil(clone.group_id)
+    end
+
+    test "sets `created_by_user_id` from opts (the caller becomes the owner)",
+         %{event: event} do
+      {:ok, cloner} =
+        Rolezinho.Accounts.find_or_create_by_github(%{
+          "github_id" => System.unique_integer([:positive]),
+          "github_login" => "cloner"
+        })
+
+      assert {:ok, clone} = Events.clone(event, created_by_user_id: cloner.id)
+      assert clone.created_by_user_id == cloner.id
+    end
+
+    test "does NOT inherit the source's `created_by_user_id`", %{event: event} do
+      # A repeat is authored by whoever performs the clone, not by whoever
+      # authored the source. The source's owner is irrelevant here.
+      {:ok, original_owner} =
+        Rolezinho.Accounts.find_or_create_by_github(%{
+          "github_id" => System.unique_integer([:positive]),
+          "github_login" => "original"
+        })
+
+      {:ok, event} = Events.set_created_by(event, original_owner.id)
+      assert event.created_by_user_id == original_owner.id
+
+      # No opts — the clone gets `nil`, not the source's owner.
+      assert {:ok, clone} = Events.clone(event)
+      refute clone.created_by_user_id == original_owner.id
+      assert is_nil(clone.created_by_user_id)
+    end
+
+    test "a nil `created_by_user_id` is accepted (admin bypass path)",
+         %{event: event} do
+      # An admin cloning via the password bypass has no signed-in user; the
+      # event still gets created, just without the durable-ownership pointer.
+      assert {:ok, clone} = Events.clone(event, created_by_user_id: nil)
+      assert is_nil(clone.created_by_user_id)
+    end
   end
 
   describe "status transitions" do

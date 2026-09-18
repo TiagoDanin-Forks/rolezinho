@@ -455,10 +455,24 @@ defmodule Rolezinho.Events do
   `-clonado` tail (with a numeric disambiguator when needed) because the
   original's URL is already taken; that tail is dropped later, on the first
   date edit, by the retag logic in `RolezinhoWeb.EventEditLive`.
+
+  Two fields are set here rather than copied from the source's struct,
+  because both are mass-assignment-protected and therefore invisible to
+  `Event.attrs_from_struct/1`:
+
+    * `group_id` — always copied from the source. A repeat belongs to the
+      same group as the original: this is what the group's page is for.
+    * `created_by_user_id` — taken from `opts[:created_by_user_id]`. The
+      copy is authored by whoever performs the clone, not by whoever
+      authored the source, so the durable-organizer rule (ADR-0002) points
+      at the person actually managing the repeat. Cloning is admin-only
+      upstream today, so this is typically the admin's own account (or
+      `nil` when the admin uses the password bypass without signing in).
   """
-  @spec clone(Event.t()) :: {:ok, Event.t()} | {:error, term()}
-  def clone(%Event{} = source) do
+  @spec clone(Event.t(), keyword()) :: {:ok, Event.t()} | {:error, term()}
+  def clone(%Event{} = source, opts \\ []) do
     clone_slug = unique_clone_slug(source.slug)
+    created_by_user_id = Keyword.get(opts, :created_by_user_id)
 
     attrs =
       source
@@ -481,6 +495,8 @@ defmodule Rolezinho.Events do
       # let whoever organized the original administer the repeat, and the other
       # way round.
       |> Ecto.Changeset.put_change(:organizer_token, Token.generate_organizer())
+      |> Ecto.Changeset.put_change(:group_id, source.group_id)
+      |> Ecto.Changeset.put_change(:created_by_user_id, created_by_user_id)
 
     case Repo.insert(changeset) do
       {:ok, clone} ->
