@@ -28,19 +28,31 @@ defmodule RolezinhoWeb.SignedInUITest do
   end
 
   describe "home page" do
-    test "anonymous visitors see no account chrome", %{conn: conn} do
-      {:ok, _view, html} = live(conn, ~p"/")
+    test "anonymous visitors see the generic user-circle icon and no account chrome",
+         %{conn: conn} do
+      {:ok, view, html} = live(conn, ~p"/")
+
+      # No logout affordance anywhere on the home page — that lives on /me.
       refute html =~ "Sair"
-      # And no avatar element (the badge only renders when signed in).
-      refute html =~ "aria-label=\"Sair"
+      refute html =~ ~s(href="/auth/logout")
+
+      # The /me link is present and renders the generic icon.
+      assert has_element?(view, ~s(a[href="/me"] span.tabler-user-circle))
     end
 
-    test "signed-in visitors see their avatar and a logout link", %{conn: conn} do
+    test "signed-in visitors: the /me link becomes their avatar (no logout button)",
+         %{conn: conn} do
       %{conn: conn} = signed_in_conn(conn)
-      {:ok, _view, html} = live(conn, ~p"/")
+      {:ok, view, html} = live(conn, ~p"/")
 
-      assert html =~ "some-dev.png"
-      assert html =~ "Sair"
+      # The /me link now carries the avatar image, not the generic icon.
+      assert has_element?(view, ~s(a[href="/me"] img[src="https://example.com/some-dev.png"]))
+      refute has_element?(view, ~s(a[href="/me"] span.tabler-user-circle))
+
+      # Logout deliberately does not live on the navbar anymore; it lives on
+      # /me itself. Nothing on the home page should mention it.
+      refute html =~ "Sair"
+      refute html =~ ~s(href="/auth/logout")
     end
   end
 

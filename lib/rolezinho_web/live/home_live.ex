@@ -82,18 +82,12 @@ defmodule RolezinhoWeb.HomeLive do
             <h1 class="text-2xl font-extrabold tracking-tight">Rolezinhos</h1>
             <p class="mt-0.5 text-[13px] text-muted">Os rolês abertos por aqui</p>
           </div>
-          <!-- Destinations next to the title. The current-user badge (avatar
-               + logout on click) only renders when signed in — anonymous
-               visitors see nothing about accounts on the home page. -->
+          <!-- Destinations next to the title. The /me link becomes the
+               signed-in user's GitHub avatar when logged in — same target,
+               friendlier signal. Logout lives on the /me page itself now,
+               not on the navbar. -->
           <div class="flex shrink-0 items-center gap-1.5">
-            <.user_badge :if={@current_user} user={@current_user} />
-            <.link
-              navigate={~p"/me"}
-              class="grid size-11 place-items-center rounded-full bg-ink/[0.06] text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-              aria-label="Suas preferências"
-            >
-              <.icon name="tabler-user-circle" class="size-5" />
-            </.link>
+            <.me_link current_user={@current_user} />
             <.link
               navigate={~p"/g/criar"}
               class="grid size-11 place-items-center rounded-full bg-ink/[0.06] text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
@@ -222,31 +216,45 @@ defmodule RolezinhoWeb.HomeLive do
     |> Enum.reject(&(&1 == ""))
   end
 
-  # Compact signed-in-user indicator with a logout affordance next to it. The
-  # avatar is a plain image and the logout is a link with `data-method="delete"`
-  # so the whole widget survives without JavaScript beyond Phoenix's default
-  # method hijack.
-  attr :user, :any, required: true
+  # The /me destination in the navbar. When signed in, the user's GitHub
+  # avatar stands in for the generic user-circle icon — same target, same
+  # size (48-px hit area), just a more personal signal that they're logged
+  # in. Logout lives on the /me screen itself, not here: a destructive
+  # action that clears the session should not be one tap away from the
+  # home page.
+  attr :current_user, :any, default: nil
 
-  defp user_badge(assigns) do
+  # No background tint under the avatar — the image already fills the chip.
+  # Falls back to the pale ink chip when signed out or when GitHub did not
+  # provide an avatar URL (private profiles).
+  defp me_link(assigns) do
     ~H"""
-    <div class="flex items-center gap-1">
-      <img
-        :if={@user.avatar_url}
-        src={@user.avatar_url}
-        alt={"Avatar de #{Rolezinho.Accounts.User.display_name(@user)}"}
-        class="size-8 rounded-full ring-1 ring-ink/10"
-        referrerpolicy="no-referrer"
-      />
-      <.link
-        href={~p"/auth/logout"}
-        method="delete"
-        class="rounded-full px-2 py-1 text-[11px] font-bold text-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-        aria-label={"Sair da conta #{Rolezinho.Accounts.User.display_name(@user)}"}
-      >
-        Sair
-      </.link>
-    </div>
+    <.link
+      navigate={~p"/me"}
+      class={[
+        "grid size-11 place-items-center rounded-full text-ink",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+        if(@current_user && @current_user.avatar_url, do: "", else: "bg-ink/[0.06]")
+      ]}
+      aria-label={me_link_label(@current_user)}
+    >
+      <%= if @current_user && @current_user.avatar_url do %>
+        <img
+          src={@current_user.avatar_url}
+          alt={"Avatar de #{Rolezinho.Accounts.User.display_name(@current_user)}"}
+          class="size-9 rounded-full ring-1 ring-ink/10"
+          referrerpolicy="no-referrer"
+        />
+      <% else %>
+        <.icon name="tabler-user-circle" class="size-5" />
+      <% end %>
+    </.link>
     """
+  end
+
+  defp me_link_label(nil), do: "Suas preferências"
+
+  defp me_link_label(user) do
+    "Suas preferências (conectado como #{Rolezinho.Accounts.User.display_name(user)})"
   end
 end
