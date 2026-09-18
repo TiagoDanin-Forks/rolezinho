@@ -26,6 +26,10 @@ defmodule RolezinhoWeb.Layouts do
   """
   attr :flash, :map, required: true
   attr :current_admin?, :boolean, default: false
+  # Signed-in user (or nil). Passed through so screens can render the avatar
+  # and logout link in their header. Kept off `current_scope` on purpose: this
+  # project has no `current_scope` (see AGENTS.md).
+  attr :current_user, :any, default: nil
   attr :page_title, :string, default: nil
 
   slot :inner_block, required: true

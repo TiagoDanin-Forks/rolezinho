@@ -25,24 +25,45 @@ defmodule RolezinhoWeb.EventCreateController do
   alias Rolezinho.Events
   alias RolezinhoWeb.Plugs.Participant
 
+  # A group's edit-access check now also considers the signed-in creator of
+  # the group (per ADR-0002), so we pass `current_user_id` through here.
+
   def create(conn, %{"event" => params}) do
     admin? = conn.assigns.current_admin?
+    current_user = conn.assigns[:current_user]
     unlocked_groups = conn.assigns[:unlocked_groups] || MapSet.new()
     requested_group_slug = params |> Map.get("group", "") |> to_string() |> String.trim()
 
-    {group_id, group_flash, requested_group} =
-      resolve_group(requested_group_slug, admin?, unlocked_groups)
+    # ADR-0002: creation requires either a signed-in user or the admin
+    # bypass. Enforcement lives here too (the LiveView also redirects); a
+    # missing user without admin at this point means the POST arrived
+    # without going through the form.
+    cond do
+      is_nil(current_user) and not admin? ->
+        conn
+        |> put_flash(:info, "Entra com o GitHub pra criar.")
+        |> redirect(
+          to: "/entrar?" <> URI.encode_query(return_to: back_to_form(requested_group_slug))
+        )
 
-    # An event in a group is not on the home page, so it doesn't need the
-    # anonymous hidden-by-default treatment (its group already gates
-    # visibility). Grant `:active` at the moment of grouping so the group page
-    # actually shows it.
+      true ->
+        do_create(conn, params, requested_group_slug, admin?, current_user, unlocked_groups)
+    end
+  end
+
+  defp do_create(conn, params, requested_group_slug, admin?, current_user, unlocked_groups) do
+    current_user_id = current_user && current_user.id
+
+    {group_id, group_flash, requested_group} =
+      resolve_group(requested_group_slug, admin?, unlocked_groups, current_user_id)
+
+    # `admin?:` on the opts still means "the born-hidden mitigation doesn't
+    # apply". Under ADR-0002 a signed-in creator gets the same treatment via
+    # `created_by_user_id:`, so we don't need to sneak `admin?: true` in for
+    # them just to reach `:active`.
     create_opts =
-      cond do
-        admin? -> [admin?: true, group_id: group_id]
-        not is_nil(group_id) -> [admin?: true, group_id: group_id]
-        true -> []
-      end
+      [group_id: group_id, created_by_user_id: current_user_id]
+      |> then(fn opts -> if admin?, do: [{:admin?, true} | opts], else: opts end)
 
     case Events.create(params, create_opts) do
       {:ok, event} ->
@@ -66,15 +87,15 @@ defmodule RolezinhoWeb.EventCreateController do
   # `nil` when either no group was named, or one was named but the caller has
   # no right to add events to it. The second case ships a flash — a silent
   # "we ignored your group" would be surprising.
-  defp resolve_group("", _admin?, _unlocked), do: {nil, nil, nil}
+  defp resolve_group("", _admin?, _unlocked, _user_id), do: {nil, nil, nil}
 
-  defp resolve_group(slug, admin?, unlocked_groups) do
+  defp resolve_group(slug, admin?, unlocked_groups, current_user_id) do
     case Groups.find(slug) do
       nil ->
         {nil, "Grupo não encontrado. O rolê foi criado fora de grupo.", nil}
 
       %Group{} = group ->
-        if Group.editable_by?(group, admin?, unlocked_groups) do
+        if Group.editable_by?(group, admin?, unlocked_groups, current_user_id) do
           {group.id, nil, group}
         else
           {nil,
@@ -89,15 +110,13 @@ defmodule RolezinhoWeb.EventCreateController do
   # surface that something the caller asked for did not happen.
   defp maybe_group_flash(conn, message), do: put_flash(conn, :error, message)
 
-  # Someone whose event will not show up on the home page needs to be told, or
-  # they will look for it there and conclude it was not created.
-  defp create_flash(_admin? = true, nil), do: "Rolezinho criado! Manda o link no grupo."
-
+  # Under ADR-0002 signed-in-user and admin creations both come out `:active`,
+  # so the same flash fits either. The only real branch left is "you created
+  # inside a group" — that goes to the group page, not the home page.
   defp create_flash(_admin?, group_id) when not is_nil(group_id),
     do: "Rolezinho criado no grupo!"
 
-  defp create_flash(_admin?, _),
-    do: "Rolezinho criado! Ele abre por link — manda no grupo pra galera entrar."
+  defp create_flash(_admin?, _), do: "Rolezinho criado! Manda o link no grupo."
 
   # When creation was requested inside a valid group, send the organizer back to
   # the group so they see the new event in context.

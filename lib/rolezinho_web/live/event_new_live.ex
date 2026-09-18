@@ -5,15 +5,31 @@ defmodule RolezinhoWeb.EventNewLive do
   @impl true
   def mount(params, _session, socket) do
     group_slug = params |> Map.get("group", "") |> to_string() |> String.trim()
-    group = if group_slug != "", do: Rolezinho.Groups.find(group_slug), else: nil
 
-    {:ok,
-     socket
-     |> assign(:page_title, "Criar rolezinho")
-     |> assign(:group, group)
-     |> assign(:group_slug, if(group, do: group.slug, else: ""))
-     |> assign_form(default_params(group_slug), %{})}
+    # ADR-0002: creation is the one gated surface. Anon visitors get sent to
+    # the sign-in prompt; the admin bypass still works. Enforcement also
+    # lives on the controller (POST /criar) as defense in depth.
+    if is_nil(socket.assigns.current_user) and not socket.assigns.current_admin? do
+      return_to = build_return_to(group_slug)
+
+      {:ok,
+       socket
+       |> put_flash(:info, "Entra com o GitHub pra criar.")
+       |> push_navigate(to: "/entrar?" <> URI.encode_query(return_to: return_to))}
+    else
+      group = if group_slug != "", do: Rolezinho.Groups.find(group_slug), else: nil
+
+      {:ok,
+       socket
+       |> assign(:page_title, "Criar rolezinho")
+       |> assign(:group, group)
+       |> assign(:group_slug, if(group, do: group.slug, else: ""))
+       |> assign_form(default_params(group_slug), %{})}
+    end
   end
+
+  defp build_return_to(""), do: "/criar"
+  defp build_return_to(group_slug), do: "/criar?group=" <> URI.encode_www_form(group_slug)
 
   defp default_params(group_slug) do
     %{
@@ -55,6 +71,7 @@ defmodule RolezinhoWeb.EventNewLive do
     <Layouts.app
       flash={@flash}
       current_admin?={@current_admin?}
+      current_user={@current_user}
       page_title={@page_title}
     >
       <:action>

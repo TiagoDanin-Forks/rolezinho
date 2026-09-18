@@ -20,17 +20,30 @@ defmodule RolezinhoWeb.GroupCreateController do
   alias RolezinhoWeb.Plugs.Admin
 
   def create(conn, %{"group" => params}) do
-    case Groups.create(params) do
-      {:ok, group} ->
-        conn
-        |> maybe_unlock(group)
-        |> put_flash(:info, create_flash(group))
-        |> redirect(to: ~p"/g/#{group.slug}")
+    admin? = conn.assigns.current_admin?
+    current_user = conn.assigns[:current_user]
 
-      {:error, _errors} ->
+    # ADR-0002 mirror — the LiveView redirects first, this is the defense-in-
+    # depth POST check.
+    cond do
+      is_nil(current_user) and not admin? ->
         conn
-        |> put_flash(:error, "Confira os campos e tente de novo.")
-        |> redirect(to: ~p"/g/criar")
+        |> put_flash(:info, "Entra com o GitHub pra criar.")
+        |> redirect(to: "/entrar?" <> URI.encode_query(return_to: "/g/criar"))
+
+      true ->
+        case Groups.create(params, created_by_user_id: current_user && current_user.id) do
+          {:ok, group} ->
+            conn
+            |> maybe_unlock(group)
+            |> put_flash(:info, create_flash(group))
+            |> redirect(to: ~p"/g/#{group.slug}")
+
+          {:error, _errors} ->
+            conn
+            |> put_flash(:error, "Confira os campos e tente de novo.")
+            |> redirect(to: ~p"/g/criar")
+        end
     end
   end
 
@@ -42,11 +55,20 @@ defmodule RolezinhoWeb.GroupCreateController do
       else: conn
   end
 
+  # Under ADR-0002 a signed-in creator can always edit the group they made,
+  # even without a password — the ownership pointer stays available. The
+  # "passwordless → admin-only" tradeoff only bites when the creator was
+  # anonymous, which today means the admin session created it.
   defp create_flash(group) do
-    if Rolezinho.Group.password_protected?(group) do
-      "Grupo criado! Guarda a senha — é ela que te deixa editar e adicionar rolês depois."
-    else
-      "Grupo criado, mas sem senha só o admin da plataforma consegue editar depois."
+    cond do
+      Rolezinho.Group.password_protected?(group) ->
+        "Grupo criado! Guarda a senha — quem tiver ela também pode editar."
+
+      not is_nil(group.created_by_user_id) ->
+        "Grupo criado! Você é quem gerencia esse grupo daqui em diante."
+
+      true ->
+        "Grupo criado, mas sem senha e sem dono só o admin da plataforma consegue editar depois."
     end
   end
 end

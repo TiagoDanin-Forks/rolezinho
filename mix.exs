@@ -69,7 +69,12 @@ defmodule Rolezinho.MixProject do
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
       {:earmark, "~> 1.4"},
-      {:eqrcode, "~> 0.1"}
+      {:eqrcode, "~> 0.1"},
+      # Auth: creation surfaces require GitHub sign-in per ADR-0002. Ueberauth
+      # is the canonical Elixir OAuth wrapper; the GitHub strategy is the
+      # single provider we support and gates only `/criar` and `/g/criar`.
+      {:ueberauth, "~> 0.10"},
+      {:ueberauth_github, "~> 0.8"}
     ]
   end
 

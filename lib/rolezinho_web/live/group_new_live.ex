@@ -15,10 +15,18 @@ defmodule RolezinhoWeb.GroupNewLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok,
-     socket
-     |> assign(:page_title, "Criar grupo")
-     |> assign_form(default_params(), %{})}
+    # ADR-0002: creation is gated. Enforcement is mirrored on the controller.
+    if is_nil(socket.assigns.current_user) and not socket.assigns.current_admin? do
+      {:ok,
+       socket
+       |> put_flash(:info, "Entra com o GitHub pra criar.")
+       |> push_navigate(to: "/entrar?" <> URI.encode_query(return_to: "/g/criar"))}
+    else
+      {:ok,
+       socket
+       |> assign(:page_title, "Criar grupo")
+       |> assign_form(default_params(), %{})}
+    end
   end
 
   defp default_params do
@@ -49,7 +57,12 @@ defmodule RolezinhoWeb.GroupNewLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_admin?={@current_admin?} page_title={@page_title}>
+    <Layouts.app
+      flash={@flash}
+      current_admin?={@current_admin?}
+      current_user={@current_user}
+      page_title={@page_title}
+    >
       <:action>
         <button
           type="submit"

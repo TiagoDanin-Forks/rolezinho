@@ -159,11 +159,15 @@ defmodule RolezinhoWeb.EventLive do
   defp assign_identity(socket, %Event{} = event, unlocked?) do
     participant_id = Map.get(socket.assigns[:participants] || %{}, event.slug)
 
+    # Two routes to `:organizer` on the socket: holding the event's
+    # `organizer_token` in the session, or being signed in as the user who
+    # created the event (ADR-0002). Either one earns the role for every
+    # template branch that reads `@organizer?`.
     organizer? =
       Participant.organizer?(
         %{"organizer_tokens" => socket.assigns[:organizer_tokens] || %{}},
         event
-      )
+      ) or created_by_current_user?(event, socket)
 
     socket
     |> assign(:participant_id, participant_id)
@@ -172,6 +176,14 @@ defmodule RolezinhoWeb.EventLive do
     |> assign_cash(event, organizer?)
     |> assign_join_availability(event, participant_id, organizer?, unlocked?)
   end
+
+  defp created_by_current_user?(%Event{created_by_user_id: same}, %{
+         assigns: %{current_user_id: same}
+       })
+       when is_integer(same),
+       do: true
+
+  defp created_by_current_user?(_event, _socket), do: false
 
   # Whether to offer the join action at all. Someone already on the list is not
   # offered it — the waiting list would take them a second time, and a list with
@@ -422,11 +434,14 @@ defmodule RolezinhoWeb.EventLive do
 
   # The options every Policy call needs. Kept in one place so a handler cannot
   # accidentally ask the policy a question with half the context missing.
+  # ADR-0002: `current_user_id` is what lets a signed-in creator resolve to
+  # `:organizer` without holding the token.
   defp policy_opts(socket) do
     [
       admin?: socket.assigns.current_admin?,
       organizer?: socket.assigns[:organizer?] || false,
-      participant_id: socket.assigns[:participant_id]
+      participant_id: socket.assigns[:participant_id],
+      current_user_id: socket.assigns[:current_user_id]
     ]
   end
 
@@ -803,7 +818,12 @@ defmodule RolezinhoWeb.EventLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_admin?={@current_admin?} page_title={@page_title}>
+    <Layouts.app
+      flash={@flash}
+      current_admin?={@current_admin?}
+      current_user={@current_user}
+      page_title={@page_title}
+    >
       <:action :if={@can_join?}>
         <button
           type="button"

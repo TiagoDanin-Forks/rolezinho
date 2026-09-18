@@ -28,6 +28,20 @@ config :phoenix_live_view,
   # the attribute set on all root tags. Used for Phoenix.LiveView.ColocatedCSS.
   root_tag_attribute: "phx-r"
 
+# GitHub OAuth (ADR-0002). Ueberauth registers a plug pipeline at
+# `/auth/:provider`; we only expose `github`. Client id and secret land in
+# `config/runtime.exs` from env vars — the compile-time entry here just says
+# "the GitHub strategy exists and asks only for the email scope", which is all
+# ueberauth needs to plan its routes.
+config :ueberauth, Ueberauth,
+  providers: [
+    github: {Ueberauth.Strategy.Github, [default_scope: "read:user user:email"]}
+  ]
+
+config :ueberauth, Ueberauth.Strategy.Github.OAuth,
+  client_id: {:system, "GITHUB_CLIENT_ID"},
+  client_secret: {:system, "GITHUB_CLIENT_SECRET"}
+
 # Configure the mailer
 #
 # By default it uses the "Local" adapter which stores the emails

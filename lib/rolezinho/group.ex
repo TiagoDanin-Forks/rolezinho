@@ -30,6 +30,11 @@ defmodule Rolezinho.Group do
 
     has_many :events, Event
 
+    # Optional signed-in creator (ADR-0002). NULL for groups created before
+    # accounts existed. A creator gets full edit rights on their group
+    # without needing the group password — see `editable_by?/4`.
+    belongs_to :created_by_user, Rolezinho.Accounts.User
+
     timestamps(type: :utc_datetime)
   end
 
@@ -41,6 +46,7 @@ defmodule Rolezinho.Group do
           name: String.t(),
           password: String.t() | nil,
           visibility: visibility(),
+          created_by_user_id: integer() | nil,
           events: [Event.t()] | Ecto.Association.NotLoaded.t()
         }
 
@@ -72,18 +78,48 @@ defmodule Rolezinho.Group do
   Returns true when the caller may edit the group (rename, change password,
   add events into it).
 
-  Admin can always edit. A non-admin can only edit a password-protected group
-  they have unlocked — passwordless groups are admin-only per the product
-  spec (\"Passwordless groups can only be edited by the platform admin\").
+  There are three ways to earn edit access:
+
+    * be the platform admin,
+    * be the signed-in user whose id matches `created_by_user_id` (ADR-0002),
+    * or, on a password-protected group, hold the unlock in the session.
+
+  A passwordless group with no creator user (grandfathered pre-ADR-0002) is
+  admin-only — there is no bearer secret left to check.
   """
-  @spec editable_by?(t(), boolean(), MapSet.t()) :: boolean()
-  def editable_by?(%Group{} = group, admin?, %MapSet{} = unlocked_groups) do
+  @spec editable_by?(t(), boolean(), MapSet.t(), integer() | nil) :: boolean()
+  def editable_by?(
+        %Group{} = group,
+        admin?,
+        %MapSet{} = unlocked_groups,
+        current_user_id \\ nil
+      ) do
     cond do
-      admin? -> true
-      not password_protected?(group) -> false
-      true -> MapSet.member?(unlocked_groups, group.slug)
+      admin? ->
+        true
+
+      created_by?(group, current_user_id) ->
+        true
+
+      password_protected?(group) and MapSet.member?(unlocked_groups, group.slug) ->
+        true
+
+      true ->
+        false
     end
   end
+
+  defp created_by?(%Group{created_by_user_id: same}, same) when is_integer(same), do: true
+  defp created_by?(_group, _user_id), do: false
+
+  # Mass-assignment-protected: the creator id is set by the controller from the
+  # session, never cast from params. Mirrors `Event.put_created_by_user_id/2`.
+  @doc false
+  def put_created_by_user_id(%Group{} = group, nil),
+    do: Ecto.Changeset.change(group, created_by_user_id: nil)
+
+  def put_created_by_user_id(%Group{} = group, id) when is_integer(id),
+    do: Ecto.Changeset.change(group, created_by_user_id: id)
 
   @doc """
   Full changeset used by the `Rolezinho.Groups` context to persist groups.

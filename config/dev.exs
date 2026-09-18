@@ -90,3 +90,15 @@ config :phoenix_live_view,
 
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
+
+# GitHub OAuth in dev (ADR-0002).
+#
+# The `/criar` and `/g/criar` flows require a signed-in user; in dev you can
+# either (a) create a GitHub OAuth app at
+# https://github.com/settings/developers with callback URL
+# `http://localhost:4000/auth/github/callback`, then export
+# `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` before `mix phx.server`; or
+# (b) use the admin bypass at `/admin/login` (password: "admin"). The
+# admin route is orthogonal to GitHub and always works, so a missing OAuth
+# app in dev does not block anything except the sign-in-with-GitHub flow
+# itself.

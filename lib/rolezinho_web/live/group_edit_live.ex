@@ -114,7 +114,12 @@ defmodule RolezinhoWeb.GroupEditLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_admin?={@current_admin?} page_title={@page_title}>
+    <Layouts.app
+      flash={@flash}
+      current_admin?={@current_admin?}
+      current_user={@current_user}
+      page_title={@page_title}
+    >
       <header class="mb-5 flex items-center gap-2">
         <.link
           navigate={~p"/g/#{@group.slug}"}

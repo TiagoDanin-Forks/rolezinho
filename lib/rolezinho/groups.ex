@@ -102,8 +102,12 @@ defmodule Rolezinho.Groups do
 
   Expected keys (strings): `name`, `slug`, optionally `password`, `visibility`.
   Visibility defaults to `"public"`.
+
+  `opts[:created_by_user_id]` is set from server-held session state — the
+  same mass-assignment reasoning as everywhere else: accepting it in `params`
+  would let a form POST hand ownership to anyone by id (SECURITY.md §4).
   """
-  def create(params) when is_map(params) do
+  def create(params, opts \\ []) when is_map(params) do
     attrs = %{
       name: params |> Map.get("name", "") |> to_string() |> String.trim(),
       slug: params |> Map.get("slug", "") |> to_string() |> String.trim() |> String.downcase(),
@@ -111,7 +115,12 @@ defmodule Rolezinho.Groups do
       visibility: parse_visibility(params["visibility"])
     }
 
-    changeset = Group.changeset(%Group{}, attrs)
+    created_by_user_id = Keyword.get(opts, :created_by_user_id)
+
+    changeset =
+      %Group{}
+      |> Group.changeset(attrs)
+      |> Ecto.Changeset.put_change(:created_by_user_id, created_by_user_id)
 
     case Repo.insert(changeset) do
       {:ok, group} ->

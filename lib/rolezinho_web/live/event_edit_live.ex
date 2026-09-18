@@ -2,10 +2,12 @@ defmodule RolezinhoWeb.EventEditLive do
   @moduledoc "Admin raw markdown editor for an event."
   use RolezinhoWeb, :live_view
 
+  alias Rolezinho.Accounts
   alias Rolezinho.Event
   alias Rolezinho.Event.Meta
   alias Rolezinho.Events
   alias Rolezinho.Groups
+  alias Rolezinho.Repo
 
   @impl true
   def mount(%{"slug" => slug}, _session, socket) do
@@ -36,6 +38,16 @@ defmodule RolezinhoWeb.EventEditLive do
     |> assign(:meta_form, to_form(Meta.to_form_params(meta), as: :meta))
     |> assign(:payment_form, to_form(payment_form_params(event), as: :payment))
     |> assign(:groups, Groups.list_all())
+    |> assign(:users, list_users())
+    |> assign(:creator, Accounts.get_user(event.created_by_user_id))
+  end
+
+  # Small ordered list of every user, for the "Dono" select. Bounded by the
+  # size of the accounts table — GitHub-authed users only, no big listing
+  # planned. If this grows past comfort someday it becomes a search input.
+  defp list_users do
+    import Ecto.Query, only: [from: 2]
+    Repo.all(from u in Accounts.User, order_by: [asc: u.github_login])
   end
 
   defp payment_form_params(%Event{price_cents: cents, pix_key: pix}) do
@@ -145,6 +157,26 @@ defmodule RolezinhoWeb.EventEditLive do
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Não deu pra mover: #{inspect(reason)}")}
+    end
+  end
+
+  def handle_event("set_created_by", %{"user_id" => raw}, socket) do
+    user_id = parse_group_id(raw)
+
+    case Events.set_created_by(socket.assigns.event, user_id) do
+      {:ok, event} ->
+        message =
+          if is_nil(user_id),
+            do: "Dono removido — só admin ou token administra agora.",
+            else: "Dono atualizado."
+
+        {:noreply,
+         socket
+         |> put_flash(:info, message)
+         |> assign_event(event)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Não deu pra atualizar o dono: #{inspect(reason)}")}
     end
   end
 
@@ -465,6 +497,34 @@ defmodule RolezinhoWeb.EventEditLive do
             <dd class="flex-1">{status_description(status)}</dd>
           </div>
         </dl>
+      </section>
+
+      <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
+        <h2 class="text-[13px] font-extrabold mb-3">Dono do rolê</h2>
+        <p class="text-[11px] text-muted mb-3">
+          Quem criou o rolê logado com GitHub. Um dono pode administrar em
+          qualquer aparelho depois de logar (ADR-0002). Só admin muda.
+        </p>
+
+        <form phx-change="set_created_by" id="creator-form" class="flex flex-wrap items-end gap-3">
+          <label class="flex-1 min-w-64">
+            <span class="label text-sm mb-1">Dono</span>
+            <select
+              name="user_id"
+              id="event-creator-select"
+              class={[field_class(), "w-full"]}
+            >
+              <option value="" selected={is_nil(@event.created_by_user_id)}>Sem dono</option>
+              <option
+                :for={user <- @users}
+                value={user.id}
+                selected={@event.created_by_user_id == user.id}
+              >
+                @{user.github_login}
+              </option>
+            </select>
+          </label>
+        </form>
       </section>
 
       <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">

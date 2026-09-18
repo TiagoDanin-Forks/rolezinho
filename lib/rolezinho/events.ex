@@ -122,11 +122,13 @@ defmodule Rolezinho.Events do
   """
   def create(params, opts \\ []) when is_map(params) do
     with {:ok, attrs} <- validate_create_params(params) do
-      # `group_id` is deliberately absent from `params` and taken from `opts`
-      # instead: accepting it as input would let anyone drop an event into any
-      # group by id. The controller resolves the group by slug and authorizes
-      # against the group's password gate before forwarding it here.
+      # `group_id` and `created_by_user_id` are deliberately absent from
+      # `params` and taken from `opts` instead: accepting either as input
+      # would let anyone drop an event into any group by id, or hand
+      # themselves ownership of anything by id. The controller resolves both
+      # from server-held state before forwarding them here.
       group_id = Keyword.get(opts, :group_id)
+      created_by_user_id = Keyword.get(opts, :created_by_user_id)
 
       changeset =
         %Event{}
@@ -135,6 +137,7 @@ defmodule Rolezinho.Events do
         # a visitor choose the secret that administers the event.
         |> Ecto.Changeset.put_change(:organizer_token, Token.generate_organizer())
         |> Ecto.Changeset.put_change(:group_id, group_id)
+        |> Ecto.Changeset.put_change(:created_by_user_id, created_by_user_id)
 
       case Repo.insert(changeset) do
         {:ok, event} ->
@@ -278,16 +281,20 @@ defmodule Rolezinho.Events do
     end
   end
 
-  # Anything a non-admin creates is born hidden: it opens fine by link, so the
-  # person who made it can share it in their group, but it stays off the public
-  # home page. Otherwise the home page is a wall anyone can post to, and the
-  # first abuse is somebody else's problem to clean up.
+  # Under ADR-0002 the born-hidden default is only for the truly anonymous
+  # case. Admin and signed-in users (identified here by `admin?: true` or a
+  # non-nil `created_by_user_id`) get `:active` — both carry accountability,
+  # which is what the born-hidden mitigation was for.
   #
   # The caller decides, because the context does not know who is asking and
-  # should not — but the default is the safe one, so a new call site that forgets
-  # to say gets `hidden` rather than a public listing.
+  # should not — but the default is the safe one, so a new call site that
+  # forgets to say gets `hidden` rather than a public listing.
   defp initial_status(opts) do
-    if Keyword.get(opts, :admin?, false), do: :active, else: :hidden
+    if Keyword.get(opts, :admin?, false) or not is_nil(Keyword.get(opts, :created_by_user_id)) do
+      :active
+    else
+      :hidden
+    end
   end
 
   defp build_attrs(attrs, status) do
@@ -805,6 +812,33 @@ defmodule Rolezinho.Events do
   def set_group(%Event{} = event, group_id) when is_integer(group_id) or is_nil(group_id) do
     event
     |> Event.put_group_id(group_id)
+    |> Repo.update()
+    |> case do
+      {:ok, saved} ->
+        broadcast(saved)
+        broadcast_home()
+        {:ok, saved}
+
+      {:error, changeset} ->
+        {:error, changeset_errors(changeset)}
+    end
+  end
+
+  # ---------- Ownership ----------
+
+  @doc """
+  Moves the creator of an event to a specific user, or clears it.
+
+  Admin-only upstream. This is the escape hatch for the grandfathered events
+  that had `created_by_user_id = NULL` when ADR-0002 shipped: the admin can
+  assign a real owner so the durable-organizer rule starts applying.
+  """
+  @spec set_created_by(Event.t(), integer() | nil) :: {:ok, Event.t()} | {:error, term()}
+  def set_created_by(%Event{created_by_user_id: same} = event, same), do: {:ok, event}
+
+  def set_created_by(%Event{} = event, user_id) when is_integer(user_id) or is_nil(user_id) do
+    event
+    |> Event.put_created_by_user_id(user_id)
     |> Repo.update()
     |> case do
       {:ok, saved} ->

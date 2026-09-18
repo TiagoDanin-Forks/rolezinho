@@ -32,19 +32,33 @@ defmodule Rolezinho.Event.Policy do
   @doc """
   Resolves the caller's role for this event.
 
-  `admin?` is the environment-wide bypass; `organizer?` means the browser holds
-  this event's token. Holding a row makes someone a participant, but the row
-  itself still decides which row they may touch.
+  Three ways to earn the organizer role (ADR-0002):
+
+    * hold the environment-wide admin secret (`:admin?`),
+    * hold the event's `organizer_token` in the session (`:organizer?`),
+    * or be signed in as the user who created the event
+      (`current_user_id == event.created_by_user_id`).
+
+  A participant is anyone who holds an id on a row of this event; a visitor is
+  everybody else.
   """
   @spec role(Event.t(), keyword()) :: role()
   def role(%Event{} = event, opts) do
     cond do
       Keyword.get(opts, :admin?, false) -> :admin
       Keyword.get(opts, :organizer?, false) -> :organizer
+      created_by?(event, Keyword.get(opts, :current_user_id)) -> :organizer
       holds_a_row?(event, Keyword.get(opts, :participant_id)) -> :participant
       true -> :visitor
     end
   end
+
+  # ADR-0002: a signed-in user whose id matches `created_by_user_id` gets
+  # organizer rights over that one event, without holding the token. This is
+  # how organizer identity survives across devices once the creator has an
+  # account.
+  defp created_by?(%Event{created_by_user_id: same}, same) when is_integer(same), do: true
+  defp created_by?(_event, _user_id), do: false
 
   @doc """
   Returns true when the caller may flip the paid check on `attendee`.

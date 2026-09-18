@@ -2,11 +2,18 @@
 
 ## Register
 
-none
+creators only, via GitHub
 
-There is no sign-up, no account, no user login, no email. A guest opens a link and
-uses the app. The organizer signs in at `/admin/login` with a single environment
-password (`ADMIN_PASSWORD`) — this is a single-owner app, not a multi-user SaaS.
+Guests still open a link and use the app with no sign-up: joining a list,
+marking payment, unlocking a password-protected event or group, leaving — all
+remain anonymous. The single mandatory login is for **creating** things:
+`POST /criar` (an event) and `POST /g/criar` (a group) require a GitHub-
+authenticated session. The organizer still has the option of the environment-
+wide admin password (`ADMIN_PASSWORD`) at `/admin/login`, which stays as an
+operational bypass independent of GitHub.
+
+See `docs/decisions/0002-accounts-for-creation-only.md` for why creation was
+gated and joining was not.
 
 ## Platform
 
@@ -109,9 +116,11 @@ Rolezinho should not resemble any of these:
 - **Bill-splitting app (Splitwise).** Balances, debts between people, automatic
   settlement, statements. The product records *whether* someone paid, and stops
   there; collecting is the group's business.
-- **Mandatory sign-up.** Anything asking for email, phone, or "create an account to
-  confirm attendance." This is the most important anti-reference: the absence of
-  sign-up is the feature.
+- **Mandatory sign-up for guests.** Anything asking a guest for email, phone, or
+  "create an account to confirm attendance." This is the most important
+  anti-reference and it is intact: the absence of guest sign-up is the feature.
+  Login is only ever required to create events or groups, never to join or
+  interact with them.
 
 ## Design Principles
 
@@ -123,8 +132,10 @@ Rolezinho should not resemble any of these:
   desktop and degrades that, it's wrong.
 - **Live without asking.** The list updates itself; nobody should have to think
   about reloading to see who joined.
-- **No accounts, no exceptions.** No feature may introduce sign-up, persistent
-  identity, or guest login. If an idea needs to know who someone is between
+- **No guest accounts.** No feature may require a guest to sign up or hold
+  persistent identity to browse, join, or interact with an event or group.
+  Creation is the single exception, gated behind GitHub, and it is a deliberate
+  cost paid by the creator only. If an idea needs to know who a guest is between
   visits, it doesn't belong in this product.
 - **Money information is serious.** Amounts, Pix keys, and payment status are shown
   precisely and unambiguously — they're what friends use to collect from friends.

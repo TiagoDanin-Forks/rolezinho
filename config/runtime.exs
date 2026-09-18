@@ -27,6 +27,19 @@ if admin_password = System.get_env("ADMIN_PASSWORD") do
   config :rolezinho, :admin_password, admin_password
 end
 
+# GitHub OAuth (ADR-0002). ueberauth_github reads its client id and secret
+# from application env at runtime, so we plug them in here from environment
+# variables. In dev this is optional — someone running the app without a
+# GitHub app configured just cannot use the /criar path unless they log in as
+# admin. In production it is mandatory: see the raise below.
+if client_id = System.get_env("GITHUB_CLIENT_ID") do
+  config :ueberauth, Ueberauth.Strategy.Github.OAuth, client_id: client_id
+end
+
+if client_secret = System.get_env("GITHUB_CLIENT_SECRET") do
+  config :ueberauth, Ueberauth.Strategy.Github.OAuth, client_secret: client_secret
+end
+
 if config_env() == :prod do
   # config.exs ships a development default, so without this a deploy that forgot
   # the variable would come up with the admin password literally set to "admin"
@@ -36,6 +49,21 @@ if config_env() == :prod do
     raise """
     environment variable ADMIN_PASSWORD is missing.
     It guards every admin surface — the app refuses to boot without it.
+    """
+
+  # Same treatment for the GitHub OAuth credentials. Missing them in prod
+  # means creation is broken for anyone who isn't admin — an easy silent
+  # regression to ship, so we fail loudly instead.
+  System.get_env("GITHUB_CLIENT_ID") ||
+    raise """
+    environment variable GITHUB_CLIENT_ID is missing.
+    It's needed for the sign-in flow that gates /criar and /g/criar (ADR-0002).
+    """
+
+  System.get_env("GITHUB_CLIENT_SECRET") ||
+    raise """
+    environment variable GITHUB_CLIENT_SECRET is missing.
+    It's needed for the sign-in flow that gates /criar and /g/criar (ADR-0002).
     """
 
   database_url =

@@ -25,3 +25,4 @@ turns into "why was it done this way?" months later.
 | # | Decision | Doc |
 | --- | --- | --- |
 | 0001 | Event password stored in plaintext | [0001-event-password-stored-in-plaintext.md](0001-event-password-stored-in-plaintext.md) |
+| 0002 | Accounts for creation only, via GitHub | [0002-accounts-for-creation-only.md](0002-accounts-for-creation-only.md) |

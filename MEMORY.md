@@ -97,3 +97,34 @@ be useful without rereading the session.
   `Events.set_group/2`) or via `put_change` inside `Events.create/2` after the
   caller has been authorized against the group's password gate (which the
   create controller does).
+- 2026-08-17: **Accounts are only for creation, and `current_user` is the
+  only account-related assign.** Under ADR-0002, `POST /criar` and
+  `POST /g/criar` are the two surfaces gated by a GitHub login; the rest of
+  the app stays anonymous. Do not introduce `:current_scope`. When a
+  logged-in user creates something, their id lands in
+  `created_by_user_id` and grants durable organizer/edit rights over that
+  one entity — via `Event.Policy.role/2`'s new clause and
+  `Group.editable_by?/4`'s new arg. Grandfathered rows (`nil`) fall back to
+  token/password/admin gates.
+- 2026-08-17: **`created_by_user_id` is never cast from params, on either
+  schema.** Same mass-assignment reasoning as `organizer_token` and
+  `group_id`. Set it via `Event.put_created_by_user_id/2` /
+  `Group.put_created_by_user_id/2`, or via `Ecto.Changeset.put_change/3`
+  inside the contexts. The controllers read it from the server-held
+  session, never from the form body.
+- 2026-08-17: **Direct controller-action calls in tests skip the browser
+  pipeline**, which means `fetch_flash/2` was never called. When testing
+  `AuthController.callback/2` (or any other controller action) by calling
+  the function directly, add `Phoenix.Controller.fetch_flash([])` to the
+  conn first, or the first `put_flash` call raises `ArgumentError`.
+- 2026-08-17: **`~p"/entrar?"` strips the trailing question mark.** Verified
+  routes normalize an empty query string away, so
+  `~p"/entrar?" <> URI.encode_query(...)` yields `/entrarreturn_to=...`
+  (missing `?`). Use a plain string — `"/entrar?" <> URI.encode_query(...)`
+  — or the query-interpolation form `~p"/entrar?#{[return_to: value]}"`.
+- 2026-08-17: **The `:admin` live_session needs the User `on_mount` too.**
+  Any LiveView that renders `<Layouts.app ... current_user={@current_user}>`
+  must have that assign, and only the two on_mount hooks in the
+  live_session put it there. `router.ex` now chains
+  `[{Admin, :require_admin}, {User, :fetch}]` on `:admin` for that reason.
+  Adding a third live_session in the future needs the same treatment.

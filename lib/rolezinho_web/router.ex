@@ -4,6 +4,7 @@ defmodule RolezinhoWeb.Router do
   import RolezinhoWeb.Plugs.Admin
   import RolezinhoWeb.Plugs.ContentSecurityPolicy
   import RolezinhoWeb.Plugs.Participant
+  import RolezinhoWeb.Plugs.User
 
   pipeline :browser do
     plug :accepts, ["html"]
@@ -15,6 +16,7 @@ defmodule RolezinhoWeb.Router do
     plug :put_content_security_policy
     plug :fetch_admin
     plug :fetch_participant
+    plug :fetch_current_user
   end
 
   pipeline :admin_required do
@@ -28,7 +30,8 @@ defmodule RolezinhoWeb.Router do
     live_session :public,
       on_mount: [
         {RolezinhoWeb.Plugs.Admin, :fetch},
-        {RolezinhoWeb.Plugs.Participant, :fetch}
+        {RolezinhoWeb.Plugs.Participant, :fetch},
+        {RolezinhoWeb.Plugs.User, :fetch}
       ] do
       live "/", HomeLive, :index
       live "/me", SettingsLive, :show
@@ -38,6 +41,7 @@ defmodule RolezinhoWeb.Router do
       live "/criar", EventNewLive, :new
       live "/g/criar", GroupNewLive, :new
       live "/g/:slug", GroupLive, :show
+      live "/entrar", SignInLive, :show
     end
 
     get "/r/txt/:slug", RawController, :show
@@ -51,13 +55,24 @@ defmodule RolezinhoWeb.Router do
     get "/admin/login", AdminSessionController, :new
     post "/admin/login", AdminSessionController, :create
     delete "/admin/logout", AdminSessionController, :delete
+
+    # GitHub OAuth (ADR-0002). The ueberauth plug takes over on both routes;
+    # the AuthController is only reached on success/failure of the callback
+    # (and on the request action when the plug pipeline could not initiate).
+    get "/auth/:provider", AuthController, :request
+    get "/auth/:provider/callback", AuthController, :callback
+    delete "/auth/logout", AuthController, :delete
   end
 
   ## Admin-only routes
   scope "/admin", RolezinhoWeb do
     pipe_through [:browser, :admin_required]
 
-    live_session :admin, on_mount: [{RolezinhoWeb.Plugs.Admin, :require_admin}] do
+    live_session :admin,
+      on_mount: [
+        {RolezinhoWeb.Plugs.Admin, :require_admin},
+        {RolezinhoWeb.Plugs.User, :fetch}
+      ] do
       live "/", AdminHomeLive, :index
       live "/r/:slug/edit", EventEditLive, :edit
       live "/r/:slug/formulario", FormConfigLive, :show

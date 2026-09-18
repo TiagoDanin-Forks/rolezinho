@@ -55,6 +55,11 @@ defmodule Rolezinho.Event do
     # password, the event inherits the group's gate on its own page.
     belongs_to :group, Rolezinho.Group
 
+    # Optional signed-in creator (ADR-0002). NULL for events created before
+    # accounts existed and for events created via the admin bypass without a
+    # user session. Grants organizer rights via `Rolezinho.Event.Policy`.
+    belongs_to :created_by_user, Rolezinho.Accounts.User
+
     embeds_many :main_list, Attendee, on_replace: :delete
     embeds_many :wait_list, Attendee, on_replace: :delete
 
@@ -88,6 +93,7 @@ defmodule Rolezinho.Event do
           pix_key: String.t() | nil,
           organizer_token: String.t() | nil,
           group_id: integer() | nil,
+          created_by_user_id: integer() | nil,
           form_fields: [FormField.t()]
         }
 
@@ -151,6 +157,18 @@ defmodule Rolezinho.Event do
   @doc false
   def put_group_id(%Event{} = event, nil), do: change(event, group_id: nil)
   def put_group_id(%Event{} = event, id) when is_integer(id), do: change(event, group_id: id)
+
+  # `created_by_user_id` is the ownership pointer for signed-in creators
+  # (ADR-0002). Also mass-assignment-protected: accepting it from params would
+  # let anyone hand themselves ownership of anything by id. Set at creation
+  # from the server-held `:current_user_id` in the session, or moved by the
+  # admin via `Events.set_created_by/2`.
+  @doc false
+  def put_created_by_user_id(%Event{} = event, nil),
+    do: change(event, created_by_user_id: nil)
+
+  def put_created_by_user_id(%Event{} = event, id) when is_integer(id),
+    do: change(event, created_by_user_id: id)
 
   defp validate_ends_after_starts(changeset) do
     starts_at = get_field(changeset, :starts_at)

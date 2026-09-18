@@ -3,12 +3,32 @@ defmodule RolezinhoWeb.AdminFlowTest do
 
   import Phoenix.LiveViewTest
 
+  alias Rolezinho.Accounts
   alias Rolezinho.Events
 
   defp admin_conn(conn) do
     conn
     |> Plug.Test.init_test_session(%{})
     |> Plug.Conn.put_session(:admin?, true)
+  end
+
+  # A minimal signed-in-user session, per ADR-0002. Used to exercise the
+  # "creator is a signed-in GitHub user" path without going through the OAuth
+  # dance.
+  defp signed_in_conn(conn, attrs \\ %{}) do
+    defaults = %{
+      "github_id" => System.unique_integer([:positive]),
+      "github_login" => "gh-user",
+      "name" => "Ghost User",
+      "email" => nil,
+      "avatar_url" => nil
+    }
+
+    {:ok, user} = Accounts.find_or_create_by_github(Map.merge(defaults, attrs))
+
+    conn
+    |> Plug.Test.init_test_session(%{})
+    |> Plug.Conn.put_session(:current_user_id, user.id)
   end
 
   test "login flow", %{conn: conn} do
@@ -38,64 +58,86 @@ defmodule RolezinhoWeb.AdminFlowTest do
     assert html =~ "Criar rolezinho"
   end
 
-  test "anyone can create a rolezinho, and gets to administer it", %{conn: conn} do
-    # RN-20: whoever creates is the organizer. Creating posts rather than
-    # submitting over the socket, because the organizer secret has to land in the
-    # session and a LiveView cannot write there.
+  describe "creation requires a signed-in user or admin (ADR-0002)" do
+    test "anonymous POST to /criar redirects to /entrar", %{conn: conn} do
+      conn =
+        post(conn, ~p"/criar", %{
+          "event" => %{
+            "title" => "Anônimo",
+            "slug" => "anon-1",
+            "main_size" => "5"
+          }
+        })
+
+      # The event is not created.
+      assert Events.find("anon-1") == nil
+      # And the visitor is sent to sign in, with a return_to that comes back
+      # to /criar.
+      assert redirected_to(conn) =~ "/entrar"
+      assert redirected_to(conn) =~ "return_to"
+    end
+
+    test "anonymous GET /criar (LiveView) redirects to /entrar too", %{conn: conn} do
+      assert {:error, {:live_redirect, %{to: to}}} = live(conn, ~p"/criar")
+      assert String.starts_with?(to, "/entrar")
+    end
+
+    test "a signed-in user can create, and the event is born :active", %{conn: conn} do
+      conn =
+        conn
+        |> signed_in_conn(%{"github_login" => "creator", "github_id" => 424_242})
+        |> post(~p"/criar", %{
+          "event" => %{
+            "title" => "Do Signed-in",
+            "slug" => "do-signed",
+            "main_size" => "5"
+          }
+        })
+
+      assert redirected_to(conn) == "/r/do-signed"
+      event = Events.find("do-signed")
+      assert event.status == :active
+      assert "do-signed" in Enum.map(Events.list_open(), & &1.slug)
+
+      # And the ownership pointer was set from the session, not from params.
+      assert is_integer(event.created_by_user_id)
+    end
+
+    test "an admin can create without being signed in as a user", %{conn: conn} do
+      conn =
+        conn
+        |> admin_conn()
+        |> post(~p"/criar", %{
+          "event" => %{
+            "title" => "Do Admin",
+            "slug" => "do-admin",
+            "main_size" => "4"
+          }
+        })
+
+      assert redirected_to(conn) == "/r/do-admin"
+      event = Events.find("do-admin")
+      assert event.status == :active
+      # Admin creations without a signed-in session leave the ownership pointer
+      # null (the admin bypass is orthogonal, per SECURITY.md).
+      assert is_nil(event.created_by_user_id)
+    end
+  end
+
+  test "signed-in creator becomes the organizer via the session token too", %{conn: conn} do
+    # Belt-and-suspenders check: the create response still drops the
+    # organizer_token in the session, in case the user later signs out and
+    # keeps managing the event from that browser.
     conn =
-      post(conn, ~p"/criar", %{
-        "event" => %{
-          "title" => "Teste UI",
-          "slug" => "teste-ui",
-          "description" => "Detalhes",
-          "main_size" => "5",
-          "wait_size" => "2"
-        }
+      conn
+      |> signed_in_conn(%{"github_login" => "belt-user", "github_id" => 99_001})
+      |> post(~p"/criar", %{
+        "event" => %{"title" => "Teste UI", "slug" => "teste-ui", "main_size" => "5"}
       })
 
     assert redirected_to(conn) == "/r/teste-ui"
-
     event = Events.find("teste-ui")
-    assert event.title == "Teste UI"
-
-    # And the secret reached the browser, so they can actually manage it.
     assert %{"teste-ui" => token} = Plug.Conn.get_session(conn, "organizer_tokens")
     assert token == event.organizer_token
-  end
-
-  # A public home page that anyone can post to is a wall. Non-admin events open
-  # by link, which is how they get shared anyway, and stay off the listing.
-  test "an event created by a visitor is born hidden", %{conn: conn} do
-    post(conn, ~p"/criar", %{
-      "event" => %{"title" => "Do Zé", "slug" => "do-ze", "main_size" => "4"}
-    })
-
-    assert Events.find("do-ze").status == :hidden
-    refute "do-ze" in Enum.map(Events.list_open(), & &1.slug)
-  end
-
-  test "an event created by the admin is active", %{conn: conn} do
-    conn
-    |> admin_conn()
-    |> post(~p"/criar", %{
-      "event" => %{"title" => "Do Admin", "slug" => "do-admin", "main_size" => "4"}
-    })
-
-    assert Events.find("do-admin").status == :active
-    assert "do-admin" in Enum.map(Events.list_open(), & &1.slug)
-  end
-
-  test "a hidden event still opens by link for a visitor", %{conn: conn} do
-    post(conn, ~p"/criar", %{
-      "event" => %{"title" => "Do Zé", "slug" => "do-ze", "main_size" => "4"}
-    })
-
-    assert {:ok, _view, html} = live(conn, ~p"/r/do-ze")
-    assert html =~ "Do Zé"
-  end
-
-  test "the create form is reachable without signing in", %{conn: conn} do
-    assert {:ok, _view, html} = live(conn, ~p"/criar")
-    assert html =~ "Criar rolezinho"
   end
 end

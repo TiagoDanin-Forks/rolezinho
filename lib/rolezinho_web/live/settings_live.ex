@@ -26,6 +26,7 @@ defmodule RolezinhoWeb.SettingsLive do
     <Layouts.app
       flash={@flash}
       current_admin?={@current_admin?}
+      current_user={@current_user}
       page_title={@page_title}
     >
       <div id="settings" phx-hook=".Settings" class="mx-auto max-w-[560px]">
@@ -35,6 +36,53 @@ defmodule RolezinhoWeb.SettingsLive do
             Ficam salvas só neste aparelho, pra você não digitar tudo de novo no próximo rolê.
           </p>
         </header>
+
+        <!-- ADR-0002: the account section is here rather than a dedicated
+             screen because the whole product tries not to grow chrome. When
+             signed in, the user sees who they are and can log out; when
+             not, they see a quiet pointer to sign in. Everything else on
+             this screen is device-local and stays that way. -->
+        <section class="mt-6 rounded-card border border-hairline bg-base-100 p-4 shadow-card">
+          <h2 class="text-[13px] font-extrabold">Conta</h2>
+
+          <div :if={@current_user} class="mt-3 flex items-center gap-3">
+            <img
+              :if={@current_user.avatar_url}
+              src={@current_user.avatar_url}
+              alt={"Avatar de #{Rolezinho.Accounts.User.display_name(@current_user)}"}
+              class="size-10 rounded-full ring-1 ring-ink/10"
+              referrerpolicy="no-referrer"
+            />
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-[13px] font-bold">
+                @{@current_user.github_login}
+              </p>
+              <p class="truncate text-[11px] text-muted">
+                Você pode criar rolês e grupos, e gerenciar em qualquer aparelho.
+              </p>
+            </div>
+            <.link
+              href={~p"/auth/logout"}
+              method="delete"
+              class="shrink-0 rounded-row bg-ink/[0.08] px-3 py-2 text-[11px] font-bold text-muted hover:text-ink"
+            >
+              Sair
+            </.link>
+          </div>
+
+          <div :if={is_nil(@current_user)} class="mt-3 space-y-2">
+            <p class="text-[11px] leading-relaxed text-muted">
+              Você não precisa de conta pra entrar em listas ou ver rolês. Só
+              precisa pra criar.
+            </p>
+            <.link
+              navigate={~p"/entrar"}
+              class="inline-flex items-center gap-2 rounded-row bg-ink px-3 py-2 text-[11px] font-bold text-ink-content"
+            >
+              <.icon name="tabler-brand-github" class="size-4" /> Entrar com GitHub
+            </.link>
+          </div>
+        </section>
 
         <section class="mt-6 rounded-card border border-hairline bg-base-100 p-4 shadow-card">
           <h2 class="text-[13px] font-extrabold">Seus dados</h2>

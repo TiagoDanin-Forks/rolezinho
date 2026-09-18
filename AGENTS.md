@@ -17,10 +17,18 @@ group does. When a group has a password, its page shows only an unlock form
 until the password lands, and the events inside inherit that gate. See
 `SECURITY.md` §3 before touching any of it.
 
-**There are no user accounts.** Guests use the app anonymously from a link; the
-organizer signs in at `/admin/login` with a single environment password. This access
-model is the most important difference from stock Phoenix — there is no `current_scope`
-and no `current_user` here. Read `SECURITY.md` before touching any access surface.
+**Guests never sign up.** Browsing, joining a list, unlocking, paying, leaving —
+all of it anonymous. The one exception is **creation**: `POST /criar` (an event)
+and `POST /g/criar` (a group) require a GitHub-authenticated session, via
+Ueberauth. See ADR-0002 (`docs/decisions/0002-accounts-for-creation-only.md`)
+for the reasoning. The organizer can also sign in at `/admin/login` with a
+single environment password (`ADMIN_PASSWORD`) as an ops bypass that stays
+orthogonal to GitHub.
+
+This access model is the most important difference from stock Phoenix — there
+is still no `current_scope`, and no per-user ownership beyond what
+`created_by_user_id` narrowly grants. Read `SECURITY.md` before touching any
+access surface.
 
 Stack: Phoenix 1.8, LiveView 1.2, PostgreSQL, Tailwind v4 (tokens in the `@theme` block
 of `app.css`), Tabler icons, Earmark for markdown, deployed on Fly.io.
@@ -139,6 +147,23 @@ this codebase; the guidelines below are generic.
 - **Always** use the imported `<.input>` component for form inputs from `core_components.ex` when available. `<.input>` is imported and using it will save steps and prevent errors
 - If you override the default input classes (`<.input class="myclass px-2 py-1 rounded-lg">)`) class with your own values, no default classes are inherited, so your
 custom classes must fully style the input
+
+### No `current_scope` here — there is `current_user` (ADR-0002)
+
+Creation is the only surface that requires an account. Everywhere else in the
+app is anonymous by design. The identity assigns you'll see on socket and
+conn are:
+
+- `:current_admin?` (boolean, from `RolezinhoWeb.Plugs.Admin`)
+- `:current_user` and `:current_user_id` (from `RolezinhoWeb.Plugs.User` — nil
+  when not signed in)
+- `:unlocked_events`, `:unlocked_groups` (per-slug session unlocks)
+- `:participants`, `:organizer_tokens` (per-slug bearer secrets)
+
+Before adding a `:current_scope`-shaped assign, or writing a query scoped by
+the signed-in user beyond `created_by_user_id`, read ADR-0002 first. Every
+other "who is the current user" check the wider Phoenix community writes
+assumes `phx.gen.auth` — be suspicious when following them here.
 
 ### JS and CSS guidelines
 

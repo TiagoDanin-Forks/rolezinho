@@ -4,11 +4,17 @@ defmodule RolezinhoWeb.GroupEventCreationTest do
   access to the group. A visitor who cannot edit the group cannot drop a
   new event into it, either — otherwise the passwordless-groups-are-
   admin-only rule would be trivially bypassed by anyone with the URL.
+
+  All tests here assume the caller has already cleared the ADR-0002 login
+  gate (signed-in user or admin) — the login gate itself is covered in
+  `admin_flow_test.exs`. What's being tested is the *second* gate: can
+  this authenticated caller attach the event to this specific group.
   """
   use RolezinhoWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
 
+  alias Rolezinho.Accounts
   alias Rolezinho.Events
   alias Rolezinho.Groups
 
@@ -24,10 +30,28 @@ defmodule RolezinhoWeb.GroupEventCreationTest do
     |> Plug.Conn.put_session(:admin?, true)
   end
 
-  defp unlocked_group_conn(conn, slug) do
+  defp signed_in_conn(conn, session_overrides \\ %{}) do
+    {:ok, user} =
+      Accounts.find_or_create_by_github(%{
+        "github_id" => System.unique_integer([:positive]),
+        "github_login" => "gh-#{System.unique_integer([:positive])}",
+        "name" => nil,
+        "email" => nil,
+        "avatar_url" => nil
+      })
+
     conn
     |> Plug.Test.init_test_session(%{})
-    |> Plug.Conn.put_session(:unlocked_groups, MapSet.new([slug]))
+    |> Plug.Conn.put_session(:current_user_id, user.id)
+    |> then(fn conn ->
+      Enum.reduce(session_overrides, conn, fn {k, v}, acc ->
+        Plug.Conn.put_session(acc, k, v)
+      end)
+    end)
+  end
+
+  defp signed_in_and_unlocked_group(conn, slug) do
+    signed_in_conn(conn, %{unlocked_groups: MapSet.new([slug])})
   end
 
   defp base_event_params(overrides) do
@@ -49,9 +73,11 @@ defmodule RolezinhoWeb.GroupEventCreationTest do
     )
   end
 
-  describe "GroupNewLive route + form" do
+  describe "EventNewLive route + form (signed in)" do
     test "the form pre-fills the group hidden field when `?group=` is present", %{conn: conn} do
       group = create_group(%{"slug" => "prefilled"})
+      conn = signed_in_conn(conn)
+
       {:ok, view, html} = live(conn, ~p"/criar?group=#{group.slug}")
 
       # The banner names the group the user is creating into.
@@ -78,11 +104,11 @@ defmodule RolezinhoWeb.GroupEventCreationTest do
       assert event.status == :active
     end
 
-    test "non-admin with a group unlock can attach", %{conn: conn} do
+    test "signed-in user with a group unlock can attach", %{conn: conn} do
       group = create_group(%{"slug" => "unlocked-target", "password" => "s"})
 
       conn =
-        post(unlocked_group_conn(conn, "unlocked-target"), ~p"/criar", %{
+        post(signed_in_and_unlocked_group(conn, "unlocked-target"), ~p"/criar", %{
           "event" =>
             base_event_params(%{
               "title" => "Unlocked",
@@ -95,11 +121,12 @@ defmodule RolezinhoWeb.GroupEventCreationTest do
       assert Events.find("unl-1").group_id == group.id
     end
 
-    test "non-admin without any unlock is NOT dropped into a passwordless group", %{conn: conn} do
+    test "signed-in user without any unlock is NOT dropped into someone else's passwordless group",
+         %{conn: conn} do
       group = create_group(%{"slug" => "public-untouchable"})
 
       conn =
-        post(conn, ~p"/criar", %{
+        post(signed_in_conn(conn), ~p"/criar", %{
           "event" =>
             base_event_params(%{
               "title" => "Rejected",
@@ -120,7 +147,7 @@ defmodule RolezinhoWeb.GroupEventCreationTest do
 
     test "unknown group name flashes and creates ungrouped", %{conn: conn} do
       conn =
-        post(conn, ~p"/criar", %{
+        post(signed_in_conn(conn), ~p"/criar", %{
           "event" =>
             base_event_params(%{
               "title" => "NoGroup",
@@ -131,6 +158,36 @@ defmodule RolezinhoWeb.GroupEventCreationTest do
 
       assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "não encontrado"
       assert Events.find("nogrp-1").group_id == nil
+    end
+
+    test "signed-in creator of the group can attach without a password unlock", %{conn: conn} do
+      # ADR-0002: the group creator gets durable edit rights, so they can
+      # drop events into their own group without holding either the password
+      # or the admin bypass.
+      {:ok, user} =
+        Accounts.find_or_create_by_github(%{
+          "github_id" => System.unique_integer([:positive]),
+          "github_login" => "owner"
+        })
+
+      {:ok, group} =
+        Groups.create(%{"name" => "Meu grupo", "slug" => "meu"}, created_by_user_id: user.id)
+
+      conn =
+        conn
+        |> Plug.Test.init_test_session(%{})
+        |> Plug.Conn.put_session(:current_user_id, user.id)
+        |> post(~p"/criar", %{
+          "event" =>
+            base_event_params(%{
+              "title" => "No meu grupo",
+              "slug" => "no-meu",
+              "group" => "meu"
+            })
+        })
+
+      assert redirected_to(conn) == "/g/meu"
+      assert Events.find("no-meu").group_id == group.id
     end
   end
 end

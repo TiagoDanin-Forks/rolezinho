@@ -70,17 +70,23 @@ defmodule RolezinhoWeb.HomeLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_admin?={@current_admin?} page_title={@page_title}>
+    <Layouts.app
+      flash={@flash}
+      current_admin?={@current_admin?}
+      current_user={@current_user}
+      page_title={@page_title}
+    >
       <div id="home" phx-hook=".RecentEvents" class="mx-auto max-w-[560px]">
         <header class="flex items-end justify-between gap-4">
           <div class="min-w-0">
             <h1 class="text-2xl font-extrabold tracking-tight">Rolezinhos</h1>
             <p class="mt-0.5 text-[13px] text-muted">Os rolês abertos por aqui</p>
           </div>
-          <!-- Three destinations live here, next to the title. Three of them do not
-               earn a permanent bar across the bottom of every screen, and the
-               bottom strip is worth more to the action someone came to take. -->
+          <!-- Destinations next to the title. The current-user badge (avatar
+               + logout on click) only renders when signed in — anonymous
+               visitors see nothing about accounts on the home page. -->
           <div class="flex shrink-0 items-center gap-1.5">
+            <.user_badge :if={@current_user} user={@current_user} />
             <.link
               navigate={~p"/me"}
               class="grid size-11 place-items-center rounded-full bg-ink/[0.06] text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
@@ -214,5 +220,33 @@ defmodule RolezinhoWeb.HomeLive do
     list
     |> Enum.map(&String.trim(&1.name))
     |> Enum.reject(&(&1 == ""))
+  end
+
+  # Compact signed-in-user indicator with a logout affordance next to it. The
+  # avatar is a plain image and the logout is a link with `data-method="delete"`
+  # so the whole widget survives without JavaScript beyond Phoenix's default
+  # method hijack.
+  attr :user, :any, required: true
+
+  defp user_badge(assigns) do
+    ~H"""
+    <div class="flex items-center gap-1">
+      <img
+        :if={@user.avatar_url}
+        src={@user.avatar_url}
+        alt={"Avatar de #{Rolezinho.Accounts.User.display_name(@user)}"}
+        class="size-8 rounded-full ring-1 ring-ink/10"
+        referrerpolicy="no-referrer"
+      />
+      <.link
+        href={~p"/auth/logout"}
+        method="delete"
+        class="rounded-full px-2 py-1 text-[11px] font-bold text-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        aria-label={"Sair da conta #{Rolezinho.Accounts.User.display_name(@user)}"}
+      >
+        Sair
+      </.link>
+    </div>
+    """
   end
 end
