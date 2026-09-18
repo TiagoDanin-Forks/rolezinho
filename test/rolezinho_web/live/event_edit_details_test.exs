@@ -281,9 +281,11 @@ defmodule RolezinhoWeb.EventEditDetailsTest do
   describe "auto-retag slug when the date changes" do
     # These tests exercise the "URL follows the date" behaviour: when the user
     # picks a new date and did not touch the slug themselves, and the slug
-    # ends with the current `-DD-MM` (with an optional `-clonado` tail), we
-    # rewrite the slug to end with the new `-DD-MM`. Any other case, the slug
-    # is left exactly as the user submitted.
+    # ends with the current `-DD-MM` (or `-DD-MM-clonado`), we rewrite the
+    # slug to end with the new `-DD-MM`. Under `-clonado`, the tail is
+    # dropped rather than kept: once the date moves, the URL is about a
+    # different event, not a copy of the source anymore. Any other case, the
+    # slug is left exactly as the user submitted.
 
     defp seed_with_slug_and_date(conn, slug, date_iso, extra \\ %{}) do
       event =
@@ -324,7 +326,11 @@ defmodule RolezinhoWeb.EventEditDetailsTest do
       assert is_nil(Events.find("meu-rolezinho-18-09"))
     end
 
-    test "-DD-MM-clonado suffix is rewritten too", %{conn: conn} do
+    test "-DD-MM-clonado becomes -DD-MM (the '-clonado' tail is dropped)",
+         %{conn: conn} do
+      # The `-clonado` was a slug-uniqueness tail added at clone time. Once
+      # the organizer moves the date, this is a different event on a
+      # different day — keeping `-clonado` in the URL would be misleading.
       {view, event} = seed_with_slug_and_date(conn, "meu-rolezinho-18-09-clonado", "2026-09-18")
 
       {:error, {:live_redirect, %{to: to}}} =
@@ -335,8 +341,9 @@ defmodule RolezinhoWeb.EventEditDetailsTest do
         )
         |> render_submit()
 
-      assert to == "/admin/r/meu-rolezinho-22-09-clonado/edit"
-      assert Events.find("meu-rolezinho-22-09-clonado")
+      assert to == "/admin/r/meu-rolezinho-22-09/edit"
+      assert Events.find("meu-rolezinho-22-09")
+      refute Events.find("meu-rolezinho-22-09-clonado")
     end
 
     test "a manually-changed slug beats the auto-retag", %{conn: conn} do
@@ -540,7 +547,8 @@ defmodule RolezinhoWeb.EventEditDetailsTest do
       assert html =~ ~s(value="meu-rolezinho-25-09")
     end
 
-    test "the -clonado tail is preserved on a live retag", %{conn: conn} do
+    test "the -clonado tail is dropped on a live retag (URL no longer says 'clonado')",
+         %{conn: conn} do
       event =
         create_event(%{
           "slug" => "meu-rolezinho-18-09-clonado",
@@ -559,7 +567,7 @@ defmodule RolezinhoWeb.EventEditDetailsTest do
         })
       )
 
-      assert_push_event(view, "slug-retagged", %{slug: "meu-rolezinho-22-09-clonado"})
+      assert_push_event(view, "slug-retagged", %{slug: "meu-rolezinho-22-09"})
     end
 
     test "editing the slug directly disables auto-retag for the rest of the session",

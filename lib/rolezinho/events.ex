@@ -447,8 +447,14 @@ defmodule Rolezinho.Events do
   end
 
   @doc """
-  Clones an event. The clone's title has " Clonado" appended and its slug
-  ends in `-clonado` (with a numeric suffix when that is already taken).
+  Clones an event.
+
+  The clone's title is the source's, unchanged — in practice a repeat is
+  "the same event, another day", so a suffix like " Clonado" reads as clutter
+  the organizer has to remove before sharing. The slug still gets a
+  `-clonado` tail (with a numeric disambiguator when needed) because the
+  original's URL is already taken; that tail is dropped later, on the first
+  date edit, by the retag logic in `RolezinhoWeb.EventEditLive`.
   """
   @spec clone(Event.t()) :: {:ok, Event.t()} | {:error, term()}
   def clone(%Event{} = source) do
@@ -459,7 +465,7 @@ defmodule Rolezinho.Events do
       |> Event.attrs_from_struct()
       |> Map.merge(%{
         slug: clone_slug,
-        title: source.title <> " Clonado",
+        title: source.title,
         status: :active,
         # RN-52: a repeat copies the setup, not the people. Carrying the list
         # over would open next week's rolê with last week's names already

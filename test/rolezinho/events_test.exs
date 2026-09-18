@@ -186,9 +186,13 @@ defmodule Rolezinho.EventsTest do
       %{event: event}
     end
 
-    test "appends ' Clonado' to the title and '-clonado' to the slug", %{event: event} do
+    test "keeps the title as-is and appends '-clonado' to the slug", %{event: event} do
+      # A repeat is "the same event, another day" — titles like "Vôlei Clonado"
+      # read as clutter the organizer has to remove before sharing. The slug
+      # still gets the `-clonado` tail because the source's URL is taken; the
+      # tail is dropped on the first date edit (see EventEditLive retag).
       assert {:ok, clone} = Events.clone(event)
-      assert clone.title == "Vôlei Clonado"
+      assert clone.title == "Vôlei"
       assert clone.slug == "volei-clonado"
       assert clone.status == :active
     end
@@ -239,7 +243,7 @@ defmodule Rolezinho.EventsTest do
 
     test "persists the clone in the database", %{event: event} do
       {:ok, clone} = Events.clone(event)
-      assert Repo.get_by(Event, slug: clone.slug).title == "Vôlei Clonado"
+      assert Repo.get_by(Event, slug: clone.slug).title == "Vôlei"
     end
   end
 

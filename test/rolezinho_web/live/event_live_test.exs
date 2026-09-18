@@ -177,8 +177,11 @@ defmodule RolezinhoWeb.EventLiveTest do
         |> element("button[phx-click=\"clone\"]")
         |> render_click()
 
+      # Cloning keeps the title untouched — the URL carries the "-clonado"
+      # tail for uniqueness at creation time, but no user-visible suffix
+      # bleeds into the title. See ADR-less product decision in `Events.clone/1`.
       assert to == "/admin/r/#{event.slug}-clonado/edit"
-      assert Rolezinho.Events.find("#{event.slug}-clonado").title == event.title <> " Clonado"
+      assert Rolezinho.Events.find("#{event.slug}-clonado").title == event.title
     end
 
     test "admin can remove someone and everyone shifts up", %{conn: conn, event: event} do

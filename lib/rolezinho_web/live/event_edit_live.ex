@@ -615,8 +615,12 @@ defmodule RolezinhoWeb.EventEditLive do
   # current event's date. Handles two shapes:
   #
   #   * `<base>-DD-MM`             — the auto-slugify tag from `EventNewLive`.
+  #     Swaps for the new `-DD-MM`.
   #   * `<base>-DD-MM-clonado`     — the same tag under a clone, which
-  #     `Events.clone/1` appends via `unique_clone_slug/1`.
+  #     `Events.clone/1` appends via `unique_clone_slug/1`. The `-clonado`
+  #     tail was a slug-uniqueness workaround at clone time; the moment the
+  #     organizer moves the date, the URL is about a different event on a
+  #     different day, so we drop `-clonado` and land on just `<base>-DD-MM`.
   #
   # Anything else — no pattern, a `-DD-MM` that does not match the current
   # date, missing dates on either side — returns the slug unchanged.
@@ -630,11 +634,10 @@ defmodule RolezinhoWeb.EventEditLive do
     new_tag = "-" <> pad2(new_date.day) <> "-" <> pad2(new_date.month)
 
     clonado_current = current_tag <> "-clonado"
-    clonado_new = new_tag <> "-clonado"
 
     cond do
       String.ends_with?(current_slug, clonado_current) ->
-        strip_suffix(current_slug, clonado_current) <> clonado_new
+        strip_suffix(current_slug, clonado_current) <> new_tag
 
       String.ends_with?(current_slug, current_tag) ->
         strip_suffix(current_slug, current_tag) <> new_tag
