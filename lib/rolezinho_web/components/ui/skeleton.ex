@@ -39,7 +39,7 @@ defmodule RolezinhoWeb.Components.UI.Skeleton do
   defp card_skeleton(assigns) do
     ~H"""
     <div
-      class="animate-shimmer rounded-card border border-ink/8 bg-white p-3.5"
+      class="animate-shimmer rounded-card border border-ink/8 bg-base-100 p-3.5"
       style={"animation-delay: #{(@index - 1) * 120}ms"}
     >
       <div class="h-2.5 w-[36%] rounded-full bg-ink/10" />

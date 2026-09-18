@@ -6,7 +6,7 @@ defmodule Storybook.UI.DetailRow do
   def template do
     """
     <div class="max-w-sm rounded-cta bg-surface p-3.5" psb-code-hidden>
-      <div class="rounded-cta border border-ink/8 bg-white px-3.5">
+      <div class="rounded-cta border border-ink/8 bg-base-100 px-3.5">
         <.psb-variation-group/>
       </div>
     </div>

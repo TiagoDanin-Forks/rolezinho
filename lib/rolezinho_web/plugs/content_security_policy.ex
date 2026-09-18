@@ -19,7 +19,11 @@ defmodule RolezinhoWeb.Plugs.ContentSecurityPolicy do
 
   `style-src` allows `unsafe-inline` because LiveView writes inline styles when
   applying transitions via `JS` commands. Everything else is same-origin only;
-  `img-src` also allows `data:` for favicons and generated images.
+  `img-src` also allows `data:` for favicons and generated images, and one
+  narrow third-party origin — `avatars.githubusercontent.com` — so signed-in
+  users can see their GitHub avatar next to the logout link (ADR-0002). No
+  other GitHub subdomain (in particular `camo.githubusercontent.com` for
+  proxied README images) is allowed.
   """
 
   import Plug.Conn
@@ -39,7 +43,11 @@ defmodule RolezinhoWeb.Plugs.ContentSecurityPolicy do
         "default-src 'self'",
         "script-src 'self' 'nonce-#{nonce}'",
         "style-src 'self' 'unsafe-inline'",
-        "img-src 'self' data:",
+        # `avatars.githubusercontent.com` is the only third-party image host
+        # we allow, and only for the user badge on the signed-in surfaces
+        # (see ADR-0002 and SECURITY.md §1). Every other image on the page is
+        # our own or `data:`.
+        "img-src 'self' data: https://avatars.githubusercontent.com",
         "font-src 'self'",
         # LiveView needs websockets on the same origin.
         "connect-src 'self' ws: wss:",

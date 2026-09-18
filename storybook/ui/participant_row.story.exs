@@ -6,7 +6,7 @@ defmodule Storybook.UI.ParticipantRow do
   def template do
     """
     <div class="max-w-sm rounded-cta bg-surface p-3.5" psb-code-hidden>
-      <div class="overflow-hidden rounded-cta border border-ink/8 bg-white">
+      <div class="overflow-hidden rounded-cta border border-ink/8 bg-base-100">
         <.psb-variation-group/>
       </div>
     </div>

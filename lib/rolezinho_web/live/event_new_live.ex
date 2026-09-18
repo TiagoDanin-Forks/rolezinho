@@ -2,6 +2,13 @@ defmodule RolezinhoWeb.EventNewLive do
   @moduledoc "Admin form to create a new rolezinho."
   use RolezinhoWeb, :live_view
 
+  # Category suggestions shown as autocomplete hints (HTML `<datalist>`). The
+  # field stays a plain text input — these are suggestions, not a restricted
+  # list, so someone can still write "Coworking" or "Aniversário" or anything
+  # else. The four defaults cover the informal categories the group text
+  # research surfaced most often.
+  @category_suggestions ~w(Trabalho Networking Esportes Social)
+
   @impl true
   def mount(params, _session, socket) do
     group_slug = params |> Map.get("group", "") |> to_string() |> String.trim()
@@ -24,6 +31,12 @@ defmodule RolezinhoWeb.EventNewLive do
        |> assign(:page_title, "Criar rolezinho")
        |> assign(:group, group)
        |> assign(:group_slug, if(group, do: group.slug, else: ""))
+       # `slug_touched?` starts false so the "auto-slugify from title" helper
+       # is free to fill in the slug on the first title keystroke. Once the
+       # user has typed into the slug field themselves, this flips to true and
+       # the field belongs to them from then on.
+       |> assign(:slug_touched?, false)
+       |> assign(:category_suggestions, @category_suggestions)
        |> assign_form(default_params(group_slug), %{})}
     end
   end
@@ -61,9 +74,76 @@ defmodule RolezinhoWeb.EventNewLive do
   end
 
   @impl true
-  def handle_event("validate", %{"event" => params}, socket) do
-    {:noreply, assign_form(socket, params, %{})}
+  def handle_event("validate", %{"event" => params} = payload, socket) do
+    target = Map.get(payload, "_target", [])
+
+    # Two threads to keep in sync here:
+    #   * `slug_touched?` — once the user has typed anything into the slug
+    #     field themselves, we stop derivating from title/date. The check on
+    #     `_target` is the signal.
+    #   * `maybe_autofill_slug/2` — only runs while the field is still
+    #     considered untouched *and* the user is editing some other field.
+    slug_touched? = socket.assigns.slug_touched? or target == ["event", "slug"]
+
+    params =
+      if slug_touched? do
+        params
+      else
+        autofill_slug(params)
+      end
+
+    {:noreply,
+     socket
+     |> assign(:slug_touched?, slug_touched?)
+     |> assign_form(params, %{})}
   end
+
+  # Derives the slug from the current title (plus `-dd-mm` when a date is
+  # set) and stuffs it back into the form params. Leaves the slug empty when
+  # the title is empty — a bare `-15-08` would be a slug about nothing.
+  defp autofill_slug(params) do
+    title = params |> Map.get("title", "") |> to_string()
+    date = params |> Map.get("date", "") |> to_string()
+
+    generated =
+      case slugify(title) do
+        "" -> ""
+        base -> base <> date_suffix(date)
+      end
+
+    Map.put(params, "slug", generated)
+  end
+
+  # Portuguese-friendly slugifier: strips accents via NFD normalization, keeps
+  # only [a-z0-9], collapses runs to single hyphens, trims leading/trailing
+  # hyphens. Length-capped to leave room for the date suffix under the 62-char
+  # ceiling in `Rolezinho.Event`'s slug regex.
+  defp slugify(title) do
+    title
+    |> String.trim()
+    |> String.downcase()
+    |> String.normalize(:nfd)
+    |> String.replace(~r/[\x{0300}-\x{036f}]/u, "")
+    |> String.replace(~r/[^a-z0-9]+/, "-")
+    |> String.trim("-")
+    |> String.slice(0, 50)
+    |> String.trim("-")
+  end
+
+  # A date like `2026-08-15` renders as `-15-08` — day first, month second, to
+  # match how the group actually says it out loud ("dia 15 do 8"). Ignores
+  # anything the browser hands us that isn't a valid ISO date.
+  defp date_suffix(""), do: ""
+  defp date_suffix(nil), do: ""
+
+  defp date_suffix(iso) when is_binary(iso) do
+    case Date.from_iso8601(iso) do
+      {:ok, date} -> "-" <> pad2(date.day) <> "-" <> pad2(date.month)
+      _ -> ""
+    end
+  end
+
+  defp pad2(n), do: n |> Integer.to_string() |> String.pad_leading(2, "0")
 
   @impl true
   def render(assigns) do
@@ -133,16 +213,22 @@ defmodule RolezinhoWeb.EventNewLive do
                 placeholder="ex.: Vôlei ver-o-beach"
                 required
               />
-              <.input field={@form[:slug]} label="Link" placeholder="volei-ver-o-beach" required />
-              <p class="-mt-2 text-[11px] text-muted">
-                Vira <code class="font-mono">/r/{@form[:slug].value || "seu-link"}</code>
-              </p>
               <.input field={@form[:local]} label="Onde" placeholder="ex.: Rua Caripunas" />
+              <!--
+                Category stays a free-form text field — the datalist below is
+                only there as a hint on desktop and a suggestion sheet on
+                mobile. Any string still goes through, including the ones
+                the group actually uses that we did not think of.
+              -->
               <.input
                 field={@form[:category]}
                 label="Categoria"
-                placeholder="ex.: esporte, coworking, social"
+                placeholder="ex.: Trabalho, Esportes"
+                list="event-category-suggestions"
               />
+              <datalist id="event-category-suggestions">
+                <option :for={suggestion <- @category_suggestions} value={suggestion} />
+              </datalist>
 
               <div class="grid grid-cols-2 gap-2">
                 <.input field={@form[:date]} type="date" label="Quando" />
@@ -159,10 +245,26 @@ defmodule RolezinhoWeb.EventNewLive do
 
             <div class="mt-3.5 space-y-3">
               <.input field={@form[:price]} label="Quanto cada um paga" placeholder="ex.: 15" />
+              <!--
+                Password managers keep misidentifying this field as a
+                password because it sits near the "Senha" section and holds
+                an opaque-looking string. It is not a password: it is a
+                public Pix key someone pastes so friends can send money.
+                `autocomplete="off"` + the three vendor-specific ignore
+                data-attrs (1Password / LastPass / Bitwarden) tell every
+                mainstream manager to stay out. There is no HTML autocomplete
+                token specific to Pix — the key can be a phone, email, CPF,
+                CNPJ or random UUID, so no single browser hint fits.
+              -->
               <.input
                 field={@form[:pix_key]}
                 label="Chave Pix"
                 placeholder="telefone, CPF, e-mail ou aleatória"
+                autocomplete="off"
+                data-1p-ignore="true"
+                data-lpignore="true"
+                data-bwignore="true"
+                data-form-type="other"
               />
             </div>
           </section>
@@ -215,6 +317,32 @@ defmodule RolezinhoWeb.EventNewLive do
               <code class="font-mono italic">_itálico_</code>
               e <code class="font-mono line-through">~riscado~</code>, como no WhatsApp.
             </p>
+          </section>
+
+          <!--
+            Link sits at the end on purpose: it is a technical detail nobody
+            fills out first. The auto-slugify (title + `-dd-mm`) means most
+            people will not touch this field at all; those who care about the
+            URL can override it as their last step before submitting.
+          -->
+          <section class="mt-3 rounded-card border border-hairline bg-base-100 p-4 shadow-card">
+            <h2 class="text-[13px] font-extrabold">Link</h2>
+            <p class="mt-0.5 text-[11px] leading-relaxed text-muted">
+              A gente já sugere um link a partir do nome e da data — dá pra trocar
+              se você quiser algo diferente.
+            </p>
+
+            <div class="mt-3.5">
+              <.input
+                field={@form[:slug]}
+                label="Endereço do rolê"
+                placeholder="volei-ver-o-beach"
+                required
+              />
+              <p class="mt-2 text-[11px] text-muted">
+                Vira <code class="font-mono">/r/{@form[:slug].value || "seu-link"}</code>
+              </p>
+            </div>
           </section>
         </.form>
       </div>

@@ -222,18 +222,32 @@ defmodule RolezinhoWeb.WhenWhereTest do
       %{conn: admin_conn, event: event}
     end
 
-    test "structured form updates local/data/horário and preserves the rest", %{
-      conn: conn,
-      event: event
-    } do
-      # Add some free-form text via raw save first
+    test "the merged details form updates local/data/horário and preserves the free-form description",
+         %{conn: conn, event: event} do
+      # Add some free-form text via the raw context path first — same
+      # spot the description lives in on disk today.
       {:ok, _} = Events.save_raw(event, "# Vôlei\n\nValor: 15\n\n1-\n2-\n3-\n")
 
       {:ok, view, _html} = live(conn, ~p"/admin/r/#{event.slug}/edit")
 
+      # Meta/date/time now live in the single "Detalhes" card alongside
+      # title, description, price, pix, password and slug — the whole card
+      # saves as one changeset when the user clicks "Salvar".
+      current_slug = event.slug
+
       view
-      |> form("#meta-form", %{
-        "meta" => %{"local" => "Praia", "date" => "2026-07-15", "time" => "19:00"}
+      |> form("#details-form", %{
+        "details" => %{
+          "title" => event.title,
+          "description" => "Valor: 15",
+          "local" => "Praia",
+          "date" => "2026-07-15",
+          "time" => "19:00",
+          "price" => "",
+          "pix_key" => "",
+          "password" => "",
+          "slug" => current_slug
+        }
       })
       |> render_submit()
 

@@ -39,7 +39,7 @@ defmodule RolezinhoWeb.Components.UI.Stepper do
     ~H"""
     <div class={[
       "flex items-center justify-between gap-3 rounded-cta",
-      "border border-ink/8 bg-white px-3.5 py-2.5",
+      "border border-ink/8 bg-base-100 px-3.5 py-2.5",
       @class
     ]}>
       <div>
@@ -109,7 +109,7 @@ defmodule RolezinhoWeb.Components.UI.Stepper do
       data-max={@max}
       class={[
         "flex items-center justify-between gap-3 rounded-cta",
-        "border border-ink/8 bg-white px-3.5 py-2.5",
+        "border border-ink/8 bg-base-100 px-3.5 py-2.5",
         @class
       ]}
     >

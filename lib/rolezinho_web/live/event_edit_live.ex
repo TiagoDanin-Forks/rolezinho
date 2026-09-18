@@ -22,24 +22,48 @@ defmodule RolezinhoWeb.EventEditLive do
         {:ok,
          socket
          |> assign(:page_title, "Editar #{event.title}")
+         # `slug_touched?` gates the live retag: once the user has typed into
+         # the slug field themselves, we stop rewriting it from date edits.
+         # `slug_reference_date` is the date the current slug's `-DD-MM` tail
+         # matches — seeded from the event, updated after every successful
+         # retag so a second date change also retags cleanly.
+         |> assign(:slug_touched?, false)
+         |> assign(:slug_reference_date, extract_current_date(event))
          |> assign_event(event)}
     end
   end
 
   defp assign_event(socket, %Event{} = event) do
-    {meta, _rest} = Meta.extract(event.header)
+    {meta, description} = Meta.extract(event.header)
 
     socket
     |> assign(:event, event)
-    |> assign(:content, Event.render(event))
     |> assign(:main_size_input, to_string(event.main_capacity))
-    |> assign(:slug_input, event.slug)
-    |> assign(:password_input, event.password || "")
-    |> assign(:meta_form, to_form(Meta.to_form_params(meta), as: :meta))
-    |> assign(:payment_form, to_form(payment_form_params(event), as: :payment))
+    # One form to save every free-text/date field: title, description, meta
+    # (local/date/time), payment (price/pix_key), password, and slug. Its
+    # `phx-submit` (`save_details`) does slug rename first when the slug
+    # changed and then a single atomic changeset via
+    # `Events.update_full_details/2`. The number-only, select, radio and
+    # button controls (capacity, status, group, owner, delete) each keep
+    # their own dedicated section below.
+    |> assign(:details_form, to_form(details_form_params(event, meta, description), as: :details))
     |> assign(:groups, Groups.list_all())
     |> assign(:users, list_users())
     |> assign(:creator, Accounts.get_user(event.created_by_user_id))
+  end
+
+  defp details_form_params(%Event{} = event, %Meta{} = meta, description) do
+    %{
+      "slug" => event.slug,
+      "title" => event.title,
+      "description" => description,
+      "local" => meta.local || "",
+      "date" => (meta.date && Date.to_iso8601(meta.date)) || "",
+      "time" => (meta.time && Calendar.strftime(meta.time, "%H:%M")) || "",
+      "price" => price_input_value(event.price_cents),
+      "pix_key" => event.pix_key || "",
+      "password" => event.password || ""
+    }
   end
 
   # Small ordered list of every user, for the "Dono" select. Bounded by the
@@ -48,13 +72,6 @@ defmodule RolezinhoWeb.EventEditLive do
   defp list_users do
     import Ecto.Query, only: [from: 2]
     Repo.all(from u in Accounts.User, order_by: [asc: u.github_login])
-  end
-
-  defp payment_form_params(%Event{price_cents: cents, pix_key: pix}) do
-    %{
-      "price" => price_input_value(cents),
-      "pix_key" => pix || ""
-    }
   end
 
   # Round-trips price_cents into the human-friendly string the create form and
@@ -74,43 +91,69 @@ defmodule RolezinhoWeb.EventEditLive do
   end
 
   @impl true
-  def handle_event("update_content", %{"content" => content}, socket) do
-    {:noreply, assign(socket, :content, content)}
+  def handle_event("validate_details", %{"details" => params} = payload, socket) do
+    target = Map.get(payload, "_target", [])
+
+    # Two steps, in this order:
+    #   1. Always seed the form from the incoming params so the user's typing
+    #      shows up. Any auto-retag will overwrite `slug` afterwards when it
+    #      needs to; leaving the seed here means an untargeted change is a
+    #      clean passthrough.
+    #   2. Apply the target-specific behaviour — mark the slug as touched, or
+    #      run the date-driven retag — which mutates the socket state (and,
+    #      for retag, the form's `slug` value) further.
+    socket = assign(socket, :details_form, to_form(params, as: :details))
+
+    socket =
+      case target do
+        ["details", "slug"] ->
+          assign(socket, :slug_touched?, true)
+
+        ["details", "date"] ->
+          retag_on_date_change(socket, params)
+
+        _ ->
+          socket
+      end
+
+    {:noreply, socket}
   end
 
-  def handle_event("save", %{"content" => content}, socket) do
-    case Events.save_raw(socket.assigns.event, content) do
-      {:ok, event} ->
+  def handle_event("save_details", %{"details" => params}, socket) do
+    original_event = socket.assigns.event
+    submitted_slug = params |> Map.get("slug", "") |> to_string() |> String.trim()
+
+    # Safety net for a submit that arrived without a preceding `phx-change`
+    # (JS disabled, or a form recovery after a reconnect). The live handler
+    # already updates the slug tag as the user edits the date; this preserves
+    # the same behaviour when that live path did not run.
+    effective_slug = maybe_retag_slug_with_date(original_event, submitted_slug, params)
+
+    # Slug rename is a separate operation on purpose — it moves the URL and
+    # broadcasts a `:moved` message on the old slug topic — so we do it first,
+    # and only proceed to the bulk update if it succeeded. When the slug did
+    # not change, `rename_slug/2` is a no-op that returns the same event.
+    with {:ok, event} <- rename_if_changed(original_event, effective_slug),
+         {:ok, event} <- Events.update_full_details(event, params) do
+      socket =
+        socket
+        |> put_flash(:info, "Rolê atualizado.")
+        |> assign_event(event)
+
+      if event.slug != original_event.slug do
+        # The URL just changed under us; the current /admin/r/<old>/edit is now
+        # a 404. Push the browser to the new one.
+        {:noreply, push_navigate(socket, to: ~p"/admin/r/#{event.slug}/edit")}
+      else
+        {:noreply, socket}
+      end
+    else
+      {:error, :invalid_slug} ->
         {:noreply,
-         socket
-         |> put_flash(:info, "Salvo!")
-         |> assign_event(event)}
+         put_flash(socket, :error, "Slug inválido. Use letras minúsculas, números e traços.")}
 
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Não deu pra salvar: #{inspect(reason)}")}
-    end
-  end
-
-  def handle_event("save_meta", %{"meta" => params}, socket) do
-    case Events.update_meta(socket.assigns.event, params) do
-      {:ok, event} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Data, horário e local atualizados.")
-         |> assign_event(event)}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Não deu pra salvar: #{inspect(reason)}")}
-    end
-  end
-
-  def handle_event("save_payment", %{"payment" => params}, socket) do
-    case Events.update_payment(socket.assigns.event, params) do
-      {:ok, event} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Valor e Pix atualizados.")
-         |> assign_event(event)}
+      {:error, :slug_taken} ->
+        {:noreply, put_flash(socket, :error, "Esse slug já está em uso.")}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Não deu pra salvar: #{inspect(reason)}")}
@@ -189,60 +232,6 @@ defmodule RolezinhoWeb.EventEditLive do
      |> push_navigate(to: ~p"/admin")}
   end
 
-  def handle_event("update_slug_input", %{"slug" => slug}, socket) do
-    {:noreply, assign(socket, :slug_input, slug)}
-  end
-
-  def handle_event("update_password_input", %{"password" => password}, socket) do
-    {:noreply, assign(socket, :password_input, password)}
-  end
-
-  def handle_event("save_password", %{"password" => password}, socket) do
-    case Events.update_password(socket.assigns.event, password) do
-      {:ok, event} ->
-        message =
-          if Event.password_protected?(event),
-            do: "Senha atualizada.",
-            else: "Senha removida."
-
-        {:noreply,
-         socket
-         |> put_flash(:info, message)
-         |> assign_event(event)}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Não deu pra salvar: #{inspect(reason)}")}
-    end
-  end
-
-  def handle_event("rename_slug", %{"slug" => new_slug}, socket) do
-    case Events.rename_slug(socket.assigns.event, new_slug) do
-      {:ok, %Event{slug: same} = event} when same == socket.assigns.event.slug ->
-        {:noreply, assign_event(socket, event)}
-
-      {:ok, event} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Slug atualizado.")
-         |> push_navigate(to: ~p"/admin/r/#{event.slug}/edit")}
-
-      {:error, :invalid_slug} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Slug inválido. Use letras minúsculas, números e traços.")
-         |> assign(:slug_input, new_slug)}
-
-      {:error, :slug_taken} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Esse slug já está em uso.")
-         |> assign(:slug_input, new_slug)}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Não deu pra renomear: #{inspect(reason)}")}
-    end
-  end
-
   @impl true
   def render(assigns) do
     ~H"""
@@ -267,27 +256,102 @@ defmodule RolezinhoWeb.EventEditLive do
         </div>
       </header>
 
+      <!--
+        One card, one save button, for every text/textarea/date field on the
+        event. Slug rename is included — the handler renames the URL first
+        when it changed and then applies the rest in a single changeset via
+        `Events.update_full_details/2`. The controls that are not text-
+        shaped (capacity, status, group, owner, delete) stay in their own
+        sections below because merging them here would mix "typing prose"
+        with "pushing a state button".
+      -->
       <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
-        <h2 class="text-[13px] font-extrabold mb-3">Slug (URL)</h2>
-        <p class="text-[11px] text-muted mb-3">
-          Trocar o slug muda a URL do rolezinho. Links antigos deixam de funcionar.
+        <h2 class="text-[13px] font-extrabold mb-3">Detalhes do rolê</h2>
+        <p class="text-[11px] leading-relaxed text-muted mb-4">
+          Tudo o que se escreve, num só formulário. Datas no fuso de Brasília
+          (BRT). Deixe em branco o que não se aplica.
         </p>
 
-        <form
-          phx-submit="rename_slug"
-          phx-change="update_slug_input"
-          id="slug-form"
-          class="flex flex-wrap items-end gap-3"
+        <.form
+          for={@details_form}
+          id="details-form"
+          phx-submit="save_details"
+          phx-change="validate_details"
+          class="space-y-4"
         >
-          <label class="flex-1 min-w-64">
-            <span class="label text-sm mb-1">Novo slug</span>
+          <.input
+            field={@details_form[:title]}
+            label="Título"
+            placeholder="ex.: Vôlei ver-o-beach"
+            maxlength="80"
+            required
+          />
+          <.input
+            field={@details_form[:description]}
+            type="textarea"
+            label="Descrição"
+            rows="6"
+            placeholder="O que levar, onde estacionar, qualquer coisa que ajude."
+          />
+          <p class="-mt-2 text-[11px] text-muted">
+            Dá pra usar <code class="font-mono font-bold">*negrito*</code>,
+            <code class="font-mono italic">_itálico_</code>
+            e <code class="font-mono line-through">~riscado~</code>, como no WhatsApp.
+          </p>
+
+          <.input field={@details_form[:local]} label="Local" placeholder="ex.: Rua Caripunas" />
+
+          <div class="grid grid-cols-2 gap-4">
+            <.input field={@details_form[:date]} type="date" label="Data (BRT)" />
+            <.input field={@details_form[:time]} type="time" label="Horário (BRT)" />
+          </div>
+
+          <.input
+            field={@details_form[:price]}
+            label="Quanto cada um paga"
+            placeholder="ex.: 15"
+          />
+          <!--
+            Mirror comment from `EventNewLive`: this is not a password. The
+            four data-attrs plus `autocomplete="off"` opt out of every
+            mainstream password manager — without them Bitwarden autofills
+            the Pix key with the user's stored password.
+          -->
+          <.input
+            field={@details_form[:pix_key]}
+            label="Chave Pix"
+            placeholder="telefone, CPF, e-mail ou aleatória"
+            autocomplete="off"
+            data-1p-ignore="true"
+            data-lpignore="true"
+            data-bwignore="true"
+            data-form-type="other"
+          />
+
+          <.input
+            field={@details_form[:password]}
+            label="Senha (opcional)"
+            placeholder="em branco = sem senha"
+            autocomplete="off"
+            data-1p-ignore="true"
+            data-lpignore="true"
+            data-bwignore="true"
+          />
+          <p :if={@event.password} class="-mt-2 text-[11px] leading-relaxed text-muted">
+            Senha atual:
+            <code class="font-mono text-base-content bg-base-200 px-1 py-0.5 rounded">{@event.password}</code>
+          </p>
+
+          <label class="block">
+            <span class="label text-sm mb-1">Link</span>
             <div class="inline-flex -space-x-px w-full">
-              <span class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 rounded-none first:rounded-l-md last:rounded-r-md pointer-events-none font-mono text-xs sm:text-sm">/r/</span>
+              <span class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium px-3 py-1.5 rounded-none first:rounded-l-md last:rounded-r-md pointer-events-none font-mono text-xs sm:text-sm">/r/</span>
               <input
                 type="text"
-                name="slug"
-                id="slug-input"
-                value={@slug_input}
+                name="details[slug]"
+                id="details_slug"
+                value={@details_form[:slug].value}
+                phx-hook=".SlugFlash"
                 class={[
                   field_class(),
                   "rounded-none first:rounded-l-md last:rounded-r-md flex-1 font-mono"
@@ -296,95 +360,45 @@ defmodule RolezinhoWeb.EventEditLive do
                 required
               />
             </div>
+            <p class="mt-1 text-[11px] text-muted">
+              Trocar o link muda a URL do rolezinho. Links antigos deixam de funcionar.
+            </p>
           </label>
-          <button
-            type="submit"
-            class="rounded-row bg-ink px-4 py-2.5 text-xs font-bold text-ink-content transition-transform active:scale-[.97] disabled:opacity-40 disabled:pointer-events-none"
-            disabled={@slug_input == @event.slug}
-          >
-            Salvar slug
-          </button>
-        </form>
-      </section>
-
-      <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
-        <h2 class="text-[13px] font-extrabold mb-3">Quando &amp; onde</h2>
-        <p class="text-xs text-base-content/60 mb-4">
-          Data e horário no fuso de Brasília (BRT). Todos os campos são opcionais.
-        </p>
-
-        <.form for={@meta_form} id="meta-form" phx-submit="save_meta" class="space-y-4">
-          <.input field={@meta_form[:local]} label="Local" placeholder="ex.: Rua Caripunas" />
-
-          <div class="grid grid-cols-2 gap-4">
-            <.input field={@meta_form[:date]} type="date" label="Data (BRT)" />
-            <.input field={@meta_form[:time]} type="time" label="Horário (BRT)" />
-          </div>
-
-          <div>
+          <div class="pt-1">
             <button
               type="submit"
-              class="rounded-row bg-ink px-4 py-2.5 text-xs font-bold text-ink-content transition-transform active:scale-[.97] disabled:opacity-40 disabled:pointer-events-none"
-            >Salvar quando &amp; onde</button>
+              class="rounded-cta bg-ink px-4 py-3 text-[13px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97]"
+            >
+              Salvar
+            </button>
           </div>
         </.form>
-      </section>
 
-      <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
-        <h2 class="text-[13px] font-extrabold mb-3">Pagamento</h2>
-        <p class="text-xs text-base-content/60 mb-4">
-          Quanto cada pessoa paga e a chave Pix pra receber. Deixe em branco pra
-          remover. A chave aceita telefone, CPF, CNPJ, e-mail ou aleatória.
-        </p>
-
-        <.form
-          for={@payment_form}
-          id="payment-form"
-          phx-submit="save_payment"
-          class="space-y-4"
-        >
-          <.input
-            field={@payment_form[:price]}
-            label="Quanto cada um paga"
-            placeholder="ex.: 15"
-          />
-          <.input
-            field={@payment_form[:pix_key]}
-            label="Chave Pix"
-            placeholder="telefone, CPF, e-mail ou aleatória"
-          />
-
-          <div>
-            <button
-              type="submit"
-              class="rounded-row bg-ink px-4 py-2.5 text-xs font-bold text-ink-content transition-transform active:scale-[.97] disabled:opacity-40 disabled:pointer-events-none"
-            >Salvar pagamento</button>
-          </div>
-        </.form>
-      </section>
-
-      <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
-        <h2 class="text-[13px] font-extrabold mb-3">Texto do rolezinho</h2>
-        <p class="text-[11px] text-muted mb-3">
-          Edite livremente. O parser reconhece o título (# ...), a lista principal (linhas numeradas), a lista de reserva
-          (segunda lista numerada) e o marcador ✅ para pagamentos.
-        </p>
-
-        <form phx-change="update_content" phx-submit="save" id="raw-edit-form">
-          <textarea
-            name="content"
-            id="event-content"
-            rows="24"
-            class={["w-full font-mono leading-relaxed", field_class()]}
-            phx-debounce="500"
-          >{@content}</textarea>
-          <div class="mt-3 flex gap-3">
-            <button
-              type="submit"
-              class="rounded-row bg-ink px-4 py-2.5 text-xs font-bold text-ink-content transition-transform active:scale-[.97] disabled:opacity-40 disabled:pointer-events-none"
-            >Salvar texto</button>
-          </div>
-        </form>
+        <!--
+          Colocated hook fires the accent-tint flash on the slug input every
+          time the server pushes a `slug-retagged` event. The animation only
+          plays if the slug field is not the active element — that guards
+          against flashing while the user is typing in it themselves.
+        -->
+        <script :type={Phoenix.LiveView.ColocatedHook} name=".SlugFlash">
+          export default {
+            mounted() {
+              this.handleEvent("slug-retagged", ({ slug }) => {
+                if (document.activeElement === this.el) return
+                if (typeof slug === "string" && slug !== this.el.value) {
+                  this.el.value = slug
+                }
+                // Restart the animation: remove the class, force a reflow,
+                // then add it back. Without the reflow, adding a class that
+                // is already present is a no-op and the animation would only
+                // play the first time.
+                this.el.classList.remove("animate-flash-accent")
+                void this.el.offsetWidth
+                this.el.classList.add("animate-flash-accent")
+              })
+            }
+          }
+        </script>
       </section>
 
       <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
@@ -410,47 +424,6 @@ defmodule RolezinhoWeb.EventEditLive do
           Não é possível reduzir abaixo de quantas pessoas já estão na lista. Atualmente: {filled_count(
             @event
           )}.
-        </p>
-      </section>
-
-      <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
-        <h2 class="text-[13px] font-extrabold mb-3">Senha (opcional)</h2>
-        <p class="text-[11px] text-muted mb-3">
-          Se preenchida, quem quiser ver o local ou entrar na lista precisa digitar
-          a senha. Serve pra bloquear bots e curiosos — não precisa ser forte.
-          Deixe em branco para remover.
-        </p>
-
-        <form
-          phx-submit="save_password"
-          phx-change="update_password_input"
-          id="password-form"
-          class="flex flex-wrap items-end gap-3"
-        >
-          <label class="flex-1 min-w-64">
-            <span class="label text-sm mb-1">Senha</span>
-            <input
-              type="text"
-              name="password"
-              id="event-password-input"
-              value={@password_input}
-              placeholder="em branco = sem senha"
-              class={[field_class(), "w-full font-mono"]}
-              autocomplete="off"
-            />
-          </label>
-          <button
-            type="submit"
-            class="rounded-row bg-ink px-4 py-2.5 text-xs font-bold text-ink-content transition-transform active:scale-[.97] disabled:opacity-40 disabled:pointer-events-none"
-            disabled={@password_input == (@event.password || "")}
-          >
-            Salvar senha
-          </button>
-        </form>
-
-        <p :if={@event.password} class="text-[11px] leading-relaxed text-muted mt-3">
-          Senha atual:
-          <code class="font-mono text-base-content bg-base-200 px-1 py-0.5 rounded">{@event.password}</code>
         </p>
       </section>
 
@@ -573,6 +546,113 @@ defmodule RolezinhoWeb.EventEditLive do
     </Layouts.app>
     """
   end
+
+  # `rename_slug/2` no-ops when the slug is unchanged, so we could always
+  # call it — but the explicit guard makes the flow readable and avoids the
+  # broadcast a rename would fire.
+  defp rename_if_changed(%Event{slug: same} = event, same), do: {:ok, event}
+  defp rename_if_changed(%Event{} = event, ""), do: {:ok, event}
+  defp rename_if_changed(%Event{} = event, new_slug), do: Events.rename_slug(event, new_slug)
+
+  # If the user hasn't touched the slug and the current slug tail matches
+  # the reference date, swap the tail for the new date and remember the new
+  # reference. Any other case is a no-op on the socket state.
+  defp retag_on_date_change(socket, params) do
+    if socket.assigns.slug_touched? do
+      socket
+    else
+      current_slug = params |> Map.get("slug", "") |> to_string() |> String.trim()
+      new_date = parse_date(params["date"])
+      reference_date = socket.assigns.slug_reference_date
+
+      case retag_slug_with_date(current_slug, reference_date, new_date) do
+        ^current_slug ->
+          # No pattern match or dates were nil/equal — leave state as is.
+          socket
+
+        retagged ->
+          socket
+          |> assign(:slug_reference_date, new_date)
+          # The hook picks this up and briefly flashes the slug input to say
+          # "the URL just moved with the date".
+          |> push_event("slug-retagged", %{slug: retagged})
+          |> put_slug_in_form(retagged)
+      end
+    end
+  end
+
+  defp put_slug_in_form(socket, new_slug) do
+    form = socket.assigns.details_form
+    updated_params = Map.put(form.params, "slug", new_slug)
+    assign(socket, :details_form, to_form(updated_params, as: :details))
+  end
+
+  # Submit-time retag. Only kicks in when the user did NOT touch the slug
+  # themselves. The live `phx-change` retag above is the main path; this
+  # runs when phx-change never fired (JS off / stale reconnect).
+  defp maybe_retag_slug_with_date(%Event{slug: current_slug} = event, current_slug, params) do
+    retag_slug_with_date(current_slug, extract_current_date(event), parse_date(params["date"]))
+  end
+
+  defp maybe_retag_slug_with_date(_event, submitted_slug, _params), do: submitted_slug
+
+  defp extract_current_date(%Event{} = event) do
+    {meta, _} = Meta.extract(event.header)
+    meta.date
+  end
+
+  defp parse_date(nil), do: nil
+  defp parse_date(""), do: nil
+
+  defp parse_date(iso) when is_binary(iso) do
+    case Date.from_iso8601(iso) do
+      {:ok, date} -> date
+      _ -> nil
+    end
+  end
+
+  # Rewrites the trailing date tag on `current_slug` when it matches the
+  # current event's date. Handles two shapes:
+  #
+  #   * `<base>-DD-MM`             — the auto-slugify tag from `EventNewLive`.
+  #   * `<base>-DD-MM-clonado`     — the same tag under a clone, which
+  #     `Events.clone/1` appends via `unique_clone_slug/1`.
+  #
+  # Anything else — no pattern, a `-DD-MM` that does not match the current
+  # date, missing dates on either side — returns the slug unchanged.
+  defp retag_slug_with_date(current_slug, nil, _new_date), do: current_slug
+  defp retag_slug_with_date(current_slug, _current_date, nil), do: current_slug
+
+  defp retag_slug_with_date(current_slug, %Date{} = same, %Date{} = same), do: current_slug
+
+  defp retag_slug_with_date(current_slug, %Date{} = current_date, %Date{} = new_date) do
+    current_tag = "-" <> pad2(current_date.day) <> "-" <> pad2(current_date.month)
+    new_tag = "-" <> pad2(new_date.day) <> "-" <> pad2(new_date.month)
+
+    clonado_current = current_tag <> "-clonado"
+    clonado_new = new_tag <> "-clonado"
+
+    cond do
+      String.ends_with?(current_slug, clonado_current) ->
+        strip_suffix(current_slug, clonado_current) <> clonado_new
+
+      String.ends_with?(current_slug, current_tag) ->
+        strip_suffix(current_slug, current_tag) <> new_tag
+
+      true ->
+        current_slug
+    end
+  end
+
+  # Slugs are ASCII-only, so grapheme length == byte length; using
+  # `String.split_at/2` keeps the code obvious.
+  defp strip_suffix(str, suffix) do
+    keep = String.length(str) - String.length(suffix)
+    {base, _} = String.split_at(str, keep)
+    base
+  end
+
+  defp pad2(n), do: n |> Integer.to_string() |> String.pad_leading(2, "0")
 
   defp status_description(:active), do: "aparece na página inicial e aceita novas inscrições."
 

@@ -55,7 +55,7 @@ defmodule RolezinhoWeb.Components.UI.AlertBanner do
 
   defp tone_classes("info"), do: "bg-tint text-ink"
   defp tone_classes("warn"), do: "bg-warning/15 text-ink"
-  defp tone_classes("danger"), do: "border border-danger/25 bg-white text-ink"
+  defp tone_classes("danger"), do: "border border-danger/25 bg-base-100 text-ink"
 
   defp icon_for("info"), do: "tabler-info-circle"
   defp icon_for("warn"), do: "tabler-clock"

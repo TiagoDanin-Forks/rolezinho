@@ -30,7 +30,7 @@ defmodule RolezinhoWeb.Components.UI.Card do
     ~H"""
     <div
       class={[
-        "border border-ink/8 bg-white text-ink",
+        "border border-ink/8 bg-base-100 text-ink",
         padding_classes(@padding),
         radius_classes(@radius),
         @class

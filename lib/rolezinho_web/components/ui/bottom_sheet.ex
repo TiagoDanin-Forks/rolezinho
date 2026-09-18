@@ -54,12 +54,18 @@ defmodule RolezinhoWeb.Components.UI.BottomSheet do
         class="fixed inset-0 bg-ink/45 transition-opacity duration-200"
         aria-hidden="true"
       />
+      <!--
+        `bg-base-100` (not `bg-white`) so the panel surface inverts per
+        theme — see the `@theme` block in `assets/css/app.css`. A literal
+        `bg-white` would stay white under `[data-theme="dark"]` and clash
+        with the near-white `text-ink` used inside the sheet.
+      -->
       <div class="fixed inset-x-0 bottom-0 flex justify-center">
         <div
           id={"#{@id}-panel"}
           phx-click-away={hide(@on_cancel, @id)}
           class={[
-            "w-full max-w-lg rounded-t-panel bg-white p-4 shadow-sheet",
+            "w-full max-w-lg rounded-t-panel bg-base-100 p-4 shadow-sheet",
             "transition-transform duration-[260ms] ease-[cubic-bezier(.2,.8,.2,1)]",
             "motion-reduce:transition-none"
           ]}

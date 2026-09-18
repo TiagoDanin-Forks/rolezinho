@@ -250,11 +250,41 @@ body {
   to { transform: translateY(0); }
 }
 
+/* One-shot highlight used to say "the server just changed this field for you".
+   Sole caller today: the slug input on the event edit form, when the date
+   changes and the URL is retagged in step. The animation starts on the
+   accent tint, fades to the field's default background, and gains a matching
+   ring on the way out so the border also confirms the change. */
+@keyframes rolezinho-flash-accent {
+  0% {
+    background-color: var(--color-accent);
+    color: var(--color-accent-content);
+    box-shadow: 0 0 0 3px var(--color-accent);
+  }
+  60% {
+    background-color: var(--color-tint);
+    color: inherit;
+    box-shadow: 0 0 0 2px var(--color-accent);
+  }
+  100% {
+    background-color: transparent;
+    color: inherit;
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.animate-flash-accent {
+  animation: rolezinho-flash-accent 900ms ease-out;
+}
+
 /* The handoff ships this block with the design: motion is decoration here, and
    a sheet that slides or a button that scales must not fight someone who asked
    the OS to stop animating. The fade is what remains. */
 @media (prefers-reduced-motion: reduce) {
   .animate-shimmer { animation: none; opacity: 0.7; }
+  /* Fall back to a static tinted background: the change is still visible
+     for someone glancing away, but no motion. */
+  .animate-flash-accent { animation: none; background-color: var(--color-tint); }
 
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

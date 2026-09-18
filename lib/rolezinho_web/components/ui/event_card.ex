@@ -40,7 +40,7 @@ defmodule RolezinhoWeb.Components.UI.EventCard do
     ~H"""
     <.link
       class={[
-        "block rounded-card border border-ink/8 bg-white p-3.5 transition",
+        "block rounded-card border border-ink/8 bg-base-100 p-3.5 transition",
         "hover:border-ink/15 active:scale-[0.99] motion-reduce:active:scale-100",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
         @class

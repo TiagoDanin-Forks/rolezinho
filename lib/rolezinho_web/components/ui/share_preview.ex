@@ -21,10 +21,14 @@ defmodule RolezinhoWeb.Components.UI.SharePreview do
   attr :text, :string, required: true
   attr :class, :any, default: nil
 
+  # `bg-base-100` (not `bg-white`) so the surface inverts under
+  # `[data-theme="dark"]` — otherwise the near-white `text-ink` used in
+  # dark mode paints over a stubbornly white background and the text
+  # becomes invisible.
   def share_preview(assigns) do
     ~H"""
     <pre class={[
-      "overflow-x-auto rounded-cta border border-ink/8 bg-white p-3",
+      "overflow-x-auto rounded-cta border border-ink/8 bg-base-100 p-3",
       "font-mono text-[10px] leading-relaxed whitespace-pre-wrap text-ink",
       @class
     ]}><%= @text %></pre>

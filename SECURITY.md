@@ -178,6 +178,15 @@ Rules:
 - **Client-side:** prefer native `JS` commands and `phx-*` over hooks that inject
   HTML. If a hook must insert server-supplied text, use `textContent`, never
   `innerHTML` (see `.claude/rules/liveview.md`).
+- **CSP third-party allowances are one line, no more.** The Content-Security-
+  Policy in `RolezinhoWeb.Plugs.ContentSecurityPolicy` is tight on purpose:
+  same-origin for every directive, plus `data:` on `img-src`. The one
+  third-party exception is `https://avatars.githubusercontent.com` on
+  `img-src`, so signed-in users see their GitHub avatar in the header
+  (ADR-0002). Do not widen this to `https:` or to a broader `githubusercontent`
+  wildcard: `camo.githubusercontent.com` would let a linked README image
+  become the vector on any page rendering that host. Any *new* third-party
+  host needs its own justification recorded here.
 
 ## 2. The admin boundary
 

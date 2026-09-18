@@ -5,7 +5,7 @@ defmodule Storybook.UI.Well do
 
   def template do
     """
-    <div class="max-w-sm rounded-card border border-ink/8 bg-white p-4" psb-code-hidden>
+    <div class="max-w-sm rounded-card border border-ink/8 bg-base-100 p-4" psb-code-hidden>
       <.psb-variation-group/>
     </div>
     """

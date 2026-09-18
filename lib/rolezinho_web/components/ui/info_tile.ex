@@ -59,7 +59,7 @@ defmodule RolezinhoWeb.Components.UI.InfoTile do
 
   ## Examples
 
-      <div class="rounded-cta border border-ink/8 bg-white px-3.5">
+      <div class="rounded-cta border border-ink/8 bg-base-100 px-3.5">
         <.detail_row label="Where" value="Rua Caripunas" />
         <.detail_row label="When" value="Wednesday, 7pm" divider={false} />
       </div>

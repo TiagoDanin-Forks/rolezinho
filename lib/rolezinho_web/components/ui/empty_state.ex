@@ -36,7 +36,7 @@ defmodule RolezinhoWeb.Components.UI.EmptyState do
   def empty_state(assigns) do
     ~H"""
     <div class={["rounded-cta bg-surface px-3.5 py-6 text-center", @class]}>
-      <span class="mx-auto inline-flex size-13 items-center justify-center rounded-card border border-ink/8 bg-white">
+      <span class="mx-auto inline-flex size-13 items-center justify-center rounded-card border border-ink/8 bg-base-100">
         <.icon name={@icon} class="size-6 text-muted" />
       </span>
       <h2 class="mt-3 text-[15px] font-extrabold">{@title}</h2>

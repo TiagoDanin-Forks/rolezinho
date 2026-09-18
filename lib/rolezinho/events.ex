@@ -553,6 +553,95 @@ defmodule Rolezinho.Events do
     end
   end
 
+  # ---------- Title & description ----------
+
+  @doc """
+  Updates the event's title and free-form description.
+
+  The description is the free-form text a person writes to the group —
+  everything that is not a structured field (location, date, time, price,
+  Pix key, list, etc.). It is stored inside `header` alongside the meta
+  lines, and this function preserves those meta lines: only the prose part
+  is replaced.
+
+  Params keys (strings):
+    * `"title"` — non-empty, trimmed, capped at 80 characters.
+    * `"description"` — free-form text, may be empty (which clears it).
+  """
+  @spec update_details(Event.t(), map()) :: {:ok, Event.t()} | {:error, map()}
+  def update_details(%Event{} = event, params) when is_map(params) do
+    title = params |> Map.get("title", "") |> to_string() |> String.trim()
+    description = params |> Map.get("description", "") |> to_string()
+
+    {meta, _old_description} = Meta.extract(event.header)
+    new_header = Meta.build_header(meta, description)
+
+    event
+    |> Event.changeset(%{title: title, header: new_header})
+    |> Repo.update()
+    |> case do
+      {:ok, saved} ->
+        broadcast(saved)
+        broadcast_home()
+        {:ok, saved}
+
+      {:error, changeset} ->
+        {:error, changeset_errors(changeset)}
+    end
+  end
+
+  @doc """
+  Updates every free-text/date field of the event in one Ecto changeset.
+
+  Bundles what used to be four separate context calls (`update_details`,
+  `update_meta`, `update_payment`, `update_password`) so the admin edit
+  screen can save the whole "details" card atomically — partial saves would
+  leave the row half-changed if any of the intermediate updates failed.
+
+  Slug rename is **not** part of this: it has redirect semantics and its own
+  broadcast, and belongs to `rename_slug/2` (the edit screen still calls it
+  first when the slug field changed).
+
+  Params keys (strings), all optional:
+    * `"title"` — trimmed, required to be non-empty via the changeset.
+    * `"description"` — free-form text; empty clears it.
+    * `"local"`, `"date"`, `"time"` — forwarded to `Meta.from_params/1`
+      and stored inside `header` alongside the description.
+    * `"price"` — free-form (`"15"`, `"R$ 15"`, `"15,50"`); empty clears
+      `price_cents`.
+    * `"pix_key"` — any Pix key; empty clears the field.
+    * `"password"` — empty clears; trimmed and stored plaintext by product
+      decision (see `SECURITY.md` §3).
+  """
+  @spec update_full_details(Event.t(), map()) :: {:ok, Event.t()} | {:error, map()}
+  def update_full_details(%Event{} = event, params) when is_map(params) do
+    title = params |> Map.get("title", "") |> to_string() |> String.trim()
+    description = params |> Map.get("description", "") |> to_string()
+    meta = Meta.from_params(params)
+    new_header = Meta.build_header(meta, description)
+
+    attrs = %{
+      title: title,
+      header: new_header,
+      password: params |> Map.get("password", "") |> to_string(),
+      price_cents: parse_price(params["price"]),
+      pix_key: trimmed(params, "pix_key")
+    }
+
+    event
+    |> Event.changeset(attrs)
+    |> Repo.update()
+    |> case do
+      {:ok, saved} ->
+        broadcast(saved)
+        broadcast_home()
+        {:ok, saved}
+
+      {:error, changeset} ->
+        {:error, changeset_errors(changeset)}
+    end
+  end
+
   # ---------- Meta ----------
 
   @doc """

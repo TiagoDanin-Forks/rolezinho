@@ -47,7 +47,7 @@ defmodule RolezinhoWeb.Components.UI.TextField do
         aria-invalid={@error && "true"}
         aria-describedby={@error && "#{@id}-error"}
         class={[
-          "w-full min-h-11 rounded-row border bg-white px-3.5 py-3",
+          "w-full min-h-11 rounded-row border bg-base-100 px-3.5 py-3",
           "text-[13px] font-semibold text-ink",
           "focus:outline-2 focus:outline-offset-0 focus:outline-accent",
           if(@error, do: "border-danger", else: "border-ink/15")
