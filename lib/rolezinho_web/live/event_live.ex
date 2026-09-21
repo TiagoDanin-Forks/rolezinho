@@ -136,6 +136,15 @@ defmodule RolezinhoWeb.EventLive do
     google_calendar_url =
       if unlocked?, do: Meta.google_url(display_meta, event.title, url), else: nil
 
+    # If the event belongs to a group, the back-crumb should point at that
+    # group instead of the home page — that's where the event lives, and
+    # it saves the visitor from clicking "back to Rolezinhos" only to have
+    # to hunt the group down again. A stranger following the direct link
+    # still gets a useful destination: the group page will either render
+    # its contents (if public / unlocked) or its unlock panel (which is
+    # the correct next step anyway).
+    group_crumb = load_group_crumb(event)
+
     socket
     |> assign(:event, event)
     |> assign_identity(event, unlocked?)
@@ -149,8 +158,21 @@ defmodule RolezinhoWeb.EventLive do
     |> assign(:password_protected?, Event.password_protected?(event))
     |> assign(:has_location?, is_binary(meta.local) and meta.local != "")
     |> assign(:page_title, page_title_for(event))
+    |> assign(:group_crumb, group_crumb)
     |> reset_share_toggle_if_disallowed()
     |> assign_shareable_text()
+  end
+
+  # Returns `{slug, name}` for the event's group, or `nil` when the event
+  # isn't grouped. Kept minimal on purpose: the crumb only needs those two
+  # fields and this runs on every assign_event rebuild.
+  defp load_group_crumb(%Event{group_id: nil}), do: nil
+
+  defp load_group_crumb(%Event{group_id: gid}) do
+    case Groups.get(gid) do
+      %Group{slug: slug, name: name} -> %{slug: slug, name: name}
+      _ -> nil
+    end
   end
 
   # Who this browser is *on this event*. The socket carries the session maps
@@ -853,7 +875,12 @@ defmodule RolezinhoWeb.EventLive do
       <article class="space-y-8">
         <header class="space-y-3">
           <div class="flex items-center gap-2 text-xs text-base-content/50">
-            <.link navigate={~p"/"} class="hover:text-base-content">← Rolezinhos</.link>
+            <.link
+              :if={@group_crumb}
+              navigate={~p"/g/#{@group_crumb.slug}"}
+              class="hover:text-base-content"
+            >← {@group_crumb.name}</.link>
+            <.link :if={is_nil(@group_crumb)} navigate={~p"/"} class="hover:text-base-content">← Rolezinhos</.link>
             <span>·</span>
             <span>/r/{@event.slug}</span>
             <span
