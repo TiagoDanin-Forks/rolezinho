@@ -17,6 +17,7 @@ defmodule RolezinhoWeb.HomeLive do
 
   alias Rolezinho.Event
   alias Rolezinho.Events
+  alias Rolezinho.Group
   alias Rolezinho.Groups
 
   # Below this, scanning the list is faster than filtering it.
@@ -66,6 +67,13 @@ defmodule RolezinhoWeb.HomeLive do
     |> Enum.uniq()
     |> Enum.sort()
   end
+
+  # A group is "accessible" to the viewer when they can see its contents
+  # without providing the password: admin, no password, creator, or a
+  # session-unlock already recorded (persisted unlocks for signed-in users
+  # get merged into `:unlocked_groups` upstream in `Plugs.User`).
+  defp group_accessible?(group, admin?, unlocked_groups, current_user_id),
+    do: Group.accessible?(group, admin?, unlocked_groups || MapSet.new(), current_user_id)
 
   @impl true
   def render(assigns) do
@@ -118,7 +126,37 @@ defmodule RolezinhoWeb.HomeLive do
                 <p class="truncate text-[15px] font-extrabold tracking-tight">{group.name}</p>
                 <p class="mt-0.5 truncate text-[11px] text-muted">
                   <span class="font-mono">/g/{group.slug}</span>
-                  <span :if={group.password} class="ml-1.5">· com senha</span>
+                  <!--
+                    A password-protected group carries a live status on the
+                    home listing: the same viewer sees "com senha" (neutral)
+                    when they cannot open it and "com acesso" (success tone)
+                    when they can. Admin, creator or session-unlocked all
+                    count as "have access" via `Group.accessible?/4`.
+                  -->
+                  <span
+                    :if={
+                      Group.password_protected?(group) and
+                        not group_accessible?(
+                          group,
+                          @current_admin?,
+                          @unlocked_groups,
+                          @current_user_id
+                        )
+                    }
+                    class="ml-1.5"
+                  >· com senha</span>
+                  <span
+                    :if={
+                      Group.password_protected?(group) and
+                        group_accessible?(
+                          group,
+                          @current_admin?,
+                          @unlocked_groups,
+                          @current_user_id
+                        )
+                    }
+                    class="ml-1.5 text-success"
+                  >· com acesso</span>
                 </p>
               </div>
               <.icon name="tabler-chevron-right" class="size-4 shrink-0 text-ink/30" />

@@ -62,15 +62,31 @@ defmodule Rolezinho.Group do
   Returns true when the caller has enough access to see the group's contents
   (name, event list, etc.) — as opposed to the unlock panel only.
 
-  Admin sees everything; a public group with no password is open to anyone; a
-  password-protected group requires an entry in `unlocked_groups`.
+  Four paths grant access:
+
+    * admin (the environment-wide bypass),
+    * the group has no password at all,
+    * the caller is the signed-in creator (ADR-0002 durable identity),
+    * the caller has the group's slug in the session unlock set (which,
+      for a signed-in user, has already been merged with their persisted
+      unlocks by `RolezinhoWeb.Plugs.User`).
+
+  `current_user_id` is optional so the old three-arg call sites still
+  compile; they lose only the creator-bypass path.
   """
-  @spec accessible?(t(), boolean(), MapSet.t()) :: boolean()
-  def accessible?(%Group{} = group, admin?, %MapSet{} = unlocked_groups) do
+  @spec accessible?(t(), boolean(), MapSet.t(), integer() | nil) :: boolean()
+  def accessible?(
+        %Group{} = group,
+        admin?,
+        %MapSet{} = unlocked_groups,
+        current_user_id \\ nil
+      ) do
     cond do
       admin? -> true
       not password_protected?(group) -> true
-      true -> MapSet.member?(unlocked_groups, group.slug)
+      created_by?(group, current_user_id) -> true
+      MapSet.member?(unlocked_groups, group.slug) -> true
+      true -> false
     end
   end
 

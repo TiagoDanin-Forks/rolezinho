@@ -43,10 +43,20 @@ defmodule RolezinhoWeb.GroupLive do
   # Rebuild derived assigns after the group changes (edit, PubSub broadcast).
   defp assign_group(socket, %Group{} = group) do
     accessible? =
-      Group.accessible?(group, socket.assigns.current_admin?, socket.assigns.unlocked_groups)
+      Group.accessible?(
+        group,
+        socket.assigns.current_admin?,
+        socket.assigns.unlocked_groups,
+        socket.assigns[:current_user_id]
+      )
 
     editable? =
-      Group.editable_by?(group, socket.assigns.current_admin?, socket.assigns.unlocked_groups)
+      Group.editable_by?(
+        group,
+        socket.assigns.current_admin?,
+        socket.assigns.unlocked_groups,
+        socket.assigns[:current_user_id]
+      )
 
     events =
       if accessible?, do: Groups.list_events(group, visibility: :public), else: []
@@ -249,11 +259,19 @@ defmodule RolezinhoWeb.GroupLive do
           >
             Oculto
           </span>
+          <!--
+            If we're rendering this header at all, the caller cleared the
+            gate (see the locked_panel branch above). So on a password-
+            protected group the badge always reads "com acesso" here and
+            uses the accent (green) tone. Kept the pill separate from the
+            general “com senha” copy elsewhere — that's descriptive, this
+            is a live status.
+          -->
           <span
             :if={@group.password}
-            class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border border-base-300"
+            class="inline-flex items-center rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-xs font-medium text-success"
           >
-            Com senha
+            Com acesso
           </span>
         </div>
 

@@ -205,6 +205,26 @@ defmodule Rolezinho.GroupsTest do
       assert Group.accessible?(priv, false, unlocked)
       assert Group.editable_by?(priv, false, unlocked)
     end
+
+    test "password-protected group: signed-in creator bypasses the unlock check" do
+      priv = create_group(%{"slug" => "priv2", "password" => "s"})
+      priv = %{priv | created_by_user_id: 42}
+
+      # No entry in `unlocked_groups`, but the creator id matches — access granted.
+      assert Group.accessible?(priv, false, MapSet.new(), 42)
+      assert Group.editable_by?(priv, false, MapSet.new(), 42)
+
+      # A different signed-in user still needs the unlock.
+      refute Group.accessible?(priv, false, MapSet.new(), 7)
+      refute Group.editable_by?(priv, false, MapSet.new(), 7)
+    end
+
+    test "anonymous viewer (nil user_id) keeps the old three-arg semantics" do
+      priv = create_group(%{"slug" => "priv3", "password" => "s"})
+
+      refute Group.accessible?(priv, false, MapSet.new(), nil)
+      assert Group.accessible?(priv, false, MapSet.new([priv.slug]), nil)
+    end
   end
 
   describe "events.list_open/0 with groups" do
