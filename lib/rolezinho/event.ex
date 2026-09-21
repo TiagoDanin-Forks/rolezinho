@@ -433,13 +433,15 @@ defmodule Rolezinho.Event do
     end
   end
 
-  # The participant id travels with the row from the moment it is created: it is
-  # what lets the person come back later and act on their own row.
+  # Identity travels with the row from the moment it is created. The
+  # `participant_id` is the per-device token; `user_id` (ADR-0002) is the
+  # signed-in GitHub user, when one is present. Either or both may be nil.
   defp new_attendee(name, opts) do
     %Attendee{
       name: name,
       paid: false,
       participant_id: Keyword.get(opts, :participant_id),
+      user_id: Keyword.get(opts, :user_id),
       joined_at: DateTime.utc_now(:second),
       values: Keyword.get(opts, :values, %{})
     }
@@ -679,11 +681,16 @@ defmodule Rolezinho.Event do
   # event from, so anything omitted here is silently dropped on the next write.
   # Losing participant_id would quietly unclaim the row from the person holding
   # it.
+  # Every field of the row round-trips: this map is what a save rebuilds the
+  # event from, so anything omitted here is silently dropped on the next write.
+  # Losing `participant_id` or `user_id` would quietly unclaim the row from
+  # its owner.
   defp attendee_to_map(%Attendee{} = attendee) do
     %{
       name: attendee.name,
       paid: attendee.paid,
       participant_id: attendee.participant_id,
+      user_id: attendee.user_id,
       joined_at: attendee.joined_at,
       values: attendee.values
     }

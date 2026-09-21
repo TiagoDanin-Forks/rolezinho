@@ -19,7 +19,16 @@ defmodule RolezinhoWeb.Plugs.User do
 
   @session_key :current_user_id
 
-  @doc "Assigns `:current_user_id` and `:current_user` from the session."
+  @doc """
+  Assigns `:current_user_id` and `:current_user` from the session, and —
+  when a user is signed in — merges their persisted group unlocks into the
+  session-scoped `:unlocked_groups` MapSet.
+
+  The Admin plug set `:unlocked_groups` earlier in the pipeline from the
+  cookie session; here we widen it with what the DB says this GitHub user
+  has unlocked before, on any device. Anonymous requests skip the merge
+  entirely and keep the session-only set.
+  """
   def fetch_current_user(conn, _opts) do
     user_id = get_session(conn, @session_key)
     user = Accounts.get_user(user_id)
@@ -27,6 +36,15 @@ defmodule RolezinhoWeb.Plugs.User do
     conn
     |> assign(:current_user_id, user_id)
     |> assign(:current_user, user)
+    |> merge_persisted_group_unlocks(user_id)
+  end
+
+  defp merge_persisted_group_unlocks(conn, nil), do: conn
+
+  defp merge_persisted_group_unlocks(conn, user_id) do
+    persisted = Rolezinho.Groups.unlocked_slugs_for_user(user_id)
+    session = conn.assigns[:unlocked_groups] || MapSet.new()
+    assign(conn, :unlocked_groups, MapSet.union(session, persisted))
   end
 
   @doc """
@@ -78,9 +96,22 @@ defmodule RolezinhoWeb.Plugs.User do
     user_id = current_user_id(session)
     user = Accounts.get_user(user_id)
 
-    {:cont,
-     socket
-     |> Phoenix.Component.assign(:current_user_id, user_id)
-     |> Phoenix.Component.assign(:current_user, user)}
+    socket =
+      socket
+      |> Phoenix.Component.assign(:current_user_id, user_id)
+      |> Phoenix.Component.assign(:current_user, user)
+
+    # Same widening the plug does on the conn: merge persisted unlocks with
+    # the session set the Admin `on_mount` seeded a moment ago.
+    socket =
+      if user_id do
+        persisted = Rolezinho.Groups.unlocked_slugs_for_user(user_id)
+        session_set = socket.assigns[:unlocked_groups] || MapSet.new()
+        Phoenix.Component.assign(socket, :unlocked_groups, MapSet.union(session_set, persisted))
+      else
+        socket
+      end
+
+    {:cont, socket}
   end
 end

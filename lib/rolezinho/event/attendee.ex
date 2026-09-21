@@ -2,10 +2,20 @@ defmodule Rolezinho.Event.Attendee do
   @moduledoc """
   A single spot in a list (may be empty). Embedded in `Rolezinho.Event`.
 
-  `participant_id` is what makes "only you mark your own Pix" enforceable: the
-  browser holds the same opaque id in a signed cookie and the server compares
-  the two. It identifies a device, not a person — there are no accounts — so
-  clearing cookies means losing the claim to the row.
+  Ownership travels with the row through one of two identities, both
+  optional and both set at the moment the row is created:
+
+    * `participant_id` — an opaque per-device token the browser holds in a
+      signed cookie. Clearing cookies loses the claim. This is the only
+      identity for an anonymous visitor.
+    * `user_id` — the signed-in GitHub user who joined (ADR-0002). Survives
+      cookie clears and travels across devices: whoever signs in with the
+      same GitHub account gets their rows back.
+
+  A row can have neither (grandfathered rows created before identity
+  existed), either (anonymous with a token; or a signed-in user with no
+  token because they never held one), or both (typical: signed in AND
+  their session held the token).
   """
 
   use Ecto.Schema
@@ -17,6 +27,7 @@ defmodule Rolezinho.Event.Attendee do
     field :paid, :boolean, default: false
 
     field :participant_id, :string
+    field :user_id, :integer
     field :joined_at, :utc_datetime
 
     # Answers to the organizer's custom fields. Scoped to the event and visible
@@ -28,18 +39,19 @@ defmodule Rolezinho.Event.Attendee do
           name: String.t(),
           paid: boolean(),
           participant_id: String.t() | nil,
+          user_id: integer() | nil,
           joined_at: DateTime.t() | nil,
           values: map()
         }
 
   def changeset(attendee, params \\ %{}) do
     attendee
-    |> cast(params, [:name, :paid, :participant_id, :joined_at, :values])
+    |> cast(params, [:name, :paid, :participant_id, :user_id, :joined_at, :values])
     |> validate_length(:name, max: 60)
   end
 
   @doc """
-  Returns true when this spot belongs to the given participant.
+  Returns true when this spot belongs to the given participant token.
 
   A blank id never matches: an empty slot, or a row created before identity
   existed, must not be claimable by a browser that happens to send nothing.
@@ -51,4 +63,29 @@ defmodule Rolezinho.Event.Attendee do
   end
 
   def owned_by?(%__MODULE__{}, _), do: false
+
+  @doc """
+  Returns true when this spot belongs to the given signed-in user.
+
+  A row with no `user_id` (anonymous join) is never claimed by anyone via
+  this path — those rows only respond to the participant token.
+  """
+  @spec owned_by_user?(t(), integer() | nil) :: boolean()
+  def owned_by_user?(%__MODULE__{user_id: uid}, user_id)
+      when is_integer(uid) and is_integer(user_id) and uid == user_id,
+      do: true
+
+  def owned_by_user?(%__MODULE__{}, _), do: false
+
+  @doc """
+  Returns true when the caller owns this spot, by either identity.
+
+  Used everywhere the UI asks "is this mine?": the row is mine if my
+  browser holds the participant token, OR if I am signed in as the user
+  the row was created under.
+  """
+  @spec owns?(t(), String.t() | nil, integer() | nil) :: boolean()
+  def owns?(%__MODULE__{} = attendee, participant_id, user_id) do
+    owned_by?(attendee, participant_id) or owned_by_user?(attendee, user_id)
+  end
 end

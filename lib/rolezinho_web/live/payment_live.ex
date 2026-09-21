@@ -30,22 +30,25 @@ defmodule RolezinhoWeb.PaymentLive do
 
   defp assign_event(socket, %Event{} = event) do
     participant_id = Map.get(socket.assigns[:participants] || %{}, event.slug)
-    row = own_row(event, participant_id)
+    user_id = socket.assigns[:current_user_id]
+    row = own_row(event, participant_id, user_id)
 
     socket
     |> assign(:page_title, "Pagamento · #{event.title}")
     |> assign(:event, event)
     |> assign(:participant_id, participant_id)
+    |> assign(:user_id, user_id)
     |> assign(:row, row)
     |> assign(:amount, Cash.format_amount(event.price_cents))
     |> assign(:pix, pix_for(event))
   end
 
-  # Only the row this browser holds matters here: the screen is about settling
-  # your own share, and nobody else's check is actionable from it (RN-12).
-  defp own_row(%Event{main_list: main, wait_list: wait}, participant_id) do
+  # Only the row this caller owns matters here — the screen is about settling
+  # your own share (RN-12). Ownership matches by either identity (ADR-0002):
+  # the per-device token, or the signed-in GitHub user.
+  defp own_row(%Event{main_list: main, wait_list: wait}, participant_id, user_id) do
     (main ++ wait)
-    |> Enum.find(&Attendee.owned_by?(&1, participant_id))
+    |> Enum.find(&Attendee.owns?(&1, participant_id, user_id))
   end
 
   defp pix_for(%Event{pix_key: key}) when is_binary(key) and key != "" do
@@ -63,7 +66,8 @@ defmodule RolezinhoWeb.PaymentLive do
 
     with %Attendee{} <- row,
          true <- Policy.can_toggle_paid?(event, row, policy_opts(socket)),
-         {:ok, index} <- main_index(event, socket.assigns.participant_id),
+         {:ok, index} <-
+           main_index(event, socket.assigns.participant_id, socket.assigns.user_id),
          {:ok, updated} <- Events.toggle_paid_main(event, index) do
       {:noreply,
        socket
@@ -75,8 +79,8 @@ defmodule RolezinhoWeb.PaymentLive do
     end
   end
 
-  defp main_index(%Event{main_list: list}, participant_id) do
-    case Enum.find_index(list, &Attendee.owned_by?(&1, participant_id)) do
+  defp main_index(%Event{main_list: list}, participant_id, user_id) do
+    case Enum.find_index(list, &Attendee.owns?(&1, participant_id, user_id)) do
       nil -> :error
       index -> {:ok, index + 1}
     end
@@ -90,7 +94,8 @@ defmodule RolezinhoWeb.PaymentLive do
           %{"organizer_tokens" => socket.assigns[:organizer_tokens] || %{}},
           socket.assigns.event
         ),
-      participant_id: socket.assigns.participant_id
+      participant_id: socket.assigns.participant_id,
+      current_user_id: socket.assigns.user_id
     ]
   end
 

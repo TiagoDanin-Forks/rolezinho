@@ -39,8 +39,9 @@ defmodule Rolezinho.Event.Policy do
     * or be signed in as the user who created the event
       (`current_user_id == event.created_by_user_id`).
 
-  A participant is anyone who holds an id on a row of this event; a visitor is
-  everybody else.
+  A participant is anyone who owns a row on this event, by either identity
+  (the per-device `participant_id` token, or the signed-in `user_id`). A
+  visitor is everybody else.
   """
   @spec role(Event.t(), keyword()) :: role()
   def role(%Event{} = event, opts) do
@@ -48,7 +49,7 @@ defmodule Rolezinho.Event.Policy do
       Keyword.get(opts, :admin?, false) -> :admin
       Keyword.get(opts, :organizer?, false) -> :organizer
       created_by?(event, Keyword.get(opts, :current_user_id)) -> :organizer
-      holds_a_row?(event, Keyword.get(opts, :participant_id)) -> :participant
+      holds_a_row?(event, opts) -> :participant
       true -> :visitor
     end
   end
@@ -66,12 +67,15 @@ defmodule Rolezinho.Event.Policy do
   RN-12: a participant only ever marks their own row — the check is a statement
   about money they say they sent, so nobody else gets to make it for them.
   RN-13: the organizer may mark anyone, being the one who sees the money arrive.
+
+  A participant can prove ownership by either identity today: the per-device
+  `participant_id` token, or being signed in as the row's `user_id`.
   """
   @spec can_toggle_paid?(Event.t(), Attendee.t(), keyword()) :: boolean()
   def can_toggle_paid?(%Event{} = event, %Attendee{} = attendee, opts) do
     case role(event, opts) do
       role when role in [:organizer, :admin] -> true
-      :participant -> Attendee.owned_by?(attendee, Keyword.get(opts, :participant_id))
+      :participant -> owns?(attendee, opts)
       :visitor -> false
     end
   end
@@ -86,7 +90,7 @@ defmodule Rolezinho.Event.Policy do
   def can_remove?(%Event{} = event, %Attendee{} = attendee, opts) do
     case role(event, opts) do
       role when role in [:organizer, :admin] -> true
-      :participant -> Attendee.owned_by?(attendee, Keyword.get(opts, :participant_id))
+      :participant -> owns?(attendee, opts)
       :visitor -> false
     end
   end
@@ -122,13 +126,28 @@ defmodule Rolezinho.Event.Policy do
     not Event.locked_signups?(event) or role(event, opts) in [:organizer, :admin]
   end
 
-  defp holds_a_row?(_event, nil), do: false
-  defp holds_a_row?(_event, ""), do: false
+  # "Holds a row" now considers both identities: the per-device token, or
+  # the signed-in user id. Either one earning ownership on any row means the
+  # caller is a participant on this event.
+  defp holds_a_row?(%Event{} = event, opts) do
+    participant_id = Keyword.get(opts, :participant_id)
+    user_id = Keyword.get(opts, :current_user_id)
 
-  defp holds_a_row?(%Event{} = event, participant_id) do
-    event
-    |> all_attendees()
-    |> Enum.any?(&Attendee.owned_by?(&1, participant_id))
+    cond do
+      is_nil(participant_id) and is_nil(user_id) -> false
+      participant_id == "" and is_nil(user_id) -> false
+      true -> Enum.any?(all_attendees(event), &Attendee.owns?(&1, participant_id, user_id))
+    end
+  end
+
+  # The ownership check the per-row policy calls use. `opts` carries both
+  # identity keys; `Attendee.owns?/3` short-circuits on the first match.
+  defp owns?(%Attendee{} = attendee, opts) do
+    Attendee.owns?(
+      attendee,
+      Keyword.get(opts, :participant_id),
+      Keyword.get(opts, :current_user_id)
+    )
   end
 
   defp all_attendees(%Event{main_list: main, wait_list: wait}) do

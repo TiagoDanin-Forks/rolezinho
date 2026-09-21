@@ -169,10 +169,12 @@ defmodule RolezinhoWeb.EventLive do
         event
       ) or created_by_current_user?(event, socket)
 
+    user_id = socket.assigns[:current_user_id]
+
     socket
     |> assign(:participant_id, participant_id)
     |> assign(:organizer?, organizer?)
-    |> assign(:mine_index, own_row_index(event, participant_id))
+    |> assign(:mine_index, own_row_index(event, participant_id, user_id))
     |> assign_cash(event, organizer?)
     |> assign_join_availability(event, participant_id, organizer?, unlocked?)
   end
@@ -189,17 +191,20 @@ defmodule RolezinhoWeb.EventLive do
   # offered it — the waiting list would take them a second time, and a list with
   # the same person twice is a list nobody trusts.
   defp assign_join_availability(socket, %Event{} = event, participant_id, organizer?, unlocked?) do
+    user_id = socket.assigns[:current_user_id]
+
     opts = [
       admin?: socket.assigns.current_admin?,
       organizer?: organizer?,
-      participant_id: participant_id
+      participant_id: participant_id,
+      current_user_id: user_id
     ]
 
     can_join? =
       unlocked? and
         Policy.can_join?(event, opts) and
-        is_nil(own_row_index(event, participant_id)) and
-        is_nil(own_wait_index(event, participant_id)) and
+        is_nil(own_row_index(event, participant_id, user_id)) and
+        is_nil(own_wait_index(event, participant_id, user_id)) and
         (not Event.main_full?(event) or event.wait_enabled)
 
     # RN-31: promoting is the organizer's call. The button used to render for
@@ -241,8 +246,10 @@ defmodule RolezinhoWeb.EventLive do
     |> Enum.reject(&(&1 == ""))
   end
 
-  defp own_wait_index(%Event{wait_list: list}, participant_id) do
-    case Enum.find_index(list, &Attendee.owned_by?(&1, participant_id)) do
+  # "My" row on the wait list, matched by either identity (per-device token
+  # or signed-in user). Returns a 1-based index or nil.
+  defp own_wait_index(%Event{wait_list: list}, participant_id, user_id) do
+    case Enum.find_index(list, &Attendee.owns?(&1, participant_id, user_id)) do
       nil -> nil
       index -> index + 1
     end
@@ -267,8 +274,10 @@ defmodule RolezinhoWeb.EventLive do
 
   # The 1-based position of this browser's own row, or nil. Used to highlight it
   # and to decide which check is interactive — everyone else's is read-only.
-  defp own_row_index(%Event{main_list: list}, participant_id) do
-    case Enum.find_index(list, &Attendee.owned_by?(&1, participant_id)) do
+  # "My" row on the main list, matched by either identity. Same shape as
+  # `own_wait_index/3`.
+  defp own_row_index(%Event{main_list: list}, participant_id, user_id) do
+    case Enum.find_index(list, &Attendee.owns?(&1, participant_id, user_id)) do
       nil -> nil
       index -> index + 1
     end
@@ -1360,6 +1369,9 @@ defmodule RolezinhoWeb.EventLive do
           method="post"
           action={~p"/r/#{@event.slug}/join"}
           phx-hook=".JoinDefaults"
+          data-current-user-name={
+            (@current_user && Rolezinho.Accounts.User.display_name(@current_user)) || ""
+          }
         >
           <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
 
@@ -1435,12 +1447,24 @@ defmodule RolezinhoWeb.EventLive do
         </form>
 
         <script :type={Phoenix.LiveView.ColocatedHook} name=".JoinDefaults">
+          const KEY = "rolezinho:profile"
+
           export default {
             mounted() {
               // Someone who has filled in their name once should not type it
               // again in every list they join.
               let profile = {}
-              try { profile = JSON.parse(localStorage.getItem("rolezinho:profile") || "{}") } catch (_) {}
+              try { profile = JSON.parse(localStorage.getItem(KEY) || "{}") } catch (_) {}
+
+              // ADR-0002: for a signed-in user with an empty device profile,
+              // seed the name from their GitHub identity and persist so the
+              // next join and the /me screen see it too. We never overwrite
+              // a name the user actually typed.
+              const fromGithub = this.el.dataset.currentUserName || ""
+              if (fromGithub && !profile.name) {
+                profile.name = fromGithub
+                try { localStorage.setItem(KEY, JSON.stringify(profile)) } catch (_) {}
+              }
 
               this.el.querySelectorAll("[data-profile]").forEach((input) => {
                 if (!input.value) input.value = profile[input.dataset.profile] || ""

@@ -32,6 +32,13 @@ defmodule RolezinhoWeb.JoinController do
   end
 
   defp join(conn, %Event{} = event, name, size, params) do
+    # ADR-0002: a signed-in user's rows carry their `user_id` as a second
+    # identity, so any future session where they sign in with the same
+    # GitHub account can act on the row (mark paid, leave the list) even
+    # after the per-device `participant_id` is gone. Nil for anonymous
+    # joins — in that case only the token identifies the row.
+    user_id = conn.assigns[:current_user_id]
+
     with :ok <- ensure_unlocked(conn, event),
          :ok <- ensure_open(conn, event),
          {:ok, values} <- collect_answers(event, params),
@@ -39,6 +46,7 @@ defmodule RolezinhoWeb.JoinController do
          {:ok, _updated, placed} <-
            Events.add_party(event, name, size,
              participant_id: participant_id,
+             user_id: user_id,
              values: values
            ) do
       conn

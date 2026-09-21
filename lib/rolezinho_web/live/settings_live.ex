@@ -20,6 +20,14 @@ defmodule RolezinhoWeb.SettingsLive do
     {:ok, assign(socket, :page_title, "Suas preferências")}
   end
 
+  # Empty string (not nil) when the visitor is signed out. That lets the
+  # `data-current-user-name` attribute stay a no-op instead of a truthy
+  # "None" string that a client-side JSON parse could mishandle.
+  defp current_user_display_name(nil), do: ""
+
+  defp current_user_display_name(user),
+    do: Rolezinho.Accounts.User.display_name(user)
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -29,7 +37,12 @@ defmodule RolezinhoWeb.SettingsLive do
       current_user={@current_user}
       page_title={@page_title}
     >
-      <div id="settings" phx-hook=".Settings" class="mx-auto max-w-[560px]">
+      <div
+        id="settings"
+        phx-hook=".Settings"
+        data-current-user-name={current_user_display_name(@current_user)}
+        class="mx-auto max-w-[560px]"
+      >
         <header>
           <h1 class="text-2xl font-extrabold tracking-tight">Suas preferências</h1>
           <p class="mt-1 text-[13px] text-muted">
@@ -190,6 +203,16 @@ defmodule RolezinhoWeb.SettingsLive do
         export default {
           mounted() {
             const profile = read()
+
+            // ADR-0002: seed the name field from the signed-in user's
+            // GitHub name (or login) if the device profile has no name yet.
+            // This runs once, on first visit after login, and only when the
+            // field is empty — we never overwrite a name the user chose.
+            const fromGithub = this.el.dataset.currentUserName || ""
+            if (fromGithub && !profile.name) {
+              profile.name = fromGithub
+              write(profile)
+            }
 
             this.el.querySelectorAll("[data-field]").forEach((input) => {
               input.value = profile[input.dataset.field] || ""

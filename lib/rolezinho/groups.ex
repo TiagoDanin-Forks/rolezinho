@@ -20,6 +20,7 @@ defmodule Rolezinho.Groups do
   alias Rolezinho.Event
   alias Rolezinho.Events
   alias Rolezinho.Group
+  alias Rolezinho.Group.Unlock
   alias Rolezinho.Repo
 
   @pubsub Rolezinho.PubSub
@@ -246,6 +247,55 @@ defmodule Rolezinho.Groups do
   end
 
   def check_password(%Group{}, _), do: false
+
+  # ---------- Persisted unlocks ----------
+
+  @doc """
+  Remembers that `user_id` has unlocked `group_id`, idempotently.
+
+  Called from `GroupUnlockController.unlock/2` when a signed-in user gets
+  the password right. On a second unlock of the same group we skip the
+  insert via the unique index and return the existing row.
+
+  Silently no-op when either id is nil — anonymous unlocks live only in
+  the session, not in the database.
+  """
+  @spec remember_unlock(integer() | nil, integer() | nil) ::
+          {:ok, Unlock.t()} | :skipped | {:error, Ecto.Changeset.t()}
+  def remember_unlock(nil, _group_id), do: :skipped
+  def remember_unlock(_user_id, nil), do: :skipped
+
+  def remember_unlock(user_id, group_id) when is_integer(user_id) and is_integer(group_id) do
+    %Unlock{}
+    |> Unlock.changeset(%{user_id: user_id, group_id: group_id})
+    |> Repo.insert(
+      on_conflict: :nothing,
+      conflict_target: [:user_id, :group_id],
+      returning: false
+    )
+  end
+
+  @doc """
+  Returns the set of group slugs `user_id` has ever unlocked.
+
+  Used by the User plug/on_mount to merge into `:unlocked_groups` so a
+  signed-in visitor does not have to re-enter the password on a new
+  device or after a cookie clear. Returns an empty MapSet when `user_id`
+  is nil.
+  """
+  @spec unlocked_slugs_for_user(integer() | nil) :: MapSet.t()
+  def unlocked_slugs_for_user(nil), do: MapSet.new()
+
+  def unlocked_slugs_for_user(user_id) when is_integer(user_id) do
+    from(u in Unlock,
+      join: g in Group,
+      on: g.id == u.group_id,
+      where: u.user_id == ^user_id,
+      select: g.slug
+    )
+    |> Repo.all()
+    |> MapSet.new()
+  end
 
   # ---------- Broadcasts ----------
 

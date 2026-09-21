@@ -46,6 +46,7 @@ defmodule RolezinhoWeb.InviteLive do
   defp assign_event(socket, %Event{} = event) do
     unlocked? = unlocked?(socket, event)
     participant_id = Map.get(socket.assigns[:participants] || %{}, event.slug)
+    user_id = socket.assigns[:current_user_id]
     {meta, _rest} = Meta.extract(event.header)
 
     socket
@@ -53,13 +54,13 @@ defmodule RolezinhoWeb.InviteLive do
     |> assign(:event, event)
     |> assign(:unlocked?, unlocked?)
     |> assign(:participant_id, participant_id)
-    |> assign(:joined?, joined?(event, participant_id))
+    |> assign(:joined?, joined?(event, participant_id, user_id))
     |> assign(:confirmed, confirmed_names(event, unlocked?))
     |> assign(:filled, filled_count(event))
     |> assign(:local, if(unlocked?, do: event.local || meta.local))
     |> assign(:when_text, when_text(event, meta))
     |> assign(:amount, Cash.format_amount(event.price_cents))
-    |> assign(:can_join?, can_join?(socket, event, participant_id))
+    |> assign(:can_join?, can_join?(socket, event, participant_id, user_id))
     |> assign(:party_room, party_room(event))
     |> assign(:extra_fields, extra_fields(event))
   end
@@ -76,8 +77,11 @@ defmodule RolezinhoWeb.InviteLive do
       MapSet.member?(socket.assigns.unlocked_events, event.slug)
   end
 
-  defp joined?(%Event{main_list: main, wait_list: wait}, participant_id) do
-    Enum.any?(main ++ wait, &Attendee.owned_by?(&1, participant_id))
+  # Signed-in users get to be recognized on their own rows even without the
+  # per-device token (ADR-0002). This accepts both identities — either match
+  # counts.
+  defp joined?(%Event{main_list: main, wait_list: wait}, participant_id, user_id) do
+    Enum.any?(main ++ wait, &Attendee.owns?(&1, participant_id, user_id))
   end
 
   defp confirmed_names(%Event{}, false), do: []
@@ -102,7 +106,7 @@ defmodule RolezinhoWeb.InviteLive do
     |> Enum.join(" · ")
   end
 
-  defp can_join?(socket, %Event{} = event, participant_id) do
+  defp can_join?(socket, %Event{} = event, participant_id, user_id) do
     opts = [
       admin?: socket.assigns.current_admin?,
       organizer?:
@@ -110,12 +114,13 @@ defmodule RolezinhoWeb.InviteLive do
           %{"organizer_tokens" => socket.assigns[:organizer_tokens] || %{}},
           event
         ),
-      participant_id: participant_id
+      participant_id: participant_id,
+      current_user_id: user_id
     ]
 
     unlocked?(socket, event) and
       Policy.can_join?(event, opts) and
-      not joined?(event, participant_id) and
+      not joined?(event, participant_id, user_id) and
       (not Event.main_full?(event) or event.wait_enabled)
   end
 
@@ -202,6 +207,9 @@ defmodule RolezinhoWeb.InviteLive do
           method="post"
           action={~p"/r/#{@event.slug}/join"}
           phx-hook=".JoinDefaults"
+          data-current-user-name={
+            (@current_user && Rolezinho.Accounts.User.display_name(@current_user)) || ""
+          }
         >
           <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
 
@@ -270,10 +278,22 @@ defmodule RolezinhoWeb.InviteLive do
         </form>
 
         <script :type={Phoenix.LiveView.ColocatedHook} name=".JoinDefaults">
+          const KEY = "rolezinho:profile"
+
           export default {
             mounted() {
               let profile = {}
-              try { profile = JSON.parse(localStorage.getItem("rolezinho:profile") || "{}") } catch (_) {}
+              try { profile = JSON.parse(localStorage.getItem(KEY) || "{}") } catch (_) {}
+
+              // ADR-0002: seed the name from the signed-in GitHub identity
+              // when the device profile has no name yet, and persist so the
+              // next visit and the /me screen see it too. Same logic as the
+              // matching hook on `EventLive`.
+              const fromGithub = this.el.dataset.currentUserName || ""
+              if (fromGithub && !profile.name) {
+                profile.name = fromGithub
+                try { localStorage.setItem(KEY, JSON.stringify(profile)) } catch (_) {}
+              }
 
               this.el.querySelectorAll("[data-profile]").forEach((input) => {
                 if (!input.value) input.value = profile[input.dataset.profile] || ""

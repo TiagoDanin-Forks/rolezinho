@@ -22,6 +22,13 @@ defmodule RolezinhoWeb.GroupUnlockController do
 
       group ->
         if Groups.check_password(group, submitted) do
+          # Always record the unlock in the browser session so anonymous
+          # visitors carry the access across requests. When the visitor is
+          # signed in, ALSO persist the unlock so the same GitHub account
+          # keeps access on future devices and after cookie clears
+          # (ADR-0002 durable-identity rule).
+          _ = Groups.remember_unlock(conn.assigns[:current_user_id], group.id)
+
           conn
           |> Admin.put_unlocked_group(slug)
           |> put_flash(:info, "Senha confirmada.")
