@@ -145,6 +145,30 @@ defmodule RolezinhoWeb.EventEditDetailsTest do
       assert reloaded.price_cents == 2250
       assert reloaded.pix_key == "novo@example.com"
       assert reloaded.password == "SEGREDO"
+
+      # The structured columns must track the meta lines in the header,
+      # because the role card on the group page and the calendar exports
+      # read from those columns — not from the header prose.
+      assert reloaded.local == "Praia Nova"
+      # 2027-01-05 20:30 BRT -> 23:30 UTC on the same day.
+      assert reloaded.starts_at == ~U[2027-01-05 23:30:00Z]
+    end
+
+    test "clearing the date wipes the starts_at column too", %{conn: conn} do
+      event = create_event(%{"date" => "2026-08-15", "time" => "19:00"})
+      refute is_nil(event.starts_at)
+
+      {:ok, view, _html} = live(admin_conn(conn), ~p"/admin/r/#{event.slug}/edit")
+
+      view
+      |> form(
+        "#details-form",
+        details_params(%{"slug" => event.slug, "date" => "", "time" => ""})
+      )
+      |> render_submit()
+
+      reloaded = Events.find(event.slug)
+      assert is_nil(reloaded.starts_at)
     end
 
     test "empty password clears it, empty price and pix wipe them", %{conn: conn} do

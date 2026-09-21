@@ -624,11 +624,17 @@ defmodule Rolezinho.Events do
   broadcast, and belongs to `rename_slug/2` (the edit screen still calls it
   first when the slug field changed).
 
+  The `local` / `starts_at` / `ends_at` columns are kept in sync with the
+  meta lines inside `header`. The role card and calendar surfaces read from
+  the structured columns; the raw text output reads from the header. Both
+  writes have to happen or the two views of the same event drift apart
+  (event page shows "22/09 · 19h", group card still shows the old date).
+
   Params keys (strings), all optional:
     * `"title"` — trimmed, required to be non-empty via the changeset.
     * `"description"` — free-form text; empty clears it.
-    * `"local"`, `"date"`, `"time"` — forwarded to `Meta.from_params/1`
-      and stored inside `header` alongside the description.
+    * `"local"`, `"date"`, `"time"` — forwarded to `Meta.from_params/1` for
+      the header, and to `local` / `starts_at` on the row.
     * `"price"` — free-form (`"15"`, `"R$ 15"`, `"15,50"`); empty clears
       `price_cents`.
     * `"pix_key"` — any Pix key; empty clears the field.
@@ -645,6 +651,10 @@ defmodule Rolezinho.Events do
     attrs = %{
       title: title,
       header: new_header,
+      # Structured columns — same data as the meta lines, in a shape the
+      # role card and calendar exports can read without parsing.
+      local: trimmed(params, "local"),
+      starts_at: combine_date_time(params),
       password: params |> Map.get("password", "") |> to_string(),
       price_cents: parse_price(params["price"]),
       pix_key: trimmed(params, "pix_key")
