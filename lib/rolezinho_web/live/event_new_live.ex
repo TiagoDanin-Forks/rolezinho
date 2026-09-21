@@ -306,7 +306,7 @@ defmodule RolezinhoWeb.EventNewLive do
             </p>
 
             <div class="mt-3.5">
-              <.input field={@form[:description]} type="textarea" rows="4" />
+              <.input field={@form[:description]} type="textarea" rows="2" data-autogrow />
             </div>
 
             <!-- The syntax is the group's own, so the hint names it rather than

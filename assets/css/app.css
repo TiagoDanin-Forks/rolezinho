@@ -277,6 +277,18 @@ body {
   animation: rolezinho-flash-accent 900ms ease-out;
 }
 
+/* A textarea that grows with its content, but only within reasonable
+   bounds — too short and you can't see what you're writing, too tall and
+   it eats the form. Uses the modern `field-sizing: content` (Chrome 123+,
+   Firefox 132+, Safari 17.4+); browsers without support fall back to the
+   `rows` attribute we set on the element. The visual bounds are measured
+   in line-heights so they scale with the field's font. */
+textarea[data-autogrow] {
+  field-sizing: content;
+  min-block-size: 2lh;
+  max-block-size: 5lh;
+}
+
 /* The handoff ships this block with the design: motion is decoration here, and
    a sheet that slides or a button that scales must not fight someone who asked
    the OS to stop animating. The fade is what remains. */

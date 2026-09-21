@@ -311,7 +311,8 @@ defmodule RolezinhoWeb.EventEditLive do
             field={@details_form[:description]}
             type="textarea"
             label="Descrição"
-            rows="6"
+            rows="2"
+            data-autogrow
             placeholder="O que levar, onde estacionar, qualquer coisa que ajude."
           />
           <p class="-mt-2 text-[11px] text-muted">
