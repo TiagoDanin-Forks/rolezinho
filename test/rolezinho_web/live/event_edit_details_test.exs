@@ -45,11 +45,12 @@ defmodule RolezinhoWeb.EventEditDetailsTest do
     |> Plug.Conn.put_session(:admin?, true)
   end
 
-  # The five inputs are all in the same form; helper to build the params map.
+  # The full form's inputs collected in one map; helper to build the params.
   defp details_params(overrides) do
     defaults = %{
       "title" => "Vôlei",
       "description" => "",
+      "category" => "",
       "local" => "Rua Caripunas",
       "date" => "2026-08-15",
       "time" => "19:00",
@@ -70,7 +71,7 @@ defmodule RolezinhoWeb.EventEditDetailsTest do
     end
 
     test "every text/textarea/date field lives in one #details-form", %{view: view} do
-      for name <- ~w(title description local date time price pix_key password slug) do
+      for name <- ~w(title description category local date time price pix_key password slug) do
         assert has_element?(view, "#details-form [name='details[#{name}]']"),
                "expected #details-form to carry a control for #{name}"
       end
@@ -152,6 +153,49 @@ defmodule RolezinhoWeb.EventEditDetailsTest do
       assert reloaded.local == "Praia Nova"
       # 2027-01-05 20:30 BRT -> 23:30 UTC on the same day.
       assert reloaded.starts_at == ~U[2027-01-05 23:30:00Z]
+    end
+
+    test "saves and clears the category field", %{conn: conn} do
+      event = create_event(%{})
+      assert is_nil(event.category)
+
+      {:ok, view, _html} = live(admin_conn(conn), ~p"/admin/r/#{event.slug}/edit")
+
+      view
+      |> form(
+        "#details-form",
+        details_params(%{"slug" => event.slug, "category" => "Trabalho"})
+      )
+      |> render_submit()
+
+      assert Events.find(event.slug).category == "Trabalho"
+
+      # And clearing it wipes the column.
+      view
+      |> form("#details-form", details_params(%{"slug" => event.slug, "category" => ""}))
+      |> render_submit()
+
+      assert is_nil(Events.find(event.slug).category)
+    end
+
+    test "the category input ships the Portuguese suggestions datalist", %{conn: conn} do
+      event = create_event(%{})
+      {:ok, view, html} = live(admin_conn(conn), ~p"/admin/r/#{event.slug}/edit")
+
+      # A single <datalist id="event-category-suggestions"> exists (LiveView
+      # injects a `phx-r=""` marker on it, hence the loose selector).
+      assert has_element?(view, ~s(datalist#event-category-suggestions))
+
+      # Same four defaults as the create form (see EventNewLive).
+      for suggestion <- ~w(Trabalho Networking Esportes Social) do
+        assert html =~ ~s(<option value="#{suggestion}")
+      end
+
+      # And the input references the datalist.
+      assert has_element?(
+               view,
+               ~s(input[name="details[category]"][list="event-category-suggestions"])
+             )
     end
 
     test "clearing the date wipes the starts_at column too", %{conn: conn} do

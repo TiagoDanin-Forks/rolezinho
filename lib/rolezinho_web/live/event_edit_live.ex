@@ -62,6 +62,7 @@ defmodule RolezinhoWeb.EventEditLive do
       "slug" => event.slug,
       "title" => event.title,
       "description" => description,
+      "category" => event.category || "",
       "local" => meta.local || "",
       "date" => (meta.date && Date.to_iso8601(meta.date)) || "",
       "time" => (meta.time && Calendar.strftime(meta.time, "%H:%M")) || "",
@@ -70,6 +71,11 @@ defmodule RolezinhoWeb.EventEditLive do
       "password" => event.password || ""
     }
   end
+
+  # Same suggestions the create form ships (see `EventNewLive.@category_suggestions`).
+  # Kept in sync by hand — changing one without the other is the risk here; a
+  # shared constant would be worth it once a third caller appears.
+  defp category_suggestions, do: ~w(Trabalho Networking Esportes Social)
 
   # Small ordered list of every user, for the "Dono" select. Bounded by the
   # size of the accounts table — GitHub-authed users only, no big listing
@@ -313,6 +319,20 @@ defmodule RolezinhoWeb.EventEditLive do
             <code class="font-mono italic">_itálico_</code>
             e <code class="font-mono line-through">~riscado~</code>, como no WhatsApp.
           </p>
+
+          <!--
+            Same free-form + datalist pattern as the create form: any string
+            still goes through, the four defaults are hints, not a constraint.
+          -->
+          <.input
+            field={@details_form[:category]}
+            label="Categoria"
+            placeholder="ex.: Trabalho, Esportes"
+            list="event-category-suggestions"
+          />
+          <datalist id="event-category-suggestions">
+            <option :for={suggestion <- category_suggestions()} value={suggestion} />
+          </datalist>
 
           <.input field={@details_form[:local]} label="Local" placeholder="ex.: Rua Caripunas" />
 

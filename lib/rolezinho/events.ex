@@ -635,6 +635,7 @@ defmodule Rolezinho.Events do
     * `"description"` — free-form text; empty clears it.
     * `"local"`, `"date"`, `"time"` — forwarded to `Meta.from_params/1` for
       the header, and to `local` / `starts_at` on the row.
+    * `"category"` — trimmed; empty clears the field.
     * `"price"` — free-form (`"15"`, `"R$ 15"`, `"15,50"`); empty clears
       `price_cents`.
     * `"pix_key"` — any Pix key; empty clears the field.
@@ -655,6 +656,7 @@ defmodule Rolezinho.Events do
       # role card and calendar exports can read without parsing.
       local: trimmed(params, "local"),
       starts_at: combine_date_time(params),
+      category: trimmed(params, "category"),
       password: params |> Map.get("password", "") |> to_string(),
       price_cents: parse_price(params["price"]),
       pix_key: trimmed(params, "pix_key")
