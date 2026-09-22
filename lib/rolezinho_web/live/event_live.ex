@@ -1120,7 +1120,7 @@ defmodule RolezinhoWeb.EventLive do
             >← Rolezinhos</.link>
             <span class="shrink-0">·</span>
             <span class="min-w-0 truncate">/r/{@event.slug}</span>
-            <.crumb_badge :if={@event.status == :hidden} tone="warning">Oculto</.crumb_badge>
+            <.crumb_badge :if={@event.hidden} tone="warning">Oculto</.crumb_badge>
             <.crumb_badge :if={@event.status == :done} tone="neutral">Concluído</.crumb_badge>
             <.crumb_badge
               :if={@event.status == :maybe}

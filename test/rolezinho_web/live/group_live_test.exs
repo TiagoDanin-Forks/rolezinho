@@ -202,7 +202,7 @@ defmodule RolezinhoWeb.GroupLiveTest do
       group = create_group()
       # Create as admin so the event starts active, then set hidden.
       event = create_event(group, %{"title" => "Ver-me se souber", "slug" => "hidden-role"})
-      {:ok, event} = Events.set_status(event, :hidden)
+      {:ok, event} = Events.set_hidden(event, true)
       %{group: group, event: event}
     end
 

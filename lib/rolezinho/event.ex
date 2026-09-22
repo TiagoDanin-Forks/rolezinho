@@ -18,16 +18,24 @@ defmodule Rolezinho.Event do
   # `:maybe` ("averiguando resenha") is the tentative state: the event
   # might happen, depending on how many people opt in — signup is open,
   # the row appears on the public home, and its slug is reachable to
-  # anyone. Cancellation is still a separate decision (moving to `:done`
-  # or `:hidden`); `:maybe` is only a visual signal that going is not
-  # guaranteed yet.
-  @statuses [:active, :maybe, :payments_only, :hidden, :done]
+  # anyone. Cancellation is a separate decision (moving to `:done`);
+  # `:maybe` is only a visual signal that going is not guaranteed yet.
+  #
+  # "Occult" (hidden from the public home) used to be part of this enum
+  # as `:hidden`, but was split into its own boolean column so an event
+  # can be, say, `payments_only` AND hidden at the same time — states
+  # that were mutually exclusive under the old encoding. See
+  # `20260922173451_split_hidden_from_status.exs`.
+  @statuses [:active, :maybe, :payments_only, :done]
 
-  # Statuses that appear on the public home page.
+  # Statuses that appear on the public home page (still subject to the
+  # `hidden` flag applied at the query layer in `Rolezinho.Events`).
   @open_statuses [:active, :maybe, :payments_only]
 
-  # Statuses reachable by direct slug for anonymous visitors.
-  @public_statuses [:active, :maybe, :payments_only, :hidden]
+  # Statuses reachable by direct slug for anonymous visitors. Hidden events
+  # remain reachable by slug — that's the whole point of being unlisted-
+  # but-linkable — so this enum has nothing more to say about it.
+  @public_statuses [:active, :maybe, :payments_only]
 
   @slug_regex ~r/^[a-z0-9](?:[a-z0-9-]{0,60}[a-z0-9])?$/
 
@@ -35,6 +43,12 @@ defmodule Rolezinho.Event do
     field :slug, :string
     field :title, :string, default: ""
     field :status, Ecto.Enum, values: @statuses, default: :active
+
+    # Whether this rolê is hidden from the public home (still reachable by
+    # direct slug). Orthogonal to `:status` after the split — see the
+    # module doc block. `nil` never appears at the DB level (NOT NULL,
+    # default false), so we can assume boolean everywhere.
+    field :hidden, :boolean, default: false
     field :header, :string, default: ""
     field :footer, :string, default: ""
     field :main_capacity, :integer, default: 0
@@ -76,12 +90,13 @@ defmodule Rolezinho.Event do
     timestamps(type: :utc_datetime)
   end
 
-  @type status :: :active | :maybe | :payments_only | :hidden | :done
+  @type status :: :active | :maybe | :payments_only | :done
 
   @type t :: %__MODULE__{
           id: integer() | nil,
           slug: String.t() | nil,
           status: status(),
+          hidden: boolean(),
           title: String.t(),
           header: String.t(),
           main_capacity: non_neg_integer(),
@@ -113,6 +128,7 @@ defmodule Rolezinho.Event do
       :slug,
       :title,
       :status,
+      :hidden,
       :header,
       :footer,
       :main_capacity,
@@ -733,6 +749,7 @@ defmodule Rolezinho.Event do
       slug: event.slug,
       title: event.title,
       status: event.status,
+      hidden: event.hidden,
       header: event.header,
       footer: event.footer,
       main_capacity: event.main_capacity,

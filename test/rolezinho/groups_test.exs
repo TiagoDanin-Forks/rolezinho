@@ -125,7 +125,7 @@ defmodule Rolezinho.GroupsTest do
       active = create_event(group, %{"slug" => "active-one"})
 
       {:ok, hidden_event} =
-        Events.set_status(create_event(group, %{"slug" => "hidden-one"}), :hidden)
+        Events.set_hidden(create_event(group, %{"slug" => "hidden-one"}), true)
 
       {:ok, %{group: group, active: active, hidden: hidden_event}}
     end
@@ -152,12 +152,14 @@ defmodule Rolezinho.GroupsTest do
       {:ok, _} = Groups.delete(group)
 
       # Same event still exists, but is hidden and no longer linked to a group.
+      # After the 2026-09 split, "hidden" is a boolean; status stays :active.
       reloaded = Events.find(event.slug)
-      assert reloaded.status == :hidden
+      assert reloaded.hidden == true
+      assert reloaded.status == :active
       assert reloaded.group_id == nil
     end
 
-    test "leaves already-done events alone (only status change is active/payments_only → hidden)" do
+    test "leaves already-done events alone (only touches active-ish events)" do
       group = create_group()
       event = create_event(group)
       {:ok, event} = Events.set_status(event, :done)

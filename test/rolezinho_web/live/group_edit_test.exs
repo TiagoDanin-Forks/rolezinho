@@ -88,9 +88,11 @@ defmodule RolezinhoWeb.GroupEditTest do
       # Group is gone.
       refute Groups.find("kill-me")
 
-      # Event survives but is hidden and un-grouped.
+      # Event survives but is hidden and un-grouped. Post the hidden/status
+      # split (2026-09) this is a boolean, not a status transition.
       reloaded = Events.find(event.slug)
-      assert reloaded.status == :hidden
+      assert reloaded.hidden == true
+      assert reloaded.status == :active
       assert reloaded.group_id == nil
     end
   end

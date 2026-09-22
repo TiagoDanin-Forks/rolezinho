@@ -206,6 +206,20 @@ defmodule RolezinhoWeb.EventEditLive do
      |> assign_event(event)}
   end
 
+  # Visibility toggle, orthogonal to status. Admin-only in this screen
+  # today (the whole `/admin/r/:slug/edit` route is admin-only), which
+  # keeps parity with `set_status` next door.
+  def handle_event("toggle_hidden", _params, socket) do
+    {:ok, event} = Events.set_hidden(socket.assigns.event, not socket.assigns.event.hidden)
+
+    message = if event.hidden, do: "Rolê agora está oculto.", else: "Rolê agora aparece na home."
+
+    {:noreply,
+     socket
+     |> put_flash(:info, message)
+     |> assign_event(event)}
+  end
+
   def handle_event("set_group", %{"group_id" => raw}, socket) do
     group_id = parse_group_id(raw)
 
@@ -493,7 +507,7 @@ defmodule RolezinhoWeb.EventEditLive do
              one is selected. -->
         <div class="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Status do rolê">
           <button
-            :for={status <- [:active, :maybe, :payments_only, :hidden, :done]}
+            :for={status <- [:active, :maybe, :payments_only, :done]}
             type="button"
             role="radio"
             aria-checked={to_string(@event.status == status)}
@@ -514,13 +528,31 @@ defmodule RolezinhoWeb.EventEditLive do
              line, so scanning down the terms is enough. -->
         <dl class="mt-3 space-y-1.5 text-[11px] leading-relaxed text-muted">
           <div
-            :for={status <- [:active, :maybe, :payments_only, :hidden, :done]}
+            :for={status <- [:active, :maybe, :payments_only, :done]}
             class="flex gap-1.5"
           >
             <dt class="shrink-0 font-bold">{status_label(status)}:</dt>
             <dd class="flex-1">{status_description(status)}</dd>
           </div>
         </dl>
+
+        <!--
+          Visibility is orthogonal to status: an active rolê can be occult
+          (link-only), a payments-only one can too, and so on. Rendered as
+          a checkbox next to the status radio so the two axes read as what
+          they are — two independent decisions.
+        -->
+        <label class="mt-4 flex items-center gap-2 text-[13px]">
+          <input
+            type="checkbox"
+            phx-click="toggle_hidden"
+            checked={@event.hidden}
+            aria-label="Ocultar da home"
+            class="size-4 rounded border-ink/30 text-accent focus:ring-accent"
+          />
+          <span class="font-bold">Oculto</span>
+          <span class="text-[11px] text-muted">não aparece na home, só pelo link.</span>
+        </label>
       </section>
 
       <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
@@ -724,13 +756,11 @@ defmodule RolezinhoWeb.EventEditLive do
   defp status_description(:payments_only),
     do: "aparece na home, mas ninguém entra em novas listas — o admin só marca quem pagou."
 
-  defp status_description(:hidden), do: "não aparece na home, só pelo link."
   defp status_description(:done), do: "arquivado, apenas o admin acessa."
 
   defp status_label(:active), do: "Ativo"
   defp status_label(:maybe), do: "Averiguando Resenha"
   defp status_label(:payments_only), do: "Só pagamentos"
-  defp status_label(:hidden), do: "Oculto"
   defp status_label(:done), do: "Concluído"
 
   # An empty string is how the <select> represents "no group".

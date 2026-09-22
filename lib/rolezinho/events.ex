@@ -20,7 +20,7 @@ defmodule Rolezinho.Events do
 
   @pubsub Rolezinho.PubSub
 
-  @statuses [:active, :maybe, :payments_only, :hidden, :done]
+  @statuses [:active, :maybe, :payments_only, :done]
 
   @doc "PubSub topic for a specific slug."
   def topic(slug), do: "event:" <> slug
@@ -46,8 +46,14 @@ defmodule Rolezinho.Events do
   next if nobody has said when.
   """
   def list_open do
+    # `hidden = false` is the second half of "public home" alongside
+    # `status in open_statuses`. Before the hidden/status split these
+    # were the same axis; they are orthogonal now, so both must hold.
     from(e in Event,
-      where: e.status in ^Event.open_statuses() and is_nil(e.group_id),
+      where:
+        e.status in ^Event.open_statuses() and
+          not e.hidden and
+          is_nil(e.group_id),
       order_by: [asc_nulls_last: e.starts_at, asc: e.title]
     )
     |> Repo.all()
@@ -62,8 +68,11 @@ defmodule Rolezinho.Events do
   @doc "Lists tentative (\"averiguando resenha\") events."
   def list_maybe, do: do_list(:maybe)
 
-  @doc "Lists hidden events."
-  def list_hidden, do: do_list(:hidden)
+  @doc "Lists hidden events (across all statuses)."
+  def list_hidden do
+    from(e in Event, where: e.hidden == true, order_by: [asc: e.title])
+    |> Repo.all()
+  end
 
   @doc "Lists done events."
   def list_done, do: do_list(:done)
@@ -135,7 +144,7 @@ defmodule Rolezinho.Events do
 
       changeset =
         %Event{}
-        |> Event.changeset(build_attrs(attrs, initial_status(opts)))
+        |> Event.changeset(build_attrs(attrs, initial_hidden?(opts, params)))
         # Set here rather than cast from params: accepting it as input would let
         # a visitor choose the secret that administers the event.
         |> Ecto.Changeset.put_change(:organizer_token, Token.generate_organizer())
@@ -284,29 +293,40 @@ defmodule Rolezinho.Events do
     end
   end
 
-  # Under ADR-0002 the born-hidden default is only for the truly anonymous
-  # case. Admin and signed-in users (identified here by `admin?: true` or a
-  # non-nil `created_by_user_id`) get `:active` — both carry accountability,
-  # which is what the born-hidden mitigation was for.
+  # The born-hidden default (ADR-0002) is only for the truly anonymous
+  # case. Admin and signed-in users get a visible rolê — both carry
+  # accountability, which is what the mitigation was for.
   #
-  # The caller decides, because the context does not know who is asking and
-  # should not — but the default is the safe one, so a new call site that
-  # forgets to say gets `hidden` rather than a public listing.
-  defp initial_status(opts) do
-    if Keyword.get(opts, :admin?, false) or not is_nil(Keyword.get(opts, :created_by_user_id)) do
-      :active
-    else
-      :hidden
+  # After the hidden/status split (2026-09), status is always `:active`
+  # on create; the anonymous-safe default lives on the `hidden` boolean
+  # instead. Callers can override via the `"hidden"` param at the form
+  # layer, which lets an authenticated creator publish an occult rolê
+  # deliberately (form checkbox added in a separate commit).
+  defp initial_hidden?(opts, params) do
+    cond do
+      # Explicit form param wins over the safety default.
+      Map.has_key?(params, "hidden") ->
+        Map.get(params, "hidden") in [true, "true", "on", "1"]
+
+      Keyword.get(opts, :admin?, false) ->
+        false
+
+      not is_nil(Keyword.get(opts, :created_by_user_id)) ->
+        false
+
+      true ->
+        true
     end
   end
 
-  defp build_attrs(attrs, status) do
+  defp build_attrs(attrs, hidden) do
     empty_slots = for _ <- 1..attrs.main_size//1, do: %{name: "", paid: false}
 
     %{
       slug: attrs.slug,
       title: attrs.title,
-      status: status,
+      status: :active,
+      hidden: hidden,
       header: Meta.build_header(attrs.meta, attrs.description),
       footer: "",
       main_capacity: attrs.main_size,
@@ -415,6 +435,31 @@ defmodule Rolezinho.Events do
   end
 
   # ---------- Status changes ----------
+
+  @doc """
+  Flips the `hidden` boolean on an event.
+
+  Orthogonal to `set_status/2`: a rolê can be, say, `:payments_only` AND
+  hidden. Same broadcast surface as any other event write, so the home
+  listing refreshes on subscribed clients.
+  """
+  @spec set_hidden(Event.t(), boolean()) :: {:ok, Event.t()} | {:error, map()}
+  def set_hidden(%Event{hidden: same} = event, same) when is_boolean(same), do: {:ok, event}
+
+  def set_hidden(%Event{} = event, hidden?) when is_boolean(hidden?) do
+    event
+    |> Ecto.Changeset.change(hidden: hidden?)
+    |> Repo.update()
+    |> case do
+      {:ok, updated} ->
+        broadcast(updated)
+        broadcast_home()
+        {:ok, updated}
+
+      {:error, changeset} ->
+        {:error, changeset_errors(changeset)}
+    end
+  end
 
   @doc "Changes an event's status."
   def set_status(%Event{} = event, new_status) when new_status in @statuses do

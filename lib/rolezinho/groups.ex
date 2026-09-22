@@ -82,18 +82,29 @@ defmodule Rolezinho.Groups do
   they stay reachable by their own URL. See PRODUCT.md.
   """
   def list_events(%Group{id: id}, opts \\ []) do
-    statuses =
+    # Post the hidden/status split (2026-09): hidden is orthogonal to
+    # status, so the query has to combine them explicitly.
+    #
+    #   :public       -> open statuses AND not hidden
+    #   :with_hidden  -> open statuses, hidden flag irrelevant
+    #   :any          -> every status, hidden flag irrelevant (admin view)
+    {statuses, include_hidden?} =
       case Keyword.get(opts, :visibility, :public) do
-        :public -> Event.open_statuses()
-        :with_hidden -> Event.public_statuses()
-        :any -> Event.statuses()
+        :public -> {Event.open_statuses(), false}
+        :with_hidden -> {Event.open_statuses(), true}
+        :any -> {Event.statuses(), true}
       end
 
-    from(e in Event,
-      where: e.group_id == ^id and e.status in ^statuses,
-      order_by: [asc_nulls_last: e.starts_at, asc: e.title]
-    )
-    |> Repo.all()
+    query =
+      from(e in Event,
+        where: e.group_id == ^id and e.status in ^statuses,
+        order_by: [asc_nulls_last: e.starts_at, asc: e.title]
+      )
+
+    query =
+      if include_hidden?, do: query, else: from(e in query, where: not e.hidden)
+
+    Repo.all(query)
   end
 
   # ---------- Creation ----------
@@ -201,11 +212,16 @@ defmodule Rolezinho.Groups do
   @doc """
   Deletes a group.
 
-  Per product decision, deleting a group marks all of its events as `:hidden`
-  (occult) first, so that events don't suddenly reappear on the public home
+  Per product decision, deleting a group marks all of its non-done events
+  as hidden first, so that they don't suddenly reappear on the public home
   page as a side-effect of removing their bundle. The DB-level
   `on_delete: :nilify_all` sets `group_id` to `NULL` afterwards; the two
   together mean "the events survive, but they stay off the front door".
+
+  Note (2026-09): the same intent is now expressed with the `hidden`
+  boolean rather than a `status: :hidden` transition, since those two
+  concerns were split. Status is untouched here — flipping to hidden is
+  orthogonal to whether the event is active/payments-only/etc.
 
   Admin-only upstream.
   """
@@ -213,10 +229,8 @@ defmodule Rolezinho.Groups do
     events = list_events(group, visibility: :any)
 
     Enum.each(events, fn event ->
-      if event.status in [:active, :payments_only] do
-        # We bypass `set_status/2`'s no-op guard by calling it directly — the
-        # only case it ignores is the same-status one.
-        Events.set_status(event, :hidden)
+      if event.status in [:active, :payments_only, :maybe] and not event.hidden do
+        Events.set_hidden(event, true)
       end
     end)
 

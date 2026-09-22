@@ -167,7 +167,7 @@ defmodule RolezinhoWeb.GroupPasswordGatingTest do
     setup %{conn: conn} do
       group = create_group(%{"slug" => "phg", "password" => "s"})
       event = create_event(group.id, %{"slug" => "phe"})
-      {:ok, event} = Events.set_status(event, :hidden)
+      {:ok, event} = Events.set_hidden(event, true)
 
       %{conn: unlocked_group_conn(conn, group.slug), group: group, event: event}
     end

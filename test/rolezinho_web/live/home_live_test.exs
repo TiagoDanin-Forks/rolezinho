@@ -32,7 +32,7 @@ defmodule RolezinhoWeb.HomeLiveTest do
 
   test "does not list hidden rolezinhos", %{conn: conn} do
     event = create_event(%{"title" => "Secreto", "slug" => "secreto"})
-    {:ok, _} = Events.set_status(event, :hidden)
+    {:ok, _} = Events.set_hidden(event, true)
 
     {:ok, view, _html} = live(conn, ~p"/")
 

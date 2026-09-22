@@ -12,7 +12,10 @@ defmodule Rolezinho.PaymentsOnlyTest do
       "wait_size" => "3"
     }
 
-    {:ok, event} = Events.create(Map.merge(defaults, attrs))
+    # `admin?: true` so the event is born visible — after the 2026-09
+    # hidden/status split, "payments_only" no longer implies "not hidden",
+    # and this test only cares about the status axis appearing on the home.
+    {:ok, event} = Events.create(Map.merge(defaults, attrs), admin?: true)
     event
   end
 

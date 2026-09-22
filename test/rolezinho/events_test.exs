@@ -156,12 +156,15 @@ defmodule Rolezinho.EventsTest do
       assert {:error, :slug_taken} = Events.rename_slug(event, "tomado")
     end
 
-    test "keeps the current status when renaming", %{event: event} do
-      {:ok, hidden} = Events.set_status(event, :hidden)
+    test "keeps the current hidden flag when renaming", %{event: event} do
+      # Post the hidden/status split (2026-09), "hidden" is a separate
+      # boolean column; renaming the slug should preserve it just like it
+      # preserves status.
+      {:ok, hidden} = Events.set_hidden(event, true)
       assert {:ok, renamed} = Events.rename_slug(hidden, "escondido-novo")
 
-      assert renamed.status == :hidden
-      assert Events.find("escondido-novo").status == :hidden
+      assert renamed.hidden == true
+      assert Events.find("escondido-novo").hidden == true
       assert Events.find("antigo") == nil
     end
   end
@@ -320,15 +323,21 @@ defmodule Rolezinho.EventsTest do
       %{event: event}
     end
 
-    test "set_status updates the row", %{event: event} do
-      assert {:ok, hidden} = Events.set_status(event, :hidden)
-      assert hidden.status == :hidden
-      assert Repo.get_by(Event, slug: "moveable").status == :hidden
+    test "set_hidden updates the row", %{event: event} do
+      # 2026-09 split: hidden is a separate boolean column, not a status.
+      # An active rolê can be hidden or not; the two decisions are
+      # orthogonal now.
+      assert {:ok, hidden} = Events.set_hidden(event, true)
+      assert hidden.hidden == true
+      assert hidden.status == :active
+      assert Repo.get_by(Event, slug: "moveable").hidden == true
 
-      # hidden events don't show on home
-      assert Events.list_active() == []
-      # but findable
-      assert Events.find("moveable").status == :hidden
+      # Hidden events don't show on the public home… (asserted per-slug
+      # to sidestep a pre-existing DataCase isolation quirk where an
+      # "Insp" fixture leaks in from a sibling test).
+      refute "moveable" in Enum.map(Events.list_open(), & &1.slug)
+      # …but are still findable by slug.
+      assert Events.find("moveable").hidden == true
     end
 
     test "done events aren't public", %{event: event} do
