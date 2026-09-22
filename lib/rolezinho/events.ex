@@ -59,6 +59,58 @@ defmodule Rolezinho.Events do
     |> Repo.all()
   end
 
+  @doc """
+  The home listing for a signed-in caller: unions `list_open/0` with the
+  events they own or joined, deduped and ordered.
+
+  "Own or joined" is intentionally generous — it includes hidden events
+  and grouped events, because they are `mine` first and
+  home-page-eligible second. `:done` rolezinhos are excluded: the home
+  screen is about what is next, not a scrollable archive.
+
+  With `nil` (an anonymous caller) this collapses to `list_open/0`, so
+  the HomeLive path stays a one-liner.
+  """
+  @spec list_home_for(integer() | nil) :: [Event.t()]
+  def list_home_for(nil), do: list_open()
+
+  def list_home_for(user_id) when is_integer(user_id) do
+    open = list_open()
+
+    # `main_list` / `wait_list` are `{:array, :map}` — `jsonb[]` in Postgres.
+    # `unnest()` turns the array into rows of jsonb, then `->>` reads the
+    # user_id string from each attendee's map. Null-safe cast: rows with a
+    # nil user_id compare unequal, which is the intent (anonymous joins
+    # don't count as "joined by user X").
+    mine =
+      from(e in Event,
+        where: e.status != :done,
+        where:
+          e.created_by_user_id == ^user_id or
+            fragment(
+              "EXISTS (SELECT 1 FROM unnest(?) att WHERE (att->>'user_id')::int = ?)",
+              e.main_list,
+              ^user_id
+            ) or
+            fragment(
+              "EXISTS (SELECT 1 FROM unnest(?) att WHERE (att->>'user_id')::int = ?)",
+              e.wait_list,
+              ^user_id
+            ),
+        order_by: [asc_nulls_last: e.starts_at, asc: e.title]
+      )
+      |> Repo.all()
+
+    # Union + dedupe (by id) + preserve overall ordering: open ones first
+    # (already sorted), then the "mine" ones that were not in open, keeping
+    # their own order among themselves. This is what a mental "home + a
+    # personal shelf underneath" reads as.
+    open_ids = MapSet.new(open, & &1.id)
+    extra_mine = Enum.reject(mine, &MapSet.member?(open_ids, &1.id))
+
+    open ++ extra_mine
+  end
+
   @doc "Lists strictly active events."
   def list_active, do: do_list(:active)
 

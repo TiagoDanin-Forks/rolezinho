@@ -43,8 +43,13 @@ defmodule RolezinhoWeb.HomeLive do
   end
 
   defp load_events(socket) do
+    # Signed-in callers get their own rolês mixed in under the public
+    # listing: "what's open" + "what's mine" (owned or joined), deduped.
+    # Anonymous callers keep the plain public listing.
+    user_id = socket.assigns[:current_user_id]
+
     socket
-    |> assign(:events, Events.list_open())
+    |> assign(:events, Events.list_home_for(user_id))
     |> assign(:groups, Groups.list_public())
     |> apply_filter()
   end
