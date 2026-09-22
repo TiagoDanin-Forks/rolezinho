@@ -161,13 +161,14 @@ defmodule RolezinhoWeb.HomeMyEventsTest do
     refute html =~ "Escondido do estranho"
   end
 
-  test "a grouped rolê the user owns also surfaces on the home", %{conn: conn} do
-    # Ungrouped rule: events belonging to a group don't appear on the
-    # public home (their group does). The "mine" shelf overrides that so
-    # a signed-in owner still sees their own events at a glance.
+  test "a grouped rolê the user owns does NOT surface on the home", %{conn: conn} do
+    # Invariant: an event that belongs to a group lives on that group's
+    # page, not on `/`. Applies to hidden and visible events, and to
+    # owned and joined rows alike — the group page is the one entry
+    # point (password gating on a group relies on it). The user reaches
+    # the event by opening their group.
     user = create_user("grouped-owner")
 
-    # Group name has a 3-char minimum in the schema.
     {:ok, group} =
       Groups.create(%{
         "name" => "Meu Grupo",
@@ -184,6 +185,41 @@ defmodule RolezinhoWeb.HomeMyEventsTest do
     conn = signed_in(conn, user)
     {:ok, _view, html} = live(conn, ~p"/")
 
-    assert html =~ "Dentro do grupo"
+    refute html =~ "Dentro do grupo"
+  end
+
+  test "a hidden grouped rolê the user owns also does NOT surface on the home",
+       %{conn: conn} do
+    # Specific case the user hit in prod: hidden + grouped + owned by me
+    # was leaking onto `/`. Both filters (hidden hides on public shelf;
+    # grouped hides on private shelf) must combine so the event only
+    # appears on its group's page.
+    user = create_user("grouped-hidden-owner")
+
+    {:ok, group} =
+      Groups.create(%{
+        "name" => "Meu Grupo",
+        "slug" => "gh-#{System.unique_integer([:positive])}"
+      })
+
+    {:ok, mine} =
+      Events.create(
+        %{
+          "title" => "Escondido no grupo",
+          "slug" => "hidden-in-group-1",
+          "main_size" => "3",
+          "wait_size" => "0"
+        },
+        admin?: false,
+        created_by_user_id: user.id,
+        group_id: group.id
+      )
+
+    {:ok, _} = Events.set_hidden(mine, true)
+
+    conn = signed_in(conn, user)
+    {:ok, _view, html} = live(conn, ~p"/")
+
+    refute html =~ "Escondido no grupo"
   end
 end
