@@ -238,6 +238,7 @@ defmodule RolezinhoWeb.EventLive do
     socket
     |> assign(:can_promote?, Policy.can_promote?(event, opts))
     |> assign(:can_join?, can_join?)
+    |> assign(:can_edit_event?, Policy.can_edit?(event, opts))
     |> assign(:confirmed_names, confirmed_names(event, unlocked?))
     |> assign(:party_room, party_room(event))
     |> assign(:extra_fields, extra_fields(event))
@@ -867,6 +868,25 @@ defmodule RolezinhoWeb.EventLive do
     {:noreply, socket |> assign(:editing_main, nil) |> assign(:editing_wait, nil)}
   end
 
+  # Server-side authorization mirrors the template gate: admin or
+  # organizer only. A hostile client that pushes this event without the
+  # right role is silently ignored, same shape as the row handlers below.
+  def handle_event("toggle_hidden", _params, socket) do
+    if Policy.can_edit?(socket.assigns.event, policy_opts(socket)) do
+      {:ok, event} = Events.set_hidden(socket.assigns.event, not socket.assigns.event.hidden)
+
+      message =
+        if event.hidden, do: "Rolê agora está oculto.", else: "Rolê agora aparece na home."
+
+      {:noreply,
+       socket
+       |> put_flash(:info, message)
+       |> assign_event(event)}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_event("rename_main", %{"index" => index, "name" => name}, socket) do
     require_admin!(socket)
     {:ok, event} = Events.rename_main(socket.assigns.event, String.to_integer(index), name)
@@ -1145,6 +1165,30 @@ defmodule RolezinhoWeb.EventLive do
                 aria-label="Compartilhar a lista"
               >
                 <.icon name="tabler-share" class="size-[18px]" />
+              </button>
+              <!-- Oculto toggle for admins + organizers. Puts the visibility
+                   decision on the event page itself so a role owner does
+                   not have to know that /admin/r/:slug/edit exists (it is
+                   still admin-only). Server-side authorization runs on the
+                   handler side too. -->
+              <button
+                :if={@can_edit_event?}
+                type="button"
+                phx-click="toggle_hidden"
+                aria-pressed={to_string(@event.hidden)}
+                aria-label={if @event.hidden, do: "Tornar público", else: "Tornar oculto"}
+                class={[
+                  "grid size-11 place-items-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+                  if(@event.hidden,
+                    do: "bg-warning/15 text-warning",
+                    else: "bg-ink/[0.06] text-ink"
+                  )
+                ]}
+              >
+                <.icon
+                  name={if @event.hidden, do: "tabler-eye-off", else: "tabler-eye"}
+                  class="size-[18px]"
+                />
               </button>
               <.link
                 :if={@current_admin?}

@@ -58,6 +58,11 @@ defmodule RolezinhoWeb.EventNewLive do
       "main_size" => "18",
       "wait_size" => "3",
       "password" => "",
+      # Not-hidden by default for a signed-in creator (they can see their
+      # own hidden rolezinhos on the home too now, but the safest default
+      # is still "visible"). The context has its own anonymous-safety
+      # override for callers without a user id.
+      "hidden" => "false",
       "group" => group_slug
     }
   end
@@ -286,6 +291,24 @@ defmodule RolezinhoWeb.EventNewLive do
             <p class="mt-2 text-[11px] text-muted">
               0 na espera desliga a fila. Depois de criada, ela não tem limite.
             </p>
+          </section>
+
+          <section class="mt-3 rounded-card border border-hairline bg-base-100 p-4 shadow-card">
+            <h2 class="text-[13px] font-extrabold">Visibilidade</h2>
+            <p class="mt-0.5 text-[11px] text-muted">
+              Oculto não aparece na home. Só quem tem o link entra.
+            </p>
+
+            <label class="mt-3.5 flex items-center gap-2 text-[13px]">
+              <input
+                type="checkbox"
+                name="event[hidden]"
+                value="true"
+                checked={@form[:hidden].value in [true, "true", "on"]}
+                class="size-4 rounded border-ink/30 text-accent focus:ring-accent"
+              />
+              <span class="font-bold">Oculto</span>
+            </label>
           </section>
 
           <section class="mt-3 rounded-card border border-hairline bg-base-100 p-4 shadow-card">
