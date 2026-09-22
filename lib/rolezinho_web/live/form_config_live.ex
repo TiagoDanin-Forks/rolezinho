@@ -24,6 +24,7 @@ defmodule RolezinhoWeb.FormConfigLive do
          |> assign(:page_title, "Formulário · #{event.title}")
          |> assign(:new_label, "")
          |> assign(:new_type, "text")
+         |> assign(:editing_field_id, nil)
          |> assign_event(event)}
 
       nil ->
@@ -78,7 +79,34 @@ defmodule RolezinhoWeb.FormConfigLive do
     end
   end
 
+  def handle_event("start_rename_field", %{"id" => id}, socket) do
+    # Guard: never enter edit mode for a locked field — the pencil is hidden
+    # in the template for those already, but a fabricated event should not
+    # be able to talk us into rendering an editable name row.
+    fields = Events.form_fields(socket.assigns.event)
+
+    case Enum.find(fields, &(&1.id == id)) do
+      %{locked: false} -> {:noreply, assign(socket, :editing_field_id, id)}
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("cancel_rename_field", _params, socket) do
+    {:noreply, assign(socket, :editing_field_id, nil)}
+  end
+
+  def handle_event("rename_field", %{"id" => id, "label" => label}, socket) do
+    case Events.rename_form_field(socket.assigns.event, id, label) do
+      {:ok, event} ->
+        {:noreply, socket |> assign(:editing_field_id, nil) |> assign_event(event)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, message_for(reason))}
+    end
+  end
+
   defp message_for(:empty_label), do: "Dê um nome pro campo."
+  defp message_for(:label_too_long), do: "O nome do campo é muito longo."
   defp message_for(:invalid_type), do: "Tipo de campo inválido."
   defp message_for(:too_many_fields), do: "Já são campos demais — o formulário vira pesquisa."
   defp message_for(:locked_field), do: "O nome não pode sair do formulário."
@@ -118,9 +146,13 @@ defmodule RolezinhoWeb.FormConfigLive do
               type={field.type}
               required={field.required}
               locked={field.locked}
+              editing={@editing_field_id == field.id}
               value={field.id}
               on_toggle_required="toggle_required"
               on_remove="remove_field"
+              on_start_rename="start_rename_field"
+              on_rename="rename_field"
+              on_cancel_rename="cancel_rename_field"
             />
           </div>
         </section>

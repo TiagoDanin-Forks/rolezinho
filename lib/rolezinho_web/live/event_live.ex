@@ -8,6 +8,7 @@ defmodule RolezinhoWeb.EventLive do
   alias Rolezinho.Event
   alias Rolezinho.Event.Attendee
   alias Rolezinho.Event.Cash
+  alias Rolezinho.Event.FormField
   alias Rolezinho.Event.Meta
   alias Rolezinho.Event.Policy
   alias Rolezinho.Event.WhatsMarkup
@@ -55,6 +56,7 @@ defmodule RolezinhoWeb.EventLive do
              |> assign(:new_wait_name, "")
              |> assign(:editing_main, nil)
              |> assign(:editing_wait, nil)
+             |> assign(:expanded_rows, MapSet.new())
              |> assign(:confirming_removal, nil)}
         end
     end
@@ -239,6 +241,11 @@ defmodule RolezinhoWeb.EventLive do
     |> assign(:confirmed_names, confirmed_names(event, unlocked?))
     |> assign(:party_room, party_room(event))
     |> assign(:extra_fields, extra_fields(event))
+    # Snapshot the policy inputs for the template. The pencil affordance on
+    # each row asks `Policy.can_edit_row?/3` for the answer and needs the
+    # same shape `handle_event/3` uses server-side, so keeping the two in
+    # lockstep here (rather than rebuilding it in HEEx) rules out drift.
+    |> assign(:policy_opts, opts)
   end
 
   # The questions the organizer added, beyond the name the form always asks.
@@ -393,9 +400,25 @@ defmodule RolezinhoWeb.EventLive do
   attr :current_admin?, :boolean, required: true
   attr :organizer?, :boolean, required: true
   attr :can_join?, :boolean, required: true
+  # Passed through so the pencil affordance can ask `Policy.can_edit_row?/3`
+  # — which now covers row-owners too, not just admin (RN-24).
+  attr :policy_opts, :list, required: true
+  attr :extra_fields, :list, default: []
 
   defp event_participant_row(assigns) do
-    assigns = assign(assigns, :mine?, assigns.mine_index == assigns.index)
+    assigns =
+      assigns
+      |> assign(:mine?, assigns.mine_index == assigns.index)
+      |> assign(
+        :can_edit?,
+        assigns.unlocked? and
+          String.trim(assigns.attendee.name) != "" and
+          Policy.can_edit_row?(assigns.event, assigns.attendee, assigns.policy_opts)
+      )
+      |> assign(
+        :inline_hint,
+        assigns.unlocked? && inline_value_hint(assigns.attendee, assigns.extra_fields)
+      )
 
     ~H"""
     <.participant_row
@@ -412,9 +435,10 @@ defmodule RolezinhoWeb.EventLive do
       join_label="Entrar"
       phx-value-index={@index}
     >
+      <:name_suffix :if={@inline_hint}>· {@inline_hint}</:name_suffix>
       <:actions>
         <button
-          :if={@current_admin? and String.trim(@attendee.name) != ""}
+          :if={@can_edit?}
           type="button"
           phx-click="start_edit_main"
           phx-value-index={@index}
@@ -436,6 +460,144 @@ defmodule RolezinhoWeb.EventLive do
         </button>
       </:actions>
     </.participant_row>
+    """
+  end
+
+  # Compact single-value hint rendered right after the name for the 1-field
+  # case (RN-63 spec addendum): only when the event has exactly one non-locked
+  # form field and the attendee has a value for it. Multi-field rows use the
+  # disclosure panel below the row instead.
+  defp inline_value_hint(%Attendee{values: values}, [%FormField{} = field]) do
+    case Map.get(values || %{}, field.id) do
+      value when is_binary(value) and value != "" -> "#{field.label}: #{value}"
+      _ -> nil
+    end
+  end
+
+  defp inline_value_hint(_attendee, _fields), do: nil
+
+  # Whether the multi-field disclosure panel has any reason to render. For a
+  # 1-field event the inline hint already covers it. For 0-field events (or
+  # rows whose owner joined before the field was added and never filled it)
+  # there is nothing to disclose, so no toggle appears either.
+  defp show_extras_panel?(%Attendee{} = attendee, fields) do
+    length(fields) >= 2 and any_value?(attendee, fields)
+  end
+
+  defp any_value?(%Attendee{values: values}, fields) do
+    values = values || %{}
+
+    Enum.any?(fields, fn field ->
+      value = Map.get(values, field.id)
+      is_binary(value) and value != ""
+    end)
+  end
+
+  # The disclosure panel that appears below a multi-field row. Renders the
+  # toggle button always (when the row has any values); when open, unfolds
+  # a compact key/value list of every field the attendee filled.
+  attr :list, :string, required: true, values: ~w(main wait)
+  attr :index, :integer, required: true
+  attr :attendee, Attendee, required: true
+  attr :extra_fields, :list, required: true
+  attr :expanded?, :boolean, required: true
+
+  defp attendee_extras(assigns) do
+    ~H"""
+    <div class="px-3.5 pb-3 pt-0">
+      <button
+        type="button"
+        phx-click="toggle_row_extras"
+        phx-value-list={@list}
+        phx-value-index={@index}
+        aria-expanded={to_string(@expanded?)}
+        class="ml-6 inline-flex items-center gap-1 text-[11px] font-semibold text-muted hover:text-ink"
+      >
+        <.icon
+          name={if @expanded?, do: "tabler-minus", else: "tabler-plus"}
+          class="size-3.5"
+        />
+        {if @expanded?, do: "Menos", else: "Ver detalhes"}
+      </button>
+
+      <dl :if={@expanded?} class="ml-6 mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+        <%= for field <- @extra_fields, value = Map.get(@attendee.values || %{}, field.id), is_binary(value) and value != "" do %>
+          <dt class="text-[11px] font-semibold uppercase tracking-wide text-muted">
+            {field.label}
+          </dt>
+          <dd class="text-[12px] text-base-content">{value}</dd>
+        <% end %>
+      </dl>
+    </div>
+    """
+  end
+
+  # The inline edit form that replaces the row while `editing_{list} == i`.
+  # A single stacked form for name + every non-locked field, submits
+  # `update_{list}` and gets authorized server-side against `can_edit_row?/3`.
+  attr :list, :string, required: true, values: ~w(main wait)
+  attr :index, :integer, required: true
+  attr :attendee, Attendee, required: true
+  attr :extra_fields, :list, required: true
+
+  defp attendee_edit_form(assigns) do
+    ~H"""
+    <form
+      phx-submit={"update_#{@list}"}
+      phx-value-index={@index}
+      class="space-y-2 border-b border-ink/6 px-3.5 py-3"
+      autocomplete="off"
+    >
+      <label class="block">
+        <span class="mb-1 block text-[11px] font-bold text-muted">Nome</span>
+        <input
+          type="text"
+          name="name"
+          value={@attendee.name}
+          class={[field_class(), "w-full"]}
+          maxlength="60"
+          data-1p-ignore="true"
+          data-lpignore="true"
+          data-bwignore="true"
+          data-form-type="other"
+          autofocus
+        />
+      </label>
+
+      <label :for={field <- @extra_fields} class="block">
+        <span class="mb-1 block text-[11px] font-bold text-muted">
+          {field.label}{if field.required, do: " *"}
+        </span>
+        <input
+          type={field.type}
+          name={"values[#{field.id}]"}
+          value={Map.get(@attendee.values || %{}, field.id, "")}
+          class={[field_class(), "w-full"]}
+          maxlength="200"
+          placeholder={field.placeholder}
+          data-1p-ignore="true"
+          data-lpignore="true"
+          data-bwignore="true"
+          data-form-type="other"
+        />
+      </label>
+
+      <div class="flex items-center justify-end gap-2 pt-1">
+        <button
+          type="button"
+          phx-click="cancel_edit"
+          class="px-2 py-1.5 text-[11px] font-bold text-muted"
+        >
+          Cancelar
+        </button>
+        <button
+          type="submit"
+          class="rounded-lg bg-ink px-2.5 py-1.5 text-[11px] font-bold text-ink-content"
+        >
+          Salvar
+        </button>
+      </div>
+    </form>
     """
   end
 
@@ -682,13 +844,23 @@ defmodule RolezinhoWeb.EventLive do
   end
 
   def handle_event("start_edit_main", %{"index" => index}, socket) do
-    require_admin!(socket)
-    {:noreply, assign(socket, :editing_main, String.to_integer(index))}
+    with {:ok, position} <- parse_position(index),
+         %Attendee{} = attendee <- fetch_row(socket.assigns.event, :main, position),
+         true <- Policy.can_edit_row?(socket.assigns.event, attendee, policy_opts(socket)) do
+      {:noreply, assign(socket, :editing_main, position)}
+    else
+      _ -> {:noreply, socket}
+    end
   end
 
   def handle_event("start_edit_wait", %{"index" => index}, socket) do
-    require_admin!(socket)
-    {:noreply, assign(socket, :editing_wait, String.to_integer(index))}
+    with {:ok, position} <- parse_position(index),
+         %Attendee{} = attendee <- fetch_row(socket.assigns.event, :wait, position),
+         true <- Policy.can_edit_row?(socket.assigns.event, attendee, policy_opts(socket)) do
+      {:noreply, assign(socket, :editing_wait, position)}
+    else
+      _ -> {:noreply, socket}
+    end
   end
 
   def handle_event("cancel_edit", _params, socket) do
@@ -713,6 +885,36 @@ defmodule RolezinhoWeb.EventLive do
      socket
      |> assign_event(event)
      |> assign(:editing_wait, nil)}
+  end
+
+  # Update path used by the row-owner flow: name + form-field answers in one
+  # submit. The permission check runs on the resolved attendee: a stale index
+  # or someone else's row silently fails, matching the row-action pattern in
+  # `authorize_row/5`.
+  def handle_event("update_main", %{"index" => index} = params, socket),
+    do: do_update_row(socket, :main, index, params)
+
+  def handle_event("update_wait", %{"index" => index} = params, socket),
+    do: do_update_row(socket, :wait, index, params)
+
+  # Disclosure toggle for the extras panel. Multiple rows can be open at
+  # once (an organizer scanning a list wants to compare answers), so this
+  # is a MapSet of `{list, index}` rather than a single value.
+  def handle_event("toggle_row_extras", %{"list" => list, "index" => index}, socket) do
+    with {:ok, position} <- parse_position(index),
+         {:ok, list_atom} <- parse_list(list) do
+      key = {list_atom, position}
+      set = socket.assigns.expanded_rows
+
+      new_set =
+        if MapSet.member?(set, key),
+          do: MapSet.delete(set, key),
+          else: MapSet.put(set, key)
+
+      {:noreply, assign(socket, :expanded_rows, new_set)}
+    else
+      _ -> {:noreply, socket}
+    end
   end
 
   def handle_event("grow_main", _params, socket) do
@@ -795,6 +997,37 @@ defmodule RolezinhoWeb.EventLive do
   defp allowed_to_toggle_share_password?(socket) do
     socket.assigns.unlocked? and Event.password_protected?(socket.assigns.event)
   end
+
+  # Shared plumbing for the row-owner update flow. Kept next to
+  # `authorize_row/5` because it's the same shape: parse position, resolve
+  # row, ask policy, run operation — the only difference is that this one
+  # takes a params map instead of a fixed op.
+  defp do_update_row(socket, list, raw_index, params) do
+    with {:ok, position} <- parse_position(raw_index),
+         %Attendee{} = attendee <- fetch_row(socket.assigns.event, list, position),
+         true <- Policy.can_edit_row?(socket.assigns.event, attendee, policy_opts(socket)),
+         {:ok, event} <- persist_row_update(socket.assigns.event, list, position, params) do
+      {:noreply,
+       socket
+       |> assign_event(event)
+       |> clear_editing(list)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  defp persist_row_update(event, :main, position, params),
+    do: Events.update_main(event, position, params)
+
+  defp persist_row_update(event, :wait, position, params),
+    do: Events.update_wait(event, position, params)
+
+  defp clear_editing(socket, :main), do: assign(socket, :editing_main, nil)
+  defp clear_editing(socket, :wait), do: assign(socket, :editing_wait, nil)
+
+  defp parse_list("main"), do: {:ok, :main}
+  defp parse_list("wait"), do: {:ok, :wait}
+  defp parse_list(_), do: :error
 
   defp require_admin!(socket) do
     unless socket.assigns.current_admin? do
@@ -1021,32 +1254,12 @@ defmodule RolezinhoWeb.EventLive do
           <ol class="overflow-hidden rounded-row border border-hairline bg-base-100">
             <li :for={{%Attendee{} = att, i} <- Enum.with_index(@event.main_list, 1)}>
               <%= if @editing_main == i do %>
-                <form
-                  phx-submit="rename_main"
-                  phx-value-index={i}
-                  class="flex items-center gap-2 border-b border-ink/6 px-3.5 py-2.5"
-                >
-                  <input
-                    type="text"
-                    name="name"
-                    value={att.name}
-                    class={[field_class(), "flex-1"]}
-                    autofocus
-                  />
-                  <button
-                    type="submit"
-                    class="shrink-0 rounded-lg bg-ink px-2.5 py-1.5 text-[11px] font-bold text-ink-content"
-                  >
-                    Salvar
-                  </button>
-                  <button
-                    type="button"
-                    phx-click="cancel_edit"
-                    class="shrink-0 px-2 py-1.5 text-[11px] font-bold text-muted"
-                  >
-                    Cancelar
-                  </button>
-                </form>
+                <.attendee_edit_form
+                  list="main"
+                  index={i}
+                  attendee={att}
+                  extra_fields={@extra_fields}
+                />
               <% else %>
                 <!-- An organizer going down eighteen rows gets the gesture as an
                      accelerator. It is never the only way in: the same actions
@@ -1067,6 +1280,8 @@ defmodule RolezinhoWeb.EventLive do
                     current_admin?={@current_admin?}
                     organizer?={@organizer?}
                     can_join?={@can_join?}
+                    policy_opts={@policy_opts}
+                    extra_fields={@extra_fields}
                   />
                 </.swipe_actions>
 
@@ -1080,6 +1295,17 @@ defmodule RolezinhoWeb.EventLive do
                   current_admin?={@current_admin?}
                   organizer?={@organizer?}
                   can_join?={@can_join?}
+                  policy_opts={@policy_opts}
+                  extra_fields={@extra_fields}
+                />
+
+                <.attendee_extras
+                  :if={@unlocked? and show_extras_panel?(att, @extra_fields)}
+                  list="main"
+                  index={i}
+                  attendee={att}
+                  extra_fields={@extra_fields}
+                  expanded?={MapSet.member?(@expanded_rows, {:main, i})}
                 />
               <% end %>
             </li>
@@ -1121,100 +1347,88 @@ defmodule RolezinhoWeb.EventLive do
           <ol :if={@event.wait_list != []} class="space-y-2">
             <li
               :for={{%Attendee{} = att, i} <- Enum.with_index(@event.wait_list, 1)}
-              class="flex items-center gap-3 rounded-xl bg-base-200 px-3 py-2"
+              class="rounded-xl bg-base-200"
             >
-              <span class="text-sm font-mono w-8 text-right text-base-content/50">{i}.</span>
+              <%= if @editing_wait == i do %>
+                <.attendee_edit_form
+                  list="wait"
+                  index={i}
+                  attendee={att}
+                  extra_fields={@extra_fields}
+                />
+              <% else %>
+                <div class="flex items-center gap-3 px-3 py-2">
+                  <span class="text-sm font-mono w-8 text-right text-base-content/50">{i}.</span>
 
-              <%= cond do %>
-                <% @editing_wait == i -> %>
-                  <form
-                    phx-submit="rename_wait"
-                    phx-value-index={i}
-                    class="flex-1 flex items-center gap-2"
-                  >
-                    <input
-                      type="text"
-                      name="name"
-                      value={att.name}
-                      class={[field_class(), "px-2 py-1 flex-1"]}
-                      autofocus
-                    />
-                    <button
-                      type="submit"
-                      class="rounded-lg bg-ink px-2.5 py-1.5 text-[11px] font-bold text-ink-content"
-                    >Salvar</button>
-                    <button
-                      type="button"
-                      phx-click="cancel_edit"
-                      class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-3 py-1.5 hover:bg-base-200"
-                    >Cancelar</button>
-                  </form>
-                <% true -> %>
                   <span class={[
-                    "flex-1 truncate font-medium",
+                    "flex-1 min-w-0 truncate font-medium",
                     not @unlocked? && "tracking-widest text-base-content/60"
                   ]}>
-                    {display_name(att.name, @unlocked?)}
+                    <span class="align-middle">{display_name(att.name, @unlocked?)}</span>
+                    <span
+                      :if={@unlocked? and inline_value_hint(att, @extra_fields)}
+                      class="ml-1.5 align-middle text-[11px] font-normal text-muted"
+                    >· {inline_value_hint(att, @extra_fields)}</span>
                   </span>
+
+                  <div class="flex items-center gap-1 shrink-0">
+                    <!-- Same rationale as before: promotion stays visible while
+                         the main list is full, only disabled, so the queue
+                         never reads as a row that lost its only action. -->
+                    <button
+                      :if={@can_promote?}
+                      type="button"
+                      phx-click="promote"
+                      phx-value-index={i}
+                      disabled={Event.main_full?(@event)}
+                      class={[
+                        "rounded-lg px-2.5 py-1.5 text-[10px] font-bold",
+                        if(Event.main_full?(@event),
+                          do: "cursor-not-allowed border border-hairline text-muted",
+                          else: "bg-ink text-ink-content"
+                        )
+                      ]}
+                      title={
+                        if Event.main_full?(@event),
+                          do: "A lista principal está cheia",
+                          else: "Promover para a lista principal"
+                      }
+                    >
+                      <.icon name="tabler-arrow-up" class="size-3.5" /> Promover
+                    </button>
+                    <button
+                      :if={@unlocked? and Policy.can_edit_row?(@event, att, @policy_opts)}
+                      type="button"
+                      phx-click="start_edit_wait"
+                      phx-value-index={i}
+                      class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-2 py-1 text-xs hover:bg-base-200"
+                      title="Editar"
+                    >
+                      <.icon name="tabler-pencil" class="size-3.5" />
+                    </button>
+                    <button
+                      :if={@current_admin?}
+                      type="button"
+                      phx-click="remove_wait"
+                      phx-value-index={i}
+                      data-confirm="Remover da reserva?"
+                      class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-2 py-1 text-xs hover:bg-base-200 text-error"
+                      title="Remover"
+                    >
+                      <.icon name="tabler-x" class="size-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <.attendee_extras
+                  :if={@unlocked? and show_extras_panel?(att, @extra_fields)}
+                  list="wait"
+                  index={i}
+                  attendee={att}
+                  extra_fields={@extra_fields}
+                  expanded?={MapSet.member?(@expanded_rows, {:wait, i})}
+                />
               <% end %>
-
-              <div class="flex items-center gap-1 shrink-0">
-                <!-- No payment check here: somebody on the queue has not got a
-                     place yet, so they owe nothing. Money is settled on the main
-                     list, once they are actually in.
-
-                     Kept visible while the main list is full, only disabled: the
-                     queue exists precisely because it is full, so hiding the one
-                     action the queue has at that moment left the row with nothing
-                     to do.
-
-                     Outlined while unavailable rather than a faded solid: a full
-                     main list is the queue's ordinary state, so every row would
-                     have carried a greyed-out slab and the whole card read as
-                     broken. This reads as waiting for a slot instead. -->
-                <button
-                  :if={@can_promote? and @editing_wait != i}
-                  type="button"
-                  phx-click="promote"
-                  phx-value-index={i}
-                  disabled={Event.main_full?(@event)}
-                  class={[
-                    "rounded-lg px-2.5 py-1.5 text-[10px] font-bold",
-                    if(Event.main_full?(@event),
-                      do: "cursor-not-allowed border border-hairline text-muted",
-                      else: "bg-ink text-ink-content"
-                    )
-                  ]}
-                  title={
-                    if Event.main_full?(@event),
-                      do: "A lista principal está cheia",
-                      else: "Promover para a lista principal"
-                  }
-                >
-                  <.icon name="tabler-arrow-up" class="size-3.5" /> Promover
-                </button>
-                <button
-                  :if={@current_admin? and @editing_wait != i}
-                  type="button"
-                  phx-click="start_edit_wait"
-                  phx-value-index={i}
-                  class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-2 py-1 text-xs hover:bg-base-200"
-                  title="Editar nome"
-                >
-                  <.icon name="tabler-pencil" class="size-3.5" />
-                </button>
-                <button
-                  :if={@current_admin? and @editing_wait != i}
-                  type="button"
-                  phx-click="remove_wait"
-                  phx-value-index={i}
-                  data-confirm="Remover da reserva?"
-                  class="inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm px-2 py-1 text-xs hover:bg-base-200 text-error"
-                  title="Remover"
-                >
-                  <.icon name="tabler-x" class="size-3.5" />
-                </button>
-              </div>
             </li>
           </ol>
 

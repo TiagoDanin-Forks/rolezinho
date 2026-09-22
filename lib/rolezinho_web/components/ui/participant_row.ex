@@ -53,6 +53,10 @@ defmodule RolezinhoWeb.Components.UI.ParticipantRow do
 
   slot :actions, doc: "trailing admin actions (remove, promote)"
 
+  slot :name_suffix,
+    doc:
+      "tiny inline content rendered right after the name (e.g. a single form-field value). Only rendered when the row has a name."
+
   def participant_row(assigns) do
     assigns = assign(assigns, :empty?, blank?(assigns.name))
 
@@ -68,8 +72,11 @@ defmodule RolezinhoWeb.Components.UI.ParticipantRow do
       <span :if={@empty?} class="flex-1 text-[13px] font-semibold text-ink/30">
         {@empty_label}
       </span>
-      <span :if={not @empty?} class={["flex-1 text-[13px]", name_classes(@highlighted)]}>
-        {@name}
+      <span :if={not @empty?} class={["flex-1 text-[13px] min-w-0", name_classes(@highlighted)]}>
+        <span class="truncate align-middle">{@name}</span>
+        <span :if={@name_suffix != []} class="ml-1.5 align-middle text-[11px] font-normal text-muted">
+          {render_slot(@name_suffix)}
+        </span>
       </span>
 
       <button

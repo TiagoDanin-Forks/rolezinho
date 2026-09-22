@@ -96,6 +96,28 @@ defmodule Rolezinho.Event.Policy do
   end
 
   @doc """
+  Returns true when the caller may edit `attendee`'s name and form answers.
+
+  Same permission set as `can_remove?/3`: admin and organizer can edit any
+  row; a participant can edit their own row (by either identity). Fixing a
+  typo in your own name or answer is not a decision anyone else should have
+  to gate.
+
+  Kept as a dedicated function rather than reusing `can_remove?` so call
+  sites read as what they do — the two decisions may diverge later (a
+  frozen event that no longer accepts removals could still allow edits, or
+  vice-versa) and there is no risk of one bug becoming two.
+  """
+  @spec can_edit_row?(Event.t(), Attendee.t(), keyword()) :: boolean()
+  def can_edit_row?(%Event{} = event, %Attendee{} = attendee, opts) do
+    case role(event, opts) do
+      role when role in [:organizer, :admin] -> true
+      :participant -> owns?(attendee, opts)
+      :visitor -> false
+    end
+  end
+
+  @doc """
   Returns true when the caller may edit the event itself.
 
   RN-23: title, location, time, price and the Pix key belong to the organizer.

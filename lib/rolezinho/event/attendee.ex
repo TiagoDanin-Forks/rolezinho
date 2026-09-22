@@ -30,8 +30,11 @@ defmodule Rolezinho.Event.Attendee do
     field :user_id, :integer
     field :joined_at, :utc_datetime
 
-    # Answers to the organizer's custom fields. Scoped to the event and visible
-    # to the organizer — never rendered in the public list.
+    # Answers to the organizer's custom fields. Scoped to the event; visible
+    # on `/r/:slug` to anyone who can see the list at all (behind the same
+    # unlock gate that hides names on a password-protected event). Editable
+    # by admin, organizer, and the attendee themselves — see
+    # `Event.Policy.can_edit_row?/3`.
     field :values, :map, default: %{}
   end
 

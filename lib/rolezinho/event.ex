@@ -624,6 +624,61 @@ defmodule Rolezinho.Event do
     %{event | wait_list: list}
   end
 
+  @doc """
+  Updates a main-list attendee's name and/or form answers in place.
+
+  `attrs` may carry:
+
+    * `:name` — a string; if omitted the current name is kept. Cleaned
+      through `clean_name/1` so an all-whitespace value never blanks a
+      row (mirroring `rename_main/3`'s guardrail).
+    * `:values` — a map keyed by form-field id; **replaces** the current
+      values entirely (the caller is responsible for merging what to keep).
+      Callers going through `Rolezinho.Events.update_main/3` get that
+      merging + sanitizing for free.
+
+  Empty attrs (`%{}`) is a no-op and returns the event unchanged — handy
+  for controllers that receive nothing to change and want to short-circuit.
+  """
+  @spec update_main(t(), pos_integer(), map()) :: t()
+  def update_main(%Event{} = event, index, attrs) when is_map(attrs) do
+    list = update_at(event.main_list, index - 1, &apply_row_updates(&1, attrs))
+    %{event | main_list: list}
+  end
+
+  @doc """
+  Same as `update_main/3`, for a wait-list row.
+  """
+  @spec update_wait(t(), pos_integer(), map()) :: t()
+  def update_wait(%Event{} = event, index, attrs) when is_map(attrs) do
+    list = update_at(event.wait_list, index - 1, &apply_row_updates(&1, attrs))
+    %{event | wait_list: list}
+  end
+
+  # A blank/whitespace `:name` falls back to the current one so an owner
+  # editing only their answer never blanks the row. Missing `:values` is
+  # left untouched; an explicit `values: %{}` clears every answer, which
+  # is the honest interpretation of "the sanitized map came back empty".
+  defp apply_row_updates(%Attendee{} = attendee, attrs) do
+    attendee
+    |> maybe_update_name(Map.get(attrs, :name))
+    |> maybe_update_values(Map.get(attrs, :values, :__missing__))
+  end
+
+  defp maybe_update_name(%Attendee{} = attendee, nil), do: attendee
+
+  defp maybe_update_name(%Attendee{} = attendee, value) when is_binary(value) do
+    case clean_name(value) do
+      "" -> attendee
+      cleaned -> %{attendee | name: cleaned}
+    end
+  end
+
+  defp maybe_update_values(%Attendee{} = attendee, :__missing__), do: attendee
+
+  defp maybe_update_values(%Attendee{} = attendee, values) when is_map(values),
+    do: %{attendee | values: values}
+
   @doc "Promotes the wait list entry at `index` (1-based) to the first empty main slot."
   @spec promote(t(), pos_integer()) :: {:ok, t()} | {:error, atom()}
   def promote(%Event{} = event, index) do

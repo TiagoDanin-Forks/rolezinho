@@ -858,6 +858,57 @@ defmodule Rolezinho.Events do
   end
 
   @doc """
+  Renames an existing form field.
+
+  Only the human-facing `:label` moves; the field's `:id` (the key under
+  which every attendee's answer is stored on `attendee.values`) stays
+  immutable, so historical rows keep resolving to the same field. Same
+  reasoning as event slugs: renaming a stable identifier would silently
+  orphan every row that ever answered.
+
+  Locked fields (the built-in name) cannot be renamed — the label there is
+  part of the product's vocabulary, not the organizer's.
+
+  Returns `{:ok, event}` on success and `{:error, reason}` on:
+
+    * `:empty_label` — blank or whitespace-only label,
+    * `:label_too_long` — more than 40 chars (matches `FormField.changeset`),
+    * `:not_found` — no field with that id on this event,
+    * `:locked_field` — attempt to rename the name field.
+  """
+  @spec rename_form_field(Event.t(), String.t(), String.t()) ::
+          {:ok, Event.t()} | {:error, term()}
+  def rename_form_field(%Event{} = event, id, new_label) when is_binary(new_label) do
+    fields = form_fields(event)
+    trimmed = String.trim(new_label)
+
+    cond do
+      trimmed == "" ->
+        {:error, :empty_label}
+
+      String.length(trimmed) > 40 ->
+        {:error, :label_too_long}
+
+      true ->
+        case Enum.find(fields, &(&1.id == id)) do
+          nil ->
+            {:error, :not_found}
+
+          %FormField{locked: true} ->
+            {:error, :locked_field}
+
+          _ ->
+            updated =
+              Enum.map(fields, fn field ->
+                if field.id == id, do: %{field | label: trimmed}, else: field
+              end)
+
+            save(%{event | form_fields: updated})
+        end
+    end
+  end
+
+  @doc """
   Flips whether a question must be answered.
 
   A locked field cannot become optional — a row with no name is not a row.
@@ -912,6 +963,115 @@ defmodule Rolezinho.Events do
   def toggle_paid_wait(%Event{} = event, index), do: save(Event.toggle_paid_wait(event, index))
   def rename_main(%Event{} = event, index, name), do: save(Event.rename_main(event, index, name))
   def rename_wait(%Event{} = event, index, name), do: save(Event.rename_wait(event, index, name))
+
+  @doc """
+  Updates a main-list attendee's name and form answers in one shot.
+
+  `params` is a map that may carry a `"name"` (string) and a `"values"`
+  (map keyed by form-field id). Missing keys leave the current value in
+  place: an owner fixing their shirt size never has to retype their name,
+  and vice-versa.
+
+  Values are sanitized the same way `JoinController` sanitizes joins —
+  unknown/locked keys are dropped, strings are trimmed and capped at 200
+  chars — so this path is not a way around the join gate.
+  """
+  @spec update_main(Event.t(), pos_integer(), map()) :: {:ok, Event.t()} | {:error, map()}
+  def update_main(%Event{} = event, index, params) when is_map(params) do
+    save(Event.update_main(event, index, sanitize_update_params(event, params)))
+  end
+
+  @doc """
+  Same as `update_main/3`, for a wait-list row.
+  """
+  @spec update_wait(Event.t(), pos_integer(), map()) :: {:ok, Event.t()} | {:error, map()}
+  def update_wait(%Event{} = event, index, params) when is_map(params) do
+    save(Event.update_wait(event, index, sanitize_update_params(event, params)))
+  end
+
+  @doc """
+  Sanitizes a raw params map coming from an update form into the internal
+  shape `Event.update_main/3` and friends expect (`%{name:, values:}`).
+
+  Only fields the event actually asks (non-locked) contribute to `:values`.
+  Anything else in the map is ignored, so a hostile browser cannot invent
+  keys nobody asked about — same rule as `JoinController.collect_answers/2`.
+  Blank strings become nil for the name (falls back to "leave as is" at
+  the schema layer) and drop the value entry entirely.
+  """
+  @spec sanitize_update_params(Event.t(), map()) :: %{
+          optional(:name) => String.t() | nil,
+          optional(:values) => map()
+        }
+  def sanitize_update_params(%Event{} = event, params) when is_map(params) do
+    name = params |> Map.get("name") |> sanitize_name()
+
+    # Only include `:values` when the caller actually sent them. Passing an
+    # empty map otherwise would silently wipe the row's stored answers on a
+    # name-only edit — the schema layer takes `:values` as a full replacement.
+    values_key_present? = Map.has_key?(params, "values")
+
+    values =
+      if values_key_present?,
+        do: sanitize_answers(event, Map.get(params, "values", %{})),
+        else: nil
+
+    %{}
+    |> maybe_put(:name, name)
+    |> maybe_put(:values, values)
+  end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  # The name arrives from an unauthenticated form: trim it, and treat blank
+  # as "no change" (the schema-level `clean_name` would coerce to "", which
+  # would blank a valid row). Length is enforced by `Attendee.changeset/2`.
+  defp sanitize_name(nil), do: nil
+
+  defp sanitize_name(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      other -> other
+    end
+  end
+
+  defp sanitize_name(_), do: nil
+
+  @doc """
+  Sanitizes a raw values map to the subset of keys this event asks for.
+
+  Locked fields (the built-in `name`) are excluded — they live on the
+  attendee row, not in `values`. Each accepted value is trimmed and capped
+  at 200 chars, mirroring the join controller's sanitizer.
+  """
+  @spec sanitize_answers(Event.t(), map()) :: map()
+  def sanitize_answers(%Event{} = event, values) when is_map(values) do
+    allowed_ids =
+      event
+      |> form_fields()
+      |> Enum.reject(& &1.locked)
+      |> Enum.map(& &1.id)
+      |> MapSet.new()
+
+    values
+    |> Enum.reduce(%{}, fn {key, raw}, acc ->
+      id = to_string(key)
+
+      if MapSet.member?(allowed_ids, id) do
+        trimmed = raw |> to_string() |> String.trim()
+
+        cond do
+          trimmed == "" -> acc
+          true -> Map.put(acc, id, String.slice(trimmed, 0, 200))
+        end
+      else
+        acc
+      end
+    end)
+  end
+
+  def sanitize_answers(%Event{}, _), do: %{}
 
   def promote(%Event{} = event, index) do
     with :ok <- ensure_signups_open(event),

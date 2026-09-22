@@ -9,9 +9,15 @@ defmodule Rolezinho.Event.FormField do
   Name is locked (RN-60): it identifies the row, so removing it would leave the
   list with nothing to display, and making it optional would allow blank rows.
 
-  Answers live on the attendee and belong to that event alone (RN-62). They are
-  visible to the organizer and never rendered in the public list — a shirt size
-  is between the two of them, not something the group reads.
+  Answers live on the attendee and belong to that event alone (RN-62). They
+  are visible to anyone who can see the list at all: on `/r/:slug` the row
+  shows the value inline (single-field case) or under a disclosure toggle
+  (multi-field case). A password-gated event keeps the whole thing hidden
+  until the unlock lands, so the gate that hides names hides the answers
+  with them.
+
+  Editing follows `Event.Policy.can_edit_row?/3`: admin, organizer, or the
+  attendee themselves — the same permission set as removal.
   """
 
   use Ecto.Schema

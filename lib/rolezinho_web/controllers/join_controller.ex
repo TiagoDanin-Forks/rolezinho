@@ -87,20 +87,25 @@ defmodule RolezinhoWeb.JoinController do
   # Answers to the organizer's questions (RN-62). Only the fields this event
   # actually asks for are read: anything else in the body is somebody sending
   # keys nobody asked about, and it does not get stored.
+  #
+  # Two-step: first enforce required-field presence against the raw params
+  # (the join screen is the one moment we *ask* for these, so a missing
+  # required field is an error, not a silent drop); then delegate the actual
+  # trim/cap/allow-list shaping to `Events.sanitize_answers/2` so the join
+  # and edit paths agree on what a valid stored value looks like.
   defp collect_answers(%Event{} = event, params) do
     fields = event |> Events.form_fields() |> Enum.reject(& &1.locked)
 
-    Enum.reduce_while(fields, {:ok, %{}}, fn field, {:ok, acc} ->
-      value = params |> Map.get(field.id, "") |> to_string() |> String.trim()
+    missing =
+      Enum.find(fields, fn field ->
+        field.required and
+          params |> Map.get(field.id, "") |> to_string() |> String.trim() == ""
+      end)
 
-      cond do
-        value == "" and field.required -> {:halt, {:error, {:missing_field, field.label}}}
-        value == "" -> {:cont, {:ok, acc}}
-        # Bounded like every other anonymous write: an unbounded answer is a way
-        # to fill the column.
-        true -> {:cont, {:ok, Map.put(acc, field.id, String.slice(value, 0, 200))}}
-      end
-    end)
+    case missing do
+      nil -> {:ok, Events.sanitize_answers(event, params)}
+      field -> {:error, {:missing_field, field.label}}
+    end
   end
 
   # A party size arriving from the client is bounded here, not trusted: the
