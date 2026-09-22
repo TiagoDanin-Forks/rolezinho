@@ -28,7 +28,7 @@ defmodule RolezinhoWeb.Components.UI.StatusPill do
     ~H"""
     <span
       class={[
-        "inline-flex items-center rounded-row px-3 py-[7px] text-[11px] font-bold",
+        "inline-flex shrink-0 items-center whitespace-nowrap rounded-row px-3 py-[7px] text-[11px] font-bold",
         tone_classes(@tone),
         @class
       ]}
