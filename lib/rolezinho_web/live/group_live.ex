@@ -318,7 +318,7 @@ defmodule RolezinhoWeb.GroupLive do
           <% end %>
         </.empty_state>
 
-        <ul :if={@events != []} class="space-y-2.5">
+        <ul :if={@events != []} class="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3">
           <li :for={event <- @events}>
             <.role_card
               title={event.title}
@@ -337,7 +337,7 @@ defmodule RolezinhoWeb.GroupLive do
 
       <section
         :if={@editable?}
-        class="rounded-card border border-hairline bg-base-100 p-4 shadow-card"
+        class="rounded-card border border-hairline bg-base-100 p-4 shadow-card sm:max-w-[36rem]"
       >
         <h2 class="text-[13px] font-extrabold mb-3">Nome do grupo</h2>
         <form
@@ -374,7 +374,7 @@ defmodule RolezinhoWeb.GroupLive do
 
       <section
         :if={@editable? and @password_protected?}
-        class="rounded-card border border-hairline bg-base-100 p-4 shadow-card"
+        class="rounded-card border border-hairline bg-base-100 p-4 shadow-card sm:max-w-[36rem]"
       >
         <h2 class="text-[13px] font-extrabold mb-3">Senha do grupo</h2>
         <p class="text-[11px] text-muted mb-3">

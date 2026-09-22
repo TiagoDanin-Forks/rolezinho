@@ -866,44 +866,37 @@ defmodule RolezinhoWeb.EventLive do
         <button
           type="button"
           phx-click={BottomSheet.show("join-sheet")}
-          class="w-full rounded-cta bg-ink px-4 py-4 text-[15px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          class="mx-auto block w-full max-w-[36rem] rounded-cta bg-ink px-4 py-4 text-[15px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
           {join_label(@event)}
         </button>
       </:action>
 
-      <article class="space-y-8">
+      <article class="mx-auto max-w-[36rem] space-y-8">
         <header class="space-y-3">
-          <div class="flex items-center gap-2 text-xs text-base-content/50">
+          <div class="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-muted">
             <.link
               :if={@group_crumb}
               navigate={~p"/g/#{@group_crumb.slug}"}
-              class="hover:text-base-content"
+              class="shrink-0 whitespace-nowrap hover:text-ink"
             >← {@group_crumb.name}</.link>
-            <.link :if={is_nil(@group_crumb)} navigate={~p"/"} class="hover:text-base-content">← Rolezinhos</.link>
-            <span>·</span>
-            <span>/r/{@event.slug}</span>
-            <span
-              :if={@event.status == :hidden}
-              class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-warning/15 text-warning"
-            >Oculto</span>
-            <span
-              :if={@event.status == :done}
-              class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-base-300 text-base-content"
-            >Concluído</span>
-            <span
+            <.link
+              :if={is_nil(@group_crumb)}
+              navigate={~p"/"}
+              class="shrink-0 whitespace-nowrap hover:text-ink"
+            >← Rolezinhos</.link>
+            <span class="shrink-0">·</span>
+            <span class="min-w-0 truncate">/r/{@event.slug}</span>
+            <.crumb_badge :if={@event.status == :hidden} tone="warning">Oculto</.crumb_badge>
+            <.crumb_badge :if={@event.status == :done} tone="neutral">Concluído</.crumb_badge>
+            <.crumb_badge
               :if={@event.status == :maybe}
-              class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-info/15 text-info"
+              tone="info"
               title={Event.maybe_status_hint()}
-            >Averiguando Resenha</span>
-            <span
-              :if={@signups_locked?}
-              class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-info/15 text-info"
-            >Só pagamentos</span>
-            <span
-              :if={@password_protected?}
-              class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border border-base-300"
-            >Com senha</span>
+            >
+              Averiguando Resenha
+            </.crumb_badge>
+            <.crumb_badge :if={@signups_locked?} tone="info">Só pagamentos</.crumb_badge>
           </div>
 
           <!-- Screen actions belong beside the title. Loose between two cards
@@ -1574,6 +1567,29 @@ defmodule RolezinhoWeb.EventLive do
   defp url_for(%Event{slug: slug}) do
     RolezinhoWeb.Endpoint.url() <> "/r/" <> slug
   end
+
+  # ---------- Breadcrumb status badges ----------
+
+  attr :tone, :string, required: true, values: ~w(warning info neutral)
+  attr :rest, :global
+
+  slot :inner_block, required: true
+
+  defp crumb_badge(assigns) do
+    ~H"""
+    <span
+      class={[
+        "inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium",
+        crumb_badge_tone(@tone)
+      ]}
+      {@rest}
+    >{render_slot(@inner_block)}</span>
+    """
+  end
+
+  defp crumb_badge_tone("warning"), do: "bg-warning/15 text-warning"
+  defp crumb_badge_tone("info"), do: "bg-info/15 text-info"
+  defp crumb_badge_tone("neutral"), do: "bg-ink/[0.08] text-muted"
 
   # ---------- Payments-only banner + unlock panel ----------
 

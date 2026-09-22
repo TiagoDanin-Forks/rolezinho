@@ -41,7 +41,7 @@ defmodule RolezinhoWeb.Layouts do
     ~H"""
     <div class="flex h-dvh flex-col bg-canvas">
       <main class="flex-1 overflow-y-auto overscroll-contain px-5 pb-6 pt-[max(2rem,env(safe-area-inset-top))]">
-        <div class="mx-auto max-w-[420px]">
+        <div class="mx-auto max-w-[420px] md:max-w-[52rem] xl:max-w-[72rem]">
           {render_slot(@inner_block)}
         </div>
       </main>
@@ -50,7 +50,9 @@ defmodule RolezinhoWeb.Layouts do
         :if={@action != []}
         class="shrink-0 border-t border-hairline bg-canvas px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
       >
-        <div class="mx-auto max-w-[420px]">{render_slot(@action)}</div>
+        <div class="mx-auto max-w-[420px] md:max-w-[52rem] xl:max-w-[72rem]">
+          {render_slot(@action)}
+        </div>
       </div>
     </div>
 

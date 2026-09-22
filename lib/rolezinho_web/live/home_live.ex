@@ -84,7 +84,7 @@ defmodule RolezinhoWeb.HomeLive do
       current_user={@current_user}
       page_title={@page_title}
     >
-      <div id="home" phx-hook=".RecentEvents" class="mx-auto max-w-[560px]">
+      <div id="home" phx-hook=".RecentEvents">
         <header class="flex items-end justify-between gap-4">
           <div class="min-w-0">
             <h1 class="text-2xl font-extrabold tracking-tight">Rolezinhos</h1>
@@ -113,7 +113,11 @@ defmodule RolezinhoWeb.HomeLive do
           </div>
         </header>
 
-        <ul :if={@groups != []} id="group-list" class="mt-4 space-y-2.5">
+        <ul
+          :if={@groups != []}
+          id="group-list"
+          class="mt-4 grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3"
+        >
           <li :for={group <- @groups}>
             <.link
               navigate={~p"/g/#{group.slug}"}
@@ -183,7 +187,10 @@ defmodule RolezinhoWeb.HomeLive do
           {empty_body(@category)}
         </.empty_state>
 
-        <ul :if={@visible != []} class="mt-4 space-y-2.5">
+        <ul
+          :if={@visible != []}
+          class="mt-4 grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3"
+        >
           <li :for={event <- @visible}>
             <.role_card
               title={event.title}
