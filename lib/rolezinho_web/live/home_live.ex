@@ -190,6 +190,7 @@ defmodule RolezinhoWeb.HomeLive do
               when_text={when_text(event)}
               category={event.category}
               status={status_for(event)}
+              status_hint={status_hint(event)}
               filled={filled_count(event)}
               capacity={event.main_capacity}
               names={attendee_names(event)}
@@ -228,10 +229,17 @@ defmodule RolezinhoWeb.HomeLive do
 
   defp status_for(%Event{status: :payments_only}), do: "payments_only"
   defp status_for(%Event{status: :done}), do: "done"
+  defp status_for(%Event{status: :maybe}), do: "maybe"
 
   defp status_for(%Event{} = event) do
     if Event.main_full?(event), do: "full", else: "open"
   end
+
+  # The tooltip explaining what "Averiguando Resenha" means. Only the
+  # tentative status carries one — the other pills speak for themselves
+  # ("Vagas abertas", "Lista cheia") and don't need a hover.
+  defp status_hint(%Event{status: :maybe}), do: Event.maybe_status_hint()
+  defp status_hint(%Event{}), do: nil
 
   defp when_text(%Event{starts_at: nil}), do: nil
 

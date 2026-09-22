@@ -493,7 +493,7 @@ defmodule RolezinhoWeb.EventEditLive do
              one is selected. -->
         <div class="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Status do rolê">
           <button
-            :for={status <- [:active, :payments_only, :hidden, :done]}
+            :for={status <- [:active, :maybe, :payments_only, :hidden, :done]}
             type="button"
             role="radio"
             aria-checked={to_string(@event.status == status)}
@@ -513,7 +513,10 @@ defmodule RolezinhoWeb.EventEditLive do
              bold stopped, and choosing a status means comparing them. One per
              line, so scanning down the terms is enough. -->
         <dl class="mt-3 space-y-1.5 text-[11px] leading-relaxed text-muted">
-          <div :for={status <- [:active, :payments_only, :hidden, :done]} class="flex gap-1.5">
+          <div
+            :for={status <- [:active, :maybe, :payments_only, :hidden, :done]}
+            class="flex gap-1.5"
+          >
             <dt class="shrink-0 font-bold">{status_label(status)}:</dt>
             <dd class="flex-1">{status_description(status)}</dd>
           </div>
@@ -714,6 +717,10 @@ defmodule RolezinhoWeb.EventEditLive do
 
   defp status_description(:active), do: "aparece na página inicial e aceita novas inscrições."
 
+  defp status_description(:maybe),
+    do:
+      "aparece na home marcado como tentativo — aceita inscrições, mas o rolê ainda pode não rolar."
+
   defp status_description(:payments_only),
     do: "aparece na home, mas ninguém entra em novas listas — o admin só marca quem pagou."
 
@@ -721,6 +728,7 @@ defmodule RolezinhoWeb.EventEditLive do
   defp status_description(:done), do: "arquivado, apenas o admin acessa."
 
   defp status_label(:active), do: "Ativo"
+  defp status_label(:maybe), do: "Averiguando Resenha"
   defp status_label(:payments_only), do: "Só pagamentos"
   defp status_label(:hidden), do: "Oculto"
   defp status_label(:done), do: "Concluído"

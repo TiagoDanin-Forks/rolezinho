@@ -33,8 +33,16 @@ defmodule RolezinhoWeb.Components.UI.RoleCard do
   attr :when_text, :string, default: nil
   attr :category, :string, default: nil
   attr :category_initial, :string, default: nil
-  attr :status, :string, default: nil, values: ~w(open full done debt payments_only) ++ [nil]
+
+  attr :status, :string,
+    default: nil,
+    values: ~w(open full done debt payments_only maybe) ++ [nil]
+
   attr :status_label, :string, default: nil
+  # Native-tooltip text on the status pill. Kept as the browser `title`
+  # attribute on purpose: no JS, works everywhere, and screen readers
+  # already announce it — exactly the small explainer this hint needs.
+  attr :status_hint, :string, default: nil
   attr :filled, :integer, default: nil
   attr :capacity, :integer, default: nil
   attr :names, :list, default: []
@@ -63,7 +71,7 @@ defmodule RolezinhoWeb.Components.UI.RoleCard do
         <span :if={@category} class="text-[10px] font-semibold uppercase tracking-wide text-muted">
           {@category}
         </span>
-        <.status_pill :if={@status} tone={@status} class="ml-auto">
+        <.status_pill :if={@status} tone={@status} class="ml-auto" title={@status_hint}>
           {@status_label || default_status_label(@status)}
         </.status_pill>
       </div>
@@ -88,4 +96,5 @@ defmodule RolezinhoWeb.Components.UI.RoleCard do
   defp default_status_label("done"), do: "Encerrado"
   defp default_status_label("debt"), do: "Pix pendente"
   defp default_status_label("payments_only"), do: "Só pagamentos"
+  defp default_status_label("maybe"), do: "Averiguando Resenha"
 end

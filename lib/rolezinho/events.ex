@@ -20,7 +20,7 @@ defmodule Rolezinho.Events do
 
   @pubsub Rolezinho.PubSub
 
-  @statuses [:active, :payments_only, :hidden, :done]
+  @statuses [:active, :maybe, :payments_only, :hidden, :done]
 
   @doc "PubSub topic for a specific slug."
   def topic(slug), do: "event:" <> slug
@@ -58,6 +58,9 @@ defmodule Rolezinho.Events do
 
   @doc "Lists payments-only events."
   def list_payments_only, do: do_list(:payments_only)
+
+  @doc "Lists tentative (\"averiguando resenha\") events."
+  def list_maybe, do: do_list(:maybe)
 
   @doc "Lists hidden events."
   def list_hidden, do: do_list(:hidden)

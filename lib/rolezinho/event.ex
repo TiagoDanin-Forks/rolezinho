@@ -15,13 +15,19 @@ defmodule Rolezinho.Event do
   alias Rolezinho.Event.Attendee
   alias Rolezinho.Event.FormField
 
-  @statuses [:active, :payments_only, :hidden, :done]
+  # `:maybe` ("averiguando resenha") is the tentative state: the event
+  # might happen, depending on how many people opt in — signup is open,
+  # the row appears on the public home, and its slug is reachable to
+  # anyone. Cancellation is still a separate decision (moving to `:done`
+  # or `:hidden`); `:maybe` is only a visual signal that going is not
+  # guaranteed yet.
+  @statuses [:active, :maybe, :payments_only, :hidden, :done]
 
   # Statuses that appear on the public home page.
-  @open_statuses [:active, :payments_only]
+  @open_statuses [:active, :maybe, :payments_only]
 
   # Statuses reachable by direct slug for anonymous visitors.
-  @public_statuses [:active, :payments_only, :hidden]
+  @public_statuses [:active, :maybe, :payments_only, :hidden]
 
   @slug_regex ~r/^[a-z0-9](?:[a-z0-9-]{0,60}[a-z0-9])?$/
 
@@ -70,7 +76,7 @@ defmodule Rolezinho.Event do
     timestamps(type: :utc_datetime)
   end
 
-  @type status :: :active | :payments_only | :hidden | :done
+  @type status :: :active | :maybe | :payments_only | :hidden | :done
 
   @type t :: %__MODULE__{
           id: integer() | nil,
@@ -189,6 +195,19 @@ defmodule Rolezinho.Event do
 
   @doc "Statuses reachable by anonymous visitors with the slug."
   def public_statuses, do: @public_statuses
+
+  @doc """
+  The one-liner explaining the `:maybe` status to viewers.
+
+  Kept here (schema module) so every surface — pill tooltip on cards,
+  banner on the event page, admin edit form — tells the same story. If
+  this string ever gets translated or A/B'd, the single call site is the
+  only place to change.
+  """
+  @spec maybe_status_hint() :: String.t()
+  def maybe_status_hint,
+    do:
+      "Rolê que pode ou não rolar, depende de quem confirmar. Entra na lista pra ajudar a decidir."
 
   @doc "Returns true when the event blocks non-admin signups (payments-only state)."
   @spec locked_signups?(t()) :: boolean()

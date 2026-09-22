@@ -892,6 +892,11 @@ defmodule RolezinhoWeb.EventLive do
               class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-base-300 text-base-content"
             >Concluído</span>
             <span
+              :if={@event.status == :maybe}
+              class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-info/15 text-info"
+              title={Event.maybe_status_hint()}
+            >Averiguando Resenha</span>
+            <span
               :if={@signups_locked?}
               class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-info/15 text-info"
             >Só pagamentos</span>
@@ -925,6 +930,8 @@ defmodule RolezinhoWeb.EventLive do
               </.link>
             </div>
           </div>
+
+          <.maybe_notice :if={@event.status == :maybe} />
 
           <.payments_only_notice :if={@signups_locked?} />
 
@@ -1581,6 +1588,27 @@ defmodule RolezinhoWeb.EventLive do
             Quem ainda não tem o <span class="text-success font-semibold">✅</span>
             precisa pagar pra confirmar a vaga. Não dá pra entrar em novas listas
             enquanto o rolezinho estiver nesse estado.
+          </p>
+        </div>
+      </div>
+    </section>
+    """
+  end
+
+  # Companion of the `:maybe` status pill: on the event page itself we
+  # spell it out fully rather than lean on the tooltip — someone lands
+  # here to decide whether to go, and the tentative nature is precisely
+  # what shapes that decision. Same visual language as the payments-only
+  # notice: info-toned rounded panel with an icon and one short paragraph.
+  defp maybe_notice(assigns) do
+    ~H"""
+    <section class="rounded-2xl border border-info/40 bg-info/10 p-4 sm:p-5">
+      <div class="flex items-start gap-3">
+        <.icon name="tabler-help-circle" class="size-5 text-info shrink-0 mt-0.5" />
+        <div class="space-y-1">
+          <p class="font-semibold">Averiguando Resenha</p>
+          <p class="text-sm text-base-content/80">
+            {Event.maybe_status_hint()}
           </p>
         </div>
       </div>

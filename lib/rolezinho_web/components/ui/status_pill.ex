@@ -18,7 +18,7 @@ defmodule RolezinhoWeb.Components.UI.StatusPill do
       <.status_pill tone="done">Closed</.status_pill>
       <.status_pill tone="debt">Pix pending</.status_pill>
   """
-  attr :tone, :string, default: "open", values: ~w(open full done debt payments_only)
+  attr :tone, :string, default: "open", values: ~w(open full done debt payments_only maybe)
   attr :class, :any, default: nil
   attr :rest, :global
 
@@ -44,4 +44,8 @@ defmodule RolezinhoWeb.Components.UI.StatusPill do
   defp tone_classes("done"), do: "bg-ink/[0.08] text-muted"
   defp tone_classes("debt"), do: "bg-danger text-danger-content"
   defp tone_classes("payments_only"), do: "bg-warning text-warning-content"
+  # "maybe" is the "averiguando resenha" tentative status. Solid info blue
+  # keeps it visibly distinct from the other four tones (green tint, black,
+  # gray, yellow, red) on a card row.
+  defp tone_classes("maybe"), do: "bg-info text-info-content"
 end

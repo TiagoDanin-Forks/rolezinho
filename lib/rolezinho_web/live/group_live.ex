@@ -325,6 +325,7 @@ defmodule RolezinhoWeb.GroupLive do
               when_text={when_text(event)}
               category={event.category}
               status={status_for(event)}
+              status_hint={status_hint(event)}
               filled={filled_count(event)}
               capacity={event.main_capacity}
               names={attendee_names(event)}
@@ -425,10 +426,15 @@ defmodule RolezinhoWeb.GroupLive do
 
   defp status_for(%Rolezinho.Event{status: :payments_only}), do: "payments_only"
   defp status_for(%Rolezinho.Event{status: :done}), do: "done"
+  defp status_for(%Rolezinho.Event{status: :maybe}), do: "maybe"
 
   defp status_for(%Rolezinho.Event{} = event) do
     if Rolezinho.Event.main_full?(event), do: "full", else: "open"
   end
+
+  # Same tooltip pattern as HomeLive — only "maybe" carries a hint.
+  defp status_hint(%Rolezinho.Event{status: :maybe}), do: Rolezinho.Event.maybe_status_hint()
+  defp status_hint(%Rolezinho.Event{}), do: nil
 
   defp when_text(%Rolezinho.Event{starts_at: nil}), do: nil
 

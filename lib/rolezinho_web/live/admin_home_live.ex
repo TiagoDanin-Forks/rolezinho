@@ -50,6 +50,7 @@ defmodule RolezinhoWeb.AdminHomeLive do
   defp load_all(socket) do
     socket
     |> assign(:active_events, Events.list_active())
+    |> assign(:maybe_events, Events.list_maybe())
     |> assign(:payments_only_events, Events.list_payments_only())
     |> assign(:hidden_events, Events.list_hidden())
     |> assign(:done_events, Events.list_done())
@@ -85,6 +86,7 @@ defmodule RolezinhoWeb.AdminHomeLive do
              four states, a panel of "nenhum" lines says less than a short list
              of what actually exists. -->
         <.event_section title="Ativos" events={@active_events} />
+        <.event_section title="Averiguando Resenha" events={@maybe_events} />
         <.event_section title="Só pagamentos" events={@payments_only_events} />
         <.event_section title="Ocultos" events={@hidden_events} />
         <.event_section title="Concluídos" events={@done_events} />
@@ -106,6 +108,7 @@ defmodule RolezinhoWeb.AdminHomeLive do
     Enum.all?(
       [
         assigns.active_events,
+        assigns.maybe_events,
         assigns.payments_only_events,
         assigns.hidden_events,
         assigns.done_events,
