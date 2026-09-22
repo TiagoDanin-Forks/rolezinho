@@ -36,8 +36,18 @@ defmodule RolezinhoWeb.Plugs.User do
     conn
     |> assign(:current_user_id, user_id)
     |> assign(:current_user, user)
+    |> widen_admin_if_user_admin(user)
     |> merge_persisted_group_unlocks(user_id)
   end
+
+  # An account-flagged admin (see `Rolezinho.Accounts.make_admin_by_handle/1`)
+  # gets `current_admin?` widened to true regardless of what the Admin plug
+  # decided from the session `:admin?` flag. Logout wipes the user, so the
+  # widening naturally goes away with it — no separate teardown needed.
+  defp widen_admin_if_user_admin(conn, %Accounts.User{admin: true}),
+    do: assign(conn, :current_admin?, true)
+
+  defp widen_admin_if_user_admin(conn, _user), do: conn
 
   defp merge_persisted_group_unlocks(conn, nil), do: conn
 
@@ -100,6 +110,15 @@ defmodule RolezinhoWeb.Plugs.User do
       socket
       |> Phoenix.Component.assign(:current_user_id, user_id)
       |> Phoenix.Component.assign(:current_user, user)
+
+    # Widen `current_admin?` for an account-flagged admin — same rule the
+    # plug enforces on the conn. Admin's `on_mount` ran earlier and seeded
+    # the assign from the session; this only *raises* it, never lowers it.
+    socket =
+      case user do
+        %Accounts.User{admin: true} -> Phoenix.Component.assign(socket, :current_admin?, true)
+        _ -> socket
+      end
 
     # Same widening the plug does on the conn: merge persisted unlocks with
     # the session set the Admin `on_mount` seeded a moment ago.

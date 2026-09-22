@@ -23,6 +23,12 @@ defmodule Rolezinho.Accounts.User do
     field :email, :string
     field :avatar_url, :string
 
+    # Platform-admin capability. Mass-assignment-protected: this field is
+    # never in `github_changeset/2`, so it cannot be flipped by a hostile
+    # OAuth response or a form POST. Set only via
+    # `Rolezinho.Accounts.make_admin_by_handle/1` (or a direct migration).
+    field :admin, :boolean, default: false
+
     timestamps(type: :utc_datetime)
   end
 
@@ -32,7 +38,8 @@ defmodule Rolezinho.Accounts.User do
           github_login: String.t() | nil,
           name: String.t() | nil,
           email: String.t() | nil,
-          avatar_url: String.t() | nil
+          avatar_url: String.t() | nil,
+          admin: boolean()
         }
 
   @doc """
@@ -41,6 +48,9 @@ defmodule Rolezinho.Accounts.User do
   Every field except `github_id` may be re-cast on subsequent sign-ins: names
   and avatars change; the numeric id is what stays constant.
   """
+  # `:admin` is deliberately NOT cast here — an OAuth callback (or any code
+  # path that reuses this changeset) must never be able to hand out admin
+  # rights. Flip the flag via `Accounts.make_admin_by_handle/1`.
   def github_changeset(%User{} = user, attrs) do
     user
     |> cast(attrs, [:github_id, :github_login, :name, :email, :avatar_url])
