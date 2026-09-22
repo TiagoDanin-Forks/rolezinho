@@ -12,6 +12,7 @@ defmodule RolezinhoWeb.Components.UI.RoleCard do
   import RolezinhoWeb.Components.UI.Avatar, only: [avatar_stack: 1]
   import RolezinhoWeb.Components.UI.ProgressBar, only: [progress_bar: 1]
   import RolezinhoWeb.Components.UI.StatusPill, only: [status_pill: 1]
+  import RolezinhoWeb.CoreComponents, only: [icon: 1]
 
   @doc """
   Renders the card.
@@ -47,6 +48,10 @@ defmodule RolezinhoWeb.Components.UI.RoleCard do
   attr :capacity, :integer, default: nil
   attr :names, :list, default: []
   attr :navigate, :string, default: nil
+  # Whether the rolê is unlisted (hidden from the public home). Rendered
+  # as a tiny eye-off icon next to the status pill so the marker takes
+  # a few pixels rather than a full pill of horizontal space.
+  attr :hidden?, :boolean, default: false
   attr :class, :any, default: nil
 
   def role_card(assigns) do
@@ -60,7 +65,7 @@ defmodule RolezinhoWeb.Components.UI.RoleCard do
         @class
       ]}
     >
-      <div :if={@category || @status} class="flex items-center gap-2">
+      <div :if={@category || @status || @hidden?} class="flex items-center gap-2">
         <span
           :if={@category}
           class="grid size-6 shrink-0 place-items-center rounded-lg bg-accent text-[11px] font-bold text-accent-content"
@@ -74,7 +79,20 @@ defmodule RolezinhoWeb.Components.UI.RoleCard do
         >
           {@category}
         </span>
-        <.status_pill :if={@status} tone={@status} class="ml-auto" title={@status_hint}>
+        <span
+          :if={@hidden?}
+          class="ml-auto inline-flex shrink-0 items-center text-warning"
+          title="Oculto: não aparece na home pública"
+        >
+          <.icon name="tabler-eye-off" class="size-4" />
+          <span class="sr-only">Oculto</span>
+        </span>
+        <.status_pill
+          :if={@status}
+          tone={@status}
+          class={[not @hidden? && "ml-auto"]}
+          title={@status_hint}
+        >
           {@status_label || default_status_label(@status)}
         </.status_pill>
       </div>

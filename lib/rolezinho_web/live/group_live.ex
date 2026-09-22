@@ -326,6 +326,7 @@ defmodule RolezinhoWeb.GroupLive do
               category={event.category}
               status={status_for(event)}
               status_hint={status_hint(event)}
+              hidden?={event.hidden}
               filled={filled_count(event)}
               capacity={event.main_capacity}
               names={attendee_names(event)}
