@@ -72,6 +72,7 @@ defmodule RolezinhoWeb.SocialProofTest do
         seed(%{
           "description" => "Pix: 91111111111",
           "pix_key" => "financeiro@example.com",
+          "pix_key_type" => "email",
           "price" => "15"
         })
 
@@ -83,7 +84,8 @@ defmodule RolezinhoWeb.SocialProofTest do
     end
 
     test "shows the amount with it", %{conn: conn} do
-      event = seed(%{"pix_key" => "91984933238", "price" => "R$ 15"})
+      event =
+        seed(%{"pix_key" => "91984933238", "pix_key_type" => "phone", "price" => "R$ 15"})
 
       {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
 
@@ -92,7 +94,11 @@ defmodule RolezinhoWeb.SocialProofTest do
 
     test "accepts a key type the old regex could not read", %{conn: conn} do
       event =
-        seed(%{"pix_key" => "123e4567-e12b-12d1-a456-426655440000", "price" => "20"})
+        seed(%{
+          "pix_key" => "123e4567-e12b-12d1-a456-426655440000",
+          "pix_key_type" => "random",
+          "price" => "20"
+        })
 
       {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
 

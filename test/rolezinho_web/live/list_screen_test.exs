@@ -44,7 +44,8 @@ defmodule RolezinhoWeb.ListScreenTest do
           "main_size" => "4",
           "wait_size" => "0",
           "price" => "20",
-          "pix_key" => "(91) 98493-3238"
+          "pix_key" => "(91) 98493-3238",
+          "pix_key_type" => "phone"
         })
 
       {:ok, event} = Events.add_to_main(event, "Ana", participant_id: "a")
@@ -65,7 +66,8 @@ defmodule RolezinhoWeb.ListScreenTest do
           "main_size" => "4",
           "wait_size" => "0",
           "price" => "20",
-          "pix_key" => "(91) 98493-3238"
+          "pix_key" => "(91) 98493-3238",
+          "pix_key_type" => "phone"
         })
 
       {:ok, event} = Events.add_to_main(event, "Ana", participant_id: "a")

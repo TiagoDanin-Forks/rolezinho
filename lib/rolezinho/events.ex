@@ -16,6 +16,7 @@ defmodule Rolezinho.Events do
   alias Rolezinho.Event.Meta
   alias Rolezinho.Event.Parser
   alias Rolezinho.Event.Token
+  alias Rolezinho.Pix
   alias Rolezinho.Repo
 
   @pubsub Rolezinho.PubSub
@@ -238,6 +239,12 @@ defmodule Rolezinho.Events do
     {wait_size, errors} =
       validate_size(errors, wait_size_raw, :wait_size, 0, 100, "número inteiro entre 0 e 100")
 
+    raw_pix_key = trimmed(params, "pix_key")
+    raw_pix_type = parse_pix_type(params["pix_key_type"])
+
+    {pix_key, pix_key_type, errors} =
+      validate_pix_pair(errors, raw_pix_key, raw_pix_type)
+
     if errors == %{} do
       {:ok,
        %{
@@ -253,10 +260,52 @@ defmodule Rolezinho.Events do
          starts_at: parse_datetime(params["starts_at"]) || combine_date_time(params),
          ends_at: parse_datetime(params["ends_at"]),
          price_cents: parse_price(params["price"]),
-         pix_key: trimmed(params, "pix_key")
+         pix_key: pix_key,
+         pix_key_type: pix_key_type
        }}
     else
       {:error, errors}
+    end
+  end
+
+  # Accepts the type as either an atom or a string, and returns the atom or
+  # `nil` for anything unrecognized. Prevents `String.to_existing_atom/1` on
+  # untrusted input (which is the reason we don't just do that here).
+  defp parse_pix_type(nil), do: nil
+  defp parse_pix_type(type) when is_atom(type), do: if(type in Pix.types(), do: type)
+
+  defp parse_pix_type(type) when is_binary(type) do
+    trimmed = type |> String.trim() |> String.downcase()
+
+    Enum.find(Pix.types(), fn atom -> Atom.to_string(atom) == trimmed end)
+  end
+
+  defp parse_pix_type(_), do: nil
+
+  # Validates (pix_key, pix_key_type) as a pair:
+  #
+  #   * both nil               → fine, no Pix on this event,
+  #   * key set, type nil      → error ("choose the key type"),
+  #   * key nil, type set      → type silently reset to nil,
+  #   * both set               → key must be canonicalizable under that type,
+  #     otherwise a shape error on the key field.
+  #
+  # Returns `{normalized_key, normalized_type, errors}` where the key is the
+  # trimmed raw value (persistence stores exactly what the organizer typed;
+  # canonicalization happens at render time via `Pix.canonicalize/2`).
+  defp validate_pix_pair(errors, nil, _type), do: {nil, nil, errors}
+
+  defp validate_pix_pair(errors, key, nil) when is_binary(key) do
+    {key, nil, put_error(errors, :pix_key_type, "escolha o tipo da chave")}
+  end
+
+  defp validate_pix_pair(errors, key, type) when is_binary(key) and is_atom(type) do
+    case Pix.canonicalize(key, type) do
+      {:ok, _canonical} ->
+        {key, type, errors}
+
+      :error ->
+        {key, type, put_error(errors, :pix_key, "não parece uma chave #{Pix.type_label(type)}")}
     end
   end
 
@@ -397,7 +446,8 @@ defmodule Rolezinho.Events do
       starts_at: attrs.starts_at,
       ends_at: attrs.ends_at,
       price_cents: attrs.price_cents,
-      pix_key: attrs.pix_key
+      pix_key: attrs.pix_key,
+      pix_key_type: attrs.pix_key_type
     }
   end
 
@@ -754,30 +804,41 @@ defmodule Rolezinho.Events do
     meta = Meta.from_params(params)
     new_header = Meta.build_header(meta, description)
 
-    attrs = %{
-      title: title,
-      header: new_header,
-      # Structured columns — same data as the meta lines, in a shape the
-      # role card and calendar exports can read without parsing.
-      local: trimmed(params, "local"),
-      starts_at: combine_date_time(params),
-      category: trimmed(params, "category"),
-      password: params |> Map.get("password", "") |> to_string(),
-      price_cents: parse_price(params["price"]),
-      pix_key: trimmed(params, "pix_key")
-    }
+    raw_pix_key = trimmed(params, "pix_key")
+    raw_pix_type = parse_pix_type(params["pix_key_type"])
 
-    event
-    |> Event.changeset(attrs)
-    |> Repo.update()
-    |> case do
-      {:ok, saved} ->
-        broadcast(saved)
-        broadcast_home()
-        {:ok, saved}
+    {pix_key, pix_key_type, errors} =
+      validate_pix_pair(%{}, raw_pix_key, raw_pix_type)
 
-      {:error, changeset} ->
-        {:error, changeset_errors(changeset)}
+    if errors == %{} do
+      attrs = %{
+        title: title,
+        header: new_header,
+        # Structured columns — same data as the meta lines, in a shape the
+        # role card and calendar exports can read without parsing.
+        local: trimmed(params, "local"),
+        starts_at: combine_date_time(params),
+        category: trimmed(params, "category"),
+        password: params |> Map.get("password", "") |> to_string(),
+        price_cents: parse_price(params["price"]),
+        pix_key: pix_key,
+        pix_key_type: pix_key_type
+      }
+
+      event
+      |> Event.changeset(attrs)
+      |> Repo.update()
+      |> case do
+        {:ok, saved} ->
+          broadcast(saved)
+          broadcast_home()
+          {:ok, saved}
+
+        {:error, changeset} ->
+          {:error, changeset_errors(changeset)}
+      end
+    else
+      {:error, errors}
     end
   end
 
@@ -847,22 +908,33 @@ defmodule Rolezinho.Events do
   """
   @spec update_payment(Event.t(), map()) :: {:ok, Event.t()} | {:error, map()}
   def update_payment(%Event{} = event, params) when is_map(params) do
-    attrs = %{
-      price_cents: parse_price(params["price"]),
-      pix_key: trimmed(params, "pix_key")
-    }
+    raw_pix_key = trimmed(params, "pix_key")
+    raw_pix_type = parse_pix_type(params["pix_key_type"])
 
-    event
-    |> Event.changeset(attrs)
-    |> Repo.update()
-    |> case do
-      {:ok, saved} ->
-        broadcast(saved)
-        broadcast_home()
-        {:ok, saved}
+    {pix_key, pix_key_type, errors} =
+      validate_pix_pair(%{}, raw_pix_key, raw_pix_type)
 
-      {:error, changeset} ->
-        {:error, changeset_errors(changeset)}
+    if errors == %{} do
+      attrs = %{
+        price_cents: parse_price(params["price"]),
+        pix_key: pix_key,
+        pix_key_type: pix_key_type
+      }
+
+      event
+      |> Event.changeset(attrs)
+      |> Repo.update()
+      |> case do
+        {:ok, saved} ->
+          broadcast(saved)
+          broadcast_home()
+          {:ok, saved}
+
+        {:error, changeset} ->
+          {:error, changeset_errors(changeset)}
+      end
+    else
+      {:error, errors}
     end
   end
 

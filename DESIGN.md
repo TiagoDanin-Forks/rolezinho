@@ -21,6 +21,11 @@ colors:
   info-content: "oklch(97% 0.014 254.604)"
   warning: "oklch(66% 0.179 58.318)"
   warning-content: "oklch(98% 0.022 95.277)"
+  # Scannable surface. Pure white in BOTH themes so QR codes render on a
+  # light background regardless of the app's theme — a camera can only
+  # decode dark modules on light. Never invert this token.
+  qr-canvas: "oklch(100% 0 0)"
+  qr-ink: "oklch(0% 0 0)"
 colors-dark:
   ink: "oklch(95% 0.008 78.26)"
   ink-content: "oklch(15% 0.008 84.57)"
@@ -41,6 +46,8 @@ colors-dark:
   info-content: "oklch(97% 0.013 236.62)"
   warning: "oklch(66% 0.179 58.318)"
   warning-content: "oklch(98% 0.022 95.277)"
+  qr-canvas: "oklch(100% 0 0)"
+  qr-ink: "oklch(0% 0 0)"
 typography:
   display:
     fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif"

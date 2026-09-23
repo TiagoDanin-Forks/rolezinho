@@ -25,10 +25,15 @@ defmodule Rolezinho.EventsUpdatePaymentTest do
       assert event.pix_key in [nil, ""]
 
       {:ok, updated} =
-        Events.update_payment(event, %{"price" => "15", "pix_key" => "91984933238"})
+        Events.update_payment(event, %{
+          "price" => "15",
+          "pix_key" => "91984933238",
+          "pix_key_type" => "phone"
+        })
 
       assert updated.price_cents == 1500
       assert updated.pix_key == "91984933238"
+      assert updated.pix_key_type == :phone
     end
 
     test "parses decimal prices the same way the create form does" do
@@ -48,24 +53,40 @@ defmodule Rolezinho.EventsUpdatePaymentTest do
 
     test "clears both fields when submitted blank" do
       event =
-        seed(%{"price" => "20", "pix_key" => "someone@example.com"})
+        seed(%{
+          "price" => "20",
+          "pix_key" => "someone@example.com",
+          "pix_key_type" => "email"
+        })
 
       # Sanity: the create form did set them.
       assert event.price_cents == 2000
       assert event.pix_key == "someone@example.com"
+      assert event.pix_key_type == :email
 
       {:ok, cleared} =
         Events.update_payment(event, %{"price" => "", "pix_key" => "   "})
 
       assert cleared.price_cents == nil
       assert cleared.pix_key == nil
+      assert cleared.pix_key_type == nil
     end
 
     test "invalid price becomes nil rather than raising" do
       event = seed(%{"price" => "15"})
-      {:ok, updated} = Events.update_payment(event, %{"price" => "n/a", "pix_key" => "x"})
+
+      # `pix_key: "x"` used to be accepted with no type; now the type is
+      # required when the key is set, so this test uses an email that does
+      # canonicalize — the point is the price validation, not the key.
+      {:ok, updated} =
+        Events.update_payment(event, %{
+          "price" => "n/a",
+          "pix_key" => "someone@example.com",
+          "pix_key_type" => "email"
+        })
+
       assert updated.price_cents == nil
-      assert updated.pix_key == "x"
+      assert updated.pix_key == "someone@example.com"
     end
 
     test "accepts every DICT key type the Pix module recognizes" do
@@ -74,22 +95,28 @@ defmodule Rolezinho.EventsUpdatePaymentTest do
       Enum.each(
         [
           # phone (various shapes)
-          "91984933238",
-          "(91) 98493-3238",
-          "+55 91 98493-3238",
+          {"91984933238", "phone"},
+          {"(91) 98493-3238", "phone"},
+          {"+55 91 98493-3238", "phone"},
           # CPF
-          "123.456.789-00",
+          {"123.456.789-00", "cpf"},
           # email
-          "someone@example.com",
+          {"someone@example.com", "email"},
           # random UUID
-          "abcdefgh-1234-5678-9abc-def012345678"
+          {"abcdef01-1234-5678-9abc-def012345678", "random"}
         ],
-        fn key ->
+        fn {key, type} ->
           {:ok, updated} =
-            Events.update_payment(event, %{"price" => "10", "pix_key" => key})
+            Events.update_payment(event, %{
+              "price" => "10",
+              "pix_key" => key,
+              "pix_key_type" => type
+            })
 
           assert updated.pix_key == key,
                  "expected #{inspect(key)} to round-trip, got #{inspect(updated.pix_key)}"
+
+          assert Atom.to_string(updated.pix_key_type) == type
         end
       )
     end
@@ -108,7 +135,11 @@ defmodule Rolezinho.EventsUpdatePaymentTest do
       original_main = Enum.map(event.main_list, & &1.name)
 
       {:ok, updated} =
-        Events.update_payment(event, %{"price" => "42", "pix_key" => "novo@pix.com"})
+        Events.update_payment(event, %{
+          "price" => "42",
+          "pix_key" => "novo@pix.com",
+          "pix_key_type" => "email"
+        })
 
       assert updated.slug == original_slug
       assert updated.header == original_header
@@ -124,9 +155,13 @@ defmodule Rolezinho.EventsUpdatePaymentTest do
       Events.subscribe(event.slug)
 
       {:ok, _updated} =
-        Events.update_payment(event, %{"price" => "15", "pix_key" => "x@y"})
+        Events.update_payment(event, %{
+          "price" => "15",
+          "pix_key" => "x@y.z",
+          "pix_key_type" => "email"
+        })
 
-      assert_receive {:updated, %Event{price_cents: 1500, pix_key: "x@y"}}
+      assert_receive {:updated, %Event{price_cents: 1500, pix_key: "x@y.z"}}
     end
   end
 end

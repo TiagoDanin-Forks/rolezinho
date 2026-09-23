@@ -20,7 +20,8 @@ defmodule RolezinhoWeb.CashBannerTest do
       "main_size" => "4",
       "wait_size" => "0",
       "price" => "R$ 15",
-      "pix_key" => "91984933238"
+      "pix_key" => "91984933238",
+      "pix_key_type" => "phone"
     }
 
     {:ok, event} = Events.create(Map.merge(defaults, attrs))

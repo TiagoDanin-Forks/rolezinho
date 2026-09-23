@@ -370,6 +370,21 @@ defmodule RolezinhoWeb.EventLive do
   # The structured field wins over the key recovered from the description: it
   # was typed into a field meant for it, and it accepts every DICT type rather
   # than only the phone shape the regex could recognize.
+  # Same rule as PaymentLive: prefer the explicit type when set. Legacy
+  # events (nil type) still work via `Pix.classify/1`.
+  defp pix_for(%Event{pix_key: key, pix_key_type: type} = event)
+       when is_binary(key) and key != "" and is_atom(type) and not is_nil(type) do
+    case Pix.canonicalize(key, type) do
+      {:ok, canonical} ->
+        # `display_as/2` respects the explicit type; `display/1` would
+        # guess and mislabel a bare 11-digit phone as a CPF.
+        %{key: canonical, raw: key, display: Pix.display_as(key, type) || key}
+
+      :error ->
+        Pix.detect(event.header)
+    end
+  end
+
   defp pix_for(%Event{pix_key: key} = event) when is_binary(key) and key != "" do
     case Pix.classify(key) do
       {:ok, _type, canonical} ->

@@ -69,7 +69,8 @@ defmodule Rolezinho.Event.StructuredFieldsTest do
           "starts_at" => starts_at,
           "ends_at" => ends_at,
           "price_cents" => 1500,
-          "pix_key" => "91984933238"
+          "pix_key" => "91984933238",
+          "pix_key_type" => "phone"
         })
 
       assert {:ok, event} = Repo.insert(changeset)

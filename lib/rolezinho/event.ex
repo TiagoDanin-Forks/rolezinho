@@ -66,6 +66,13 @@ defmodule Rolezinho.Event do
     field :price_cents, :integer
     field :pix_key, :string
 
+    # Which of the five DICT key types the `pix_key` above is. The organizer
+    # chooses this explicitly on the form, so an 11-digit number that could
+    # be either a mobile phone or a CPF is not guessed. Nullable for events
+    # created before the split — the runtime falls back to `Pix.classify/1`
+    # for those and asks the organizer to pick on the next edit.
+    field :pix_key_type, Ecto.Enum, values: [:phone, :cpf, :cnpj, :email, :random]
+
     # The organizer's secret for this event: whoever holds it administers this
     # event and no other.
     field :organizer_token, :string
@@ -112,6 +119,7 @@ defmodule Rolezinho.Event do
           ends_at: DateTime.t() | nil,
           price_cents: non_neg_integer() | nil,
           pix_key: String.t() | nil,
+          pix_key_type: :phone | :cpf | :cnpj | :email | :random | nil,
           organizer_token: String.t() | nil,
           group_id: integer() | nil,
           created_by_user_id: integer() | nil,
@@ -140,7 +148,8 @@ defmodule Rolezinho.Event do
       :starts_at,
       :ends_at,
       :price_cents,
-      :pix_key
+      :pix_key,
+      :pix_key_type
     ])
     |> update_change(:password, &normalize_password/1)
     |> cast_embed(:main_list, with: &Attendee.changeset/2)
@@ -762,6 +771,7 @@ defmodule Rolezinho.Event do
       ends_at: event.ends_at,
       price_cents: event.price_cents,
       pix_key: event.pix_key,
+      pix_key_type: event.pix_key_type,
       main_list: Enum.map(event.main_list, &attendee_to_map/1),
       wait_list: Enum.map(event.wait_list, &attendee_to_map/1),
       form_fields: Enum.map(event.form_fields, &Map.from_struct/1)

@@ -58,6 +58,7 @@ defmodule RolezinhoWeb.EventNewLive do
       "main_size" => "18",
       "wait_size" => "3",
       "password" => "",
+      "pix_key_type" => "",
       # Not-hidden by default for a signed-in creator (they can see their
       # own hidden rolezinhos on the home too now, but the safest default
       # is still "visible"). The context has its own anonymous-safety
@@ -261,6 +262,24 @@ defmodule RolezinhoWeb.EventNewLive do
                 token specific to Pix — the key can be a phone, email, CPF,
                 CNPJ or random UUID, so no single browser hint fits.
               -->
+              <!--
+                Explicit type: an 11-digit number is ambiguous (phone OR CPF),
+                so we ask the organizer which one it is instead of guessing.
+                The old guesser defaulted to CPF, which produced a valid-
+                looking QR that scanned and failed. Placed *before* the key
+                input so the choice frames what the field expects.
+              -->
+              <.input
+                field={@form[:pix_key_type]}
+                type="select"
+                label="Tipo da chave"
+                prompt="Escolha o tipo"
+                options={
+                  Enum.map(Rolezinho.Pix.types(), fn t ->
+                    {Rolezinho.Pix.type_label(t), Atom.to_string(t)}
+                  end)
+                }
+              />
               <.input
                 field={@form[:pix_key]}
                 label="Chave Pix"

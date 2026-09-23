@@ -143,6 +143,13 @@
   --color-error: var(--color-danger);
   --color-error-content: var(--color-danger-content);
 
+  /* A dedicated "scannable surface" token: pure white in both themes so a
+     Pix QR (or any barcode we ship in the future) keeps the light
+     background it needs for a camera to read the dark modules. Never
+     inverted — the whole point is that it does not shift with the theme. */
+  --color-qr-canvas: oklch(100% 0 0);
+  --color-qr-ink: oklch(0% 0 0);
+
   --radius-selector: var(--radius-row);
   --radius-field: var(--radius-cta);
   --radius-box: var(--radius-card);
@@ -187,6 +194,11 @@
   --color-info-content: oklch(97% 0.013 236.62);
   --color-warning: oklch(66% 0.179 58.318);
   --color-warning-content: oklch(98% 0.022 95.277);
+
+  /* Same pure white in dark mode: a QR needs the light background to
+     scan, regardless of surrounding theme. */
+  --color-qr-canvas: oklch(100% 0 0);
+  --color-qr-ink: oklch(0% 0 0);
 
   --shadow-card: 0 8px 24px oklch(0% 0 0 / 0.4);
   --shadow-cta: 0 6px 18px oklch(0% 0 0 / 0.5);

@@ -32,7 +32,8 @@ defmodule RolezinhoWeb.EventEditDetailsTest do
       "wait_size" => "0",
       "password" => "",
       "price" => "15",
-      "pix_key" => "9199999999"
+      "pix_key" => "9199999999",
+      "pix_key_type" => "phone"
     }
 
     {:ok, event} = Events.create(Map.merge(defaults, attrs), admin?: true)
@@ -56,6 +57,7 @@ defmodule RolezinhoWeb.EventEditDetailsTest do
       "time" => "19:00",
       "price" => "15",
       "pix_key" => "9199999999",
+      "pix_key_type" => "phone",
       "password" => "",
       "slug" => "same"
     }
@@ -129,6 +131,7 @@ defmodule RolezinhoWeb.EventEditDetailsTest do
           "time" => "20:30",
           "price" => "22,50",
           "pix_key" => "novo@example.com",
+          "pix_key_type" => "email",
           "password" => "SEGREDO",
           "slug" => event.slug
         })
@@ -216,7 +219,13 @@ defmodule RolezinhoWeb.EventEditDetailsTest do
     end
 
     test "empty password clears it, empty price and pix wipe them", %{conn: conn} do
-      event = create_event(%{"password" => "old", "price" => "10", "pix_key" => "x@y"})
+      event =
+        create_event(%{
+          "password" => "old",
+          "price" => "10",
+          "pix_key" => "x@y.z",
+          "pix_key_type" => "email"
+        })
 
       {:ok, view, _html} = live(admin_conn(conn), ~p"/admin/r/#{event.slug}/edit")
 
@@ -250,7 +259,13 @@ defmodule RolezinhoWeb.EventEditDetailsTest do
         )
         |> render_submit()
 
-      assert html =~ "Não deu pra salvar"
+      # The flash used to dump the raw error map ("Não deu pra salvar:
+      # %{...}"); the handler now surfaces a helpful message and puts the
+      # field-level error inline. Either flavor of feedback works for this
+      # test's purpose: the whole changeset is still rejected.
+      assert html =~ "Revisa os campos destacados" or
+               html =~ "can&#39;t be blank" or
+               html =~ "can't be blank"
 
       reloaded = Events.find(event.slug)
       assert reloaded.title == "Válido"

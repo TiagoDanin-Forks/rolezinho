@@ -19,7 +19,8 @@ defmodule RolezinhoWeb.PaymentLiveTest do
       "main_size" => "4",
       "wait_size" => "2",
       "price" => "R$ 15",
-      "pix_key" => "91984933238"
+      "pix_key" => "91984933238",
+      "pix_key_type" => "phone"
     }
 
     {:ok, event} = Events.create(Map.merge(defaults, attrs))
@@ -70,7 +71,7 @@ defmodule RolezinhoWeb.PaymentLiveTest do
     test "offers the key and its QR code", %{conn: conn} do
       # Written with punctuation so it reads as a phone: eleven bare digits are
       # ambiguous with a CPF, and the classifier defaults to CPF there.
-      event = paid_event(%{"pix_key" => "(91) 98493-3238"})
+      event = paid_event(%{"pix_key" => "(91) 98493-3238", "pix_key_type" => "phone"})
       conn = join(conn, event.slug)
 
       {:ok, view, html} = live(conn, ~p"/r/#{event.slug}/pagamento")
@@ -81,7 +82,7 @@ defmodule RolezinhoWeb.PaymentLiveTest do
     end
 
     test "shows a CPF key formatted as a CPF", %{conn: conn} do
-      event = paid_event(%{"pix_key" => "12345678900"})
+      event = paid_event(%{"pix_key" => "12345678900", "pix_key_type" => "cpf"})
       conn = join(conn, event.slug)
 
       {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}/pagamento")

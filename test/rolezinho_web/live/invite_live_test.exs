@@ -21,6 +21,7 @@ defmodule RolezinhoWeb.InviteLiveTest do
       "time" => "19:00",
       "price" => "R$ 15",
       "pix_key" => "(91) 98493-3238",
+      "pix_key_type" => "phone",
       "main_size" => "6",
       "wait_size" => "2"
     }

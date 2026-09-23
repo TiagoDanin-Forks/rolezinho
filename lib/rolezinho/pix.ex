@@ -13,6 +13,8 @@ defmodule Rolezinho.Pix do
   @default_name "ROLEZINHO"
   @default_city "BRASIL"
 
+  @types [:phone, :cpf, :cnpj, :email, :random]
+
   @doc """
   Scans free-form text (typically the event description) for a PIX phone key.
 
@@ -87,6 +89,87 @@ defmodule Rolezinho.Pix do
     end
   end
 
+  @doc "The five DICT key types, in the order to present them on the form."
+  @spec types() :: [atom()]
+  def types, do: @types
+
+  @doc """
+  Human label for each DICT key type, in Portuguese, for form option rendering.
+  """
+  @spec type_label(atom()) :: String.t()
+  def type_label(:phone), do: "Celular"
+  def type_label(:cpf), do: "CPF"
+  def type_label(:cnpj), do: "CNPJ"
+  def type_label(:email), do: "E-mail"
+  def type_label(:random), do: "Aleatória"
+
+  @doc """
+  Canonicalizes a raw key against an explicitly chosen type.
+
+  Unlike `classify/1`, this makes no guesses — the caller decided the key is
+  a phone (or CPF, etc.) and this returns the canonical form for that type,
+  or `:error` when the value cannot be a valid instance of that type.
+
+  A bare 11-digit string here becomes a phone when the caller says
+  `:phone`, and a CPF when the caller says `:cpf`. That is the whole point:
+  the organizer picks; the app trusts.
+
+  ## Examples
+
+      iex> Rolezinho.Pix.canonicalize("91984933238", :phone)
+      {:ok, "+5591984933238"}
+
+      iex> Rolezinho.Pix.canonicalize("12345678900", :cpf)
+      {:ok, "12345678900"}
+
+      iex> Rolezinho.Pix.canonicalize("not-a-key", :email)
+      :error
+  """
+  @spec canonicalize(String.t() | nil, atom()) :: {:ok, String.t()} | :error
+  def canonicalize(value, type) when type in @types and is_binary(value) do
+    canonicalize_for(String.trim(value), type)
+  end
+
+  def canonicalize(_value, _type), do: :error
+
+  defp canonicalize_for("", _type), do: :error
+
+  defp canonicalize_for(value, :email) do
+    if email?(value), do: {:ok, String.downcase(value)}, else: :error
+  end
+
+  defp canonicalize_for(value, :random) do
+    if random_key?(value), do: {:ok, String.downcase(value)}, else: :error
+  end
+
+  defp canonicalize_for(value, :phone) do
+    digits = Regex.replace(~r/\D/, value, "")
+
+    cond do
+      String.starts_with?(value, "+") and byte_size(digits) in [12, 13] ->
+        {:ok, "+" <> digits}
+
+      String.starts_with?(digits, "55") and byte_size(digits) == 13 ->
+        {:ok, "+" <> digits}
+
+      byte_size(digits) in [10, 11] ->
+        {:ok, "+55" <> digits}
+
+      true ->
+        :error
+    end
+  end
+
+  defp canonicalize_for(value, :cpf) do
+    digits = Regex.replace(~r/\D/, value, "")
+    if byte_size(digits) == 11, do: {:ok, digits}, else: :error
+  end
+
+  defp canonicalize_for(value, :cnpj) do
+    digits = Regex.replace(~r/\D/, value, "")
+    if byte_size(digits) == 14, do: {:ok, digits}, else: :error
+  end
+
   @doc """
   Formats a key for display, keeping it recognizable to whoever typed it.
 
@@ -103,6 +186,34 @@ defmodule Rolezinho.Pix do
       :error -> nil
     end
   end
+
+  @doc """
+  Formats a key for display against an explicitly chosen type.
+
+  Companion of `canonicalize/2`, and the reason it exists is the same:
+  `display/1` guesses from the string's shape, so a bare 11-digit phone
+  gets formatted as a CPF ("123.456.789-00") because that is what the
+  guesser resolves to. When the caller *knows* the type, this uses it
+  directly and produces the correct format.
+
+  Returns the canonical value (unformatted) when the type is known but
+  the value cannot be canonicalized — the goal is to never crash the
+  render, only to display what we have.
+  """
+  @spec display_as(String.t() | nil, atom()) :: String.t() | nil
+  def display_as(value, type) when type in @types and is_binary(value) do
+    case canonicalize(value, type) do
+      {:ok, canonical} -> format_for(canonical, type)
+      :error -> nil
+    end
+  end
+
+  def display_as(_value, _type), do: nil
+
+  defp format_for(canonical, :phone), do: format_phone(canonical)
+  defp format_for(canonical, :cpf), do: format_cpf(canonical)
+  defp format_for(canonical, :cnpj), do: format_cnpj(canonical)
+  defp format_for(canonical, _other), do: canonical
 
   defp classify_digits(value) do
     digits = Regex.replace(~r/\D/, value, "")

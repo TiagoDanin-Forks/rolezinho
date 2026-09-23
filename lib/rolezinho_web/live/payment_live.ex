@@ -12,6 +12,8 @@ defmodule RolezinhoWeb.PaymentLive do
   """
   use RolezinhoWeb, :live_view
 
+  import Phoenix.HTML, only: [raw: 1]
+
   alias Rolezinho.Event
   alias Rolezinho.Event.Attendee
   alias Rolezinho.Event.Cash
@@ -51,9 +53,28 @@ defmodule RolezinhoWeb.PaymentLive do
     |> Enum.find(&Attendee.owns?(&1, participant_id, user_id))
   end
 
+  # When the organizer chose an explicit `pix_key_type`, canonicalize under
+  # that type — no guessing, so an 11-digit phone stays a phone. Legacy
+  # events with a key but no type fall back to `Pix.classify/1`, matching
+  # the old behavior until the organizer picks a type on the next edit.
+  defp pix_for(%Event{pix_key: key, pix_key_type: type})
+       when is_binary(key) and key != "" and is_atom(type) and not is_nil(type) do
+    case Pix.canonicalize(key, type) do
+      {:ok, canonical} ->
+        # `display_as/2` also honors the explicit type — `display/1` would
+        # fall back to the guesser and format a bare 11-digit phone as a
+        # CPF ("123.456.789-00"), which is the whole bug we set out to
+        # kill when we added `pix_key_type`.
+        %{key: canonical, display: Pix.display_as(key, type) || key, type: type}
+
+      :error ->
+        nil
+    end
+  end
+
   defp pix_for(%Event{pix_key: key}) when is_binary(key) and key != "" do
     case Pix.classify(key) do
-      {:ok, _type, canonical} -> %{key: canonical, display: Pix.display(key) || key}
+      {:ok, type, canonical} -> %{key: canonical, display: Pix.display(key) || key, type: type}
       :error -> nil
     end
   end
@@ -151,27 +172,53 @@ defmodule RolezinhoWeb.PaymentLive do
             {@amount}
           </p>
 
-          <.pix_qr
-            svg={Pix.qr_svg(@pix.key, width: 148)}
-            pix_key={@pix.display}
-            copy_value={@pix.key}
-            payee={@event.title}
-            amount={@amount}
-            class="mt-5"
+          <!--
+            Hero QR: big and on a dedicated white surface so it scans in
+            dark mode too. `bg-qr-canvas` is a theme-invariant white token
+            defined in `@theme`; a camera needs the light background under
+            the dark modules regardless of what the app's theme is doing.
+            The width matches the SVG we render into it, so the padding
+            reads as a real quiet zone rather than negative space.
+          -->
+          <div class="mt-5 flex justify-center">
+            <div
+              id="pix-qr-canvas"
+              class="rounded-card bg-qr-canvas p-4 shadow-sm [&>svg]:block [&>svg]:size-[256px]"
+            >
+              {raw(Pix.qr_svg(@pix.key, width: 256))}
+            </div>
+          </div>
+
+          <div class="mt-4 space-y-2 text-center">
+            <p class="text-[13px] font-bold text-ink">{@event.title}</p>
+            <p class="font-mono text-[12px] text-muted">{@pix.display}</p>
+            <p class="text-[11px] leading-snug text-muted">
+              Aponte a câmera do banco no QR ou copie a chave.
+            </p>
+          </div>
+
+          <!-- Readonly, not disabled: a disabled field cannot be focused
+               or selected, which is the whole point of showing the key
+               here. The canonical key is what a bank app accepts, so it
+               is what gets copied — never the formatted version. -->
+          <input
+            type="text"
+            readonly
+            value={@pix.key}
+            aria-label="Chave Pix para copiar"
+            class="mt-3 w-full select-all rounded-row border border-hairline bg-canvas px-2 py-2 text-center font-mono text-[12px] text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+          />
+
+          <button
+            type="button"
+            id="copy-pix-key"
+            phx-hook=".CopyText"
+            data-text={@pix.key}
+            data-copied-label="Copiado!"
+            class="mt-2 w-full text-center text-[12px] font-bold text-accent"
           >
-            <:action>
-              <button
-                type="button"
-                id="copy-pix-key"
-                phx-hook=".CopyText"
-                data-text={@pix.key}
-                data-copied-label="Copiado!"
-                class="text-[11px] font-bold text-accent"
-              >
-                Copiar chave
-              </button>
-            </:action>
-          </.pix_qr>
+            Copiar chave
+          </button>
         </section>
 
         <div class="flex-1" />

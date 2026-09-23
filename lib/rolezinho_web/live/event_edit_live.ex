@@ -68,6 +68,7 @@ defmodule RolezinhoWeb.EventEditLive do
       "time" => (meta.time && Calendar.strftime(meta.time, "%H:%M")) || "",
       "price" => price_input_value(event.price_cents),
       "pix_key" => event.pix_key || "",
+      "pix_key_type" => event.pix_key_type && Atom.to_string(event.pix_key_type),
       "password" => event.password || ""
     }
   end
@@ -165,6 +166,21 @@ defmodule RolezinhoWeb.EventEditLive do
 
       {:error, :slug_taken} ->
         {:noreply, put_flash(socket, :error, "Esse slug já está em uso.")}
+
+      {:error, errors} when is_map(errors) ->
+        # Field-level validation failure (a `%{field => [msg | _]}` map from
+        # the context). Re-render the form with the errors attached so the
+        # bad field is highlighted inline — much friendlier than an opaque
+        # "Não deu pra salvar" flash pointing at nowhere. Legacy events with
+        # a pix_key but no pix_key_type land here on first save; the select
+        # gets highlighted with "escolha o tipo da chave".
+        {:noreply,
+         socket
+         |> put_flash(:error, flash_for_field_errors(errors))
+         |> assign(
+           :details_form,
+           to_form(params, as: :details, errors: to_form_errors(errors))
+         )}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Não deu pra salvar: #{inspect(reason)}")}
@@ -367,6 +383,22 @@ defmodule RolezinhoWeb.EventEditLive do
             mainstream password manager — without them Bitwarden autofills
             the Pix key with the user's stored password.
           -->
+          <!--
+            Type first, then the key — the choice frames what the field is
+            for and avoids the ambiguous-11-digit bug (a bare mobile phone
+            used to be guessed as CPF).
+          -->
+          <.input
+            field={@details_form[:pix_key_type]}
+            type="select"
+            label="Tipo da chave"
+            prompt="Escolha o tipo"
+            options={
+              Enum.map(Rolezinho.Pix.types(), fn t ->
+                {Rolezinho.Pix.type_label(t), Atom.to_string(t)}
+              end)
+            }
+          />
           <.input
             field={@details_form[:pix_key]}
             label="Chave Pix"
@@ -762,6 +794,28 @@ defmodule RolezinhoWeb.EventEditLive do
   defp status_label(:maybe), do: "Averiguando Resenha"
   defp status_label(:payments_only), do: "Só pagamentos"
   defp status_label(:done), do: "Concluído"
+
+  # Turns the context's error shape (`%{field => [msg | _]}`) into what
+  # `to_form(errors: ...)` wants (`[{field, {msg, []}}]`). Only the first
+  # message per field is surfaced; the others are shadowed until the top
+  # one is resolved, which is the ergonomics Phoenix's own `<.input>`
+  # follows for error rendering.
+  defp to_form_errors(errors) when is_map(errors) do
+    for {field, [msg | _]} <- errors, do: {field, {msg, []}}
+  end
+
+  # Picks a helpful flash for the *common* validation failures so the
+  # message says what to do rather than dumping the raw error map. Any
+  # unknown field falls back to a generic prompt — the inline errors
+  # under the fields still tell the full story.
+  defp flash_for_field_errors(%{pix_key_type: _}),
+    do: "Escolha o tipo da chave Pix pra continuar."
+
+  defp flash_for_field_errors(%{pix_key: [msg | _]}),
+    do: "Chave Pix: #{msg}"
+
+  defp flash_for_field_errors(_),
+    do: "Revisa os campos destacados e tenta de novo."
 
   # An empty string is how the <select> represents "no group".
   defp parse_group_id(""), do: nil
