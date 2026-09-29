@@ -355,16 +355,30 @@ defmodule RolezinhoWeb.EventLive do
 
   # Mirrors Event.Policy for the template. The handler asks the policy again on
   # every action: this only decides what to draw, and drawing nothing is not a
-  # gate.
-  defp can_toggle?(_event, %Attendee{name: ""}, _mine?, _admin?, _organizer?), do: false
-  defp can_toggle?(_event, _attendee, _mine?, true, _organizer?), do: true
-  defp can_toggle?(_event, _attendee, _mine?, _admin?, true), do: true
-  defp can_toggle?(_event, _attendee, mine?, _admin?, _organizer?), do: mine?
+  # gate. `owns_row?` is per-row ownership (via participant token or user id) so
+  # a party leader who joined with guests can act on every row they created —
+  # not just the first one. `mine?` (from `mine_index`) still exists for the
+  # highlight and the self-remove-confirm copy, but is not the gate.
+  defp can_toggle?(_event, %Attendee{name: ""}, _owns_row?, _admin?, _organizer?), do: false
+  defp can_toggle?(_event, _attendee, _owns_row?, true, _organizer?), do: true
+  defp can_toggle?(_event, _attendee, _owns_row?, _admin?, true), do: true
+  defp can_toggle?(_event, _attendee, owns_row?, _admin?, _organizer?), do: owns_row?
 
-  defp can_remove?(%Attendee{name: ""}, _mine?, _admin?, _organizer?), do: false
-  defp can_remove?(_attendee, _mine?, true, _organizer?), do: true
-  defp can_remove?(_attendee, _mine?, _admin?, true), do: true
-  defp can_remove?(_attendee, mine?, _admin?, _organizer?), do: mine?
+  defp can_remove?(%Attendee{name: ""}, _owns_row?, _admin?, _organizer?), do: false
+  defp can_remove?(_attendee, _owns_row?, true, _organizer?), do: true
+  defp can_remove?(_attendee, _owns_row?, _admin?, true), do: true
+  defp can_remove?(_attendee, owns_row?, _admin?, _organizer?), do: owns_row?
+
+  # Per-row ownership check for the template. Delegates to the same
+  # `Attendee.owns?/3` the server-side policy uses so the drawn affordance
+  # and the authorization gate never disagree.
+  defp row_owned_by?(%Attendee{} = attendee, policy_opts) do
+    Attendee.owns?(
+      attendee,
+      Keyword.get(policy_opts, :participant_id),
+      Keyword.get(policy_opts, :current_user_id)
+    )
+  end
 
   # RN-22: removal always confirms, naming who is being removed so a mistap in a
   # dense list is caught before it happens.
@@ -465,6 +479,7 @@ defmodule RolezinhoWeb.EventLive do
     assigns =
       assigns
       |> assign(:mine?, assigns.mine_index == assigns.index)
+      |> assign(:owns_row?, row_owned_by?(assigns.attendee, assigns.policy_opts))
       |> assign(
         :can_edit?,
         assigns.unlocked? and
@@ -484,7 +499,8 @@ defmodule RolezinhoWeb.EventLive do
       highlighted={@mine?}
       divider={@index < length(@event.main_list)}
       paid_click={
-        can_toggle?(@event, @attendee, @mine?, @current_admin?, @organizer?) && "toggle_paid_main"
+        can_toggle?(@event, @attendee, @owns_row?, @current_admin?, @organizer?) &&
+          "toggle_paid_main"
       }
       join_click={@can_join? and BottomSheet.show("join-sheet")}
       empty_label="Vaga livre"
@@ -504,7 +520,7 @@ defmodule RolezinhoWeb.EventLive do
           <.icon name="tabler-pencil" class="size-4" />
         </button>
         <button
-          :if={can_remove?(@attendee, @mine?, @current_admin?, @organizer?)}
+          :if={can_remove?(@attendee, @owns_row?, @current_admin?, @organizer?)}
           type="button"
           phx-click="remove_main"
           phx-value-index={@index}
@@ -1749,6 +1765,7 @@ defmodule RolezinhoWeb.EventLive do
           data-current-user-name={
             (@current_user && Rolezinho.Accounts.User.display_name(@current_user)) || ""
           }
+          data-current-user-id={(@current_user && to_string(@current_user.id)) || ""}
         >
           <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
 
@@ -1889,13 +1906,21 @@ defmodule RolezinhoWeb.EventLive do
               let profile = {}
               try { profile = JSON.parse(localStorage.getItem(KEY) || "{}") } catch (_) {}
 
-              // ADR-0002: for a signed-in user with an empty device profile,
-              // seed the name from their GitHub identity and persist so the
-              // next join and the /me screen see it too. We never overwrite
-              // a name the user actually typed.
-              const fromGithub = this.el.dataset.currentUserName || ""
-              if (fromGithub && !profile.name) {
-                profile.name = fromGithub
+              // ADR-0002: for a signed-in user, seed the name from their
+              // identity so the next join and the /me screen see it too.
+              // We track which user id seeded the cached name so that
+              // switching accounts on the same browser (e.g. signing out
+              // of GitHub "lubien" and creating a fresh local account)
+              // re-seeds instead of showing the previous identity's name.
+              // If the user edited the name in /me under the current
+              // account, `seededFromUserId` already matches and we leave
+              // their choice alone.
+              const fromName = this.el.dataset.currentUserName || ""
+              const fromUserId = this.el.dataset.currentUserId || ""
+              const stale = fromUserId && profile.seededFromUserId !== fromUserId
+              if (fromName && (!profile.name || stale)) {
+                profile.name = fromName
+                profile.seededFromUserId = fromUserId
                 try { localStorage.setItem(KEY, JSON.stringify(profile)) } catch (_) {}
               }
 

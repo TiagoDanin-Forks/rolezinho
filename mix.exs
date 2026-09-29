@@ -66,6 +66,10 @@ defmodule Rolezinho.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 1.0"},
       {:jason, "~> 1.2"},
+      # Password hashing for local (username + senha) auth alongside the
+      # GitHub OAuth path. See ADR-0002 for the rationale of adding a
+      # second identity provider.
+      {:bcrypt_elixir, "~> 3.0"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
       {:earmark, "~> 1.4"},

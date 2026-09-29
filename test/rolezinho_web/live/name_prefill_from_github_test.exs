@@ -67,6 +67,24 @@ defmodule RolezinhoWeb.NamePrefillFromGithubTest do
                ~s(#settings[phx-hook][data-current-user-name="Octo Cat"])
              )
     end
+
+    # Regression: after signing out of one account and signing into a new
+    # one on the same browser, the join sheet used to keep showing the
+    # previous identity's name because the seeder's guard was
+    # `!profile.name` only. The current-user id is now stamped into the
+    # DOM so the hook can detect an account switch and re-seed.
+    test "signed in: settings root carries the current user id", %{conn: conn} do
+      %{conn: conn, user: user} = signed_in_conn(conn)
+      {:ok, _view, html} = live(conn, ~p"/me")
+
+      assert html =~ ~s(data-current-user-id="#{user.id}")
+    end
+
+    test "anonymous: the user id attribute is present but empty", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/me")
+
+      assert html =~ ~s(data-current-user-id="")
+    end
   end
 
   describe "join sheet on the event page" do
@@ -113,8 +131,31 @@ defmodule RolezinhoWeb.NamePrefillFromGithubTest do
       {:ok, _view, html} = live(conn, ~p"/r/#{event.slug}")
 
       # Attribute is present with an empty string \\-\\- the hook's
-      # `if (fromGithub && !profile.name)` guard short-circuits.
+      # seed guard short-circuits.
       assert html =~ ~s(data-current-user-name="")
+      assert html =~ ~s(data-current-user-id="")
+    end
+
+    test "signed in: the join form also carries the current user id", %{conn: conn} do
+      %{conn: conn, user: user} = signed_in_conn(conn)
+
+      {:ok, event} =
+        Events.create(
+          %{
+            "title" => "R",
+            "slug" => "np3-#{System.unique_integer([:positive])}",
+            "main_size" => "3",
+            "wait_size" => "0"
+          },
+          admin?: true
+        )
+
+      {:ok, view, _html} = live(conn, ~p"/r/#{event.slug}")
+
+      assert has_element?(
+               view,
+               ~s(form#join-form[phx-hook][data-current-user-id="#{user.id}"])
+             )
     end
   end
 end

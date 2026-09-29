@@ -128,10 +128,13 @@ defmodule RolezinhoWeb.AuthControllerTest do
   describe "sign-in prompt" do
     import Phoenix.LiveViewTest
 
-    test "GET /entrar renders the GitHub button", %{conn: conn} do
+    test "GET /entrar renders the GitHub button alongside the local-auth forms",
+         %{conn: conn} do
+      # Copy shifted from "Entra com o GitHub" to "Continuar com GitHub"
+      # when the local username+password path landed alongside
+      # (2026-09 amendment to ADR-0002).
       {:ok, view, html} = live(conn, ~p"/entrar")
-      assert html =~ "Entra com o GitHub"
-      # The button points at the OAuth request endpoint with a return_to param.
+      assert html =~ "Continuar com GitHub"
       assert has_element?(view, "a[href*='/auth/github']")
     end
 

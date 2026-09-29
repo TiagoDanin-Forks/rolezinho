@@ -126,14 +126,55 @@ unchanged.
 - Data received from GitHub is treated as user content: escaped in HEEx, never
   fed to `raw/1`, and length-bounded on the way in.
 
+## Amendment (2026-09-29): local username + password as a second path
+
+GitHub is no longer the sole identity provider. A second, equal path was
+added: local username + password. Accounts can be created without a GitHub
+id, and either path grants the same rights on `current_user_id` — same
+session, same `user.admin` widening, same organizer resolution against
+`created_by_user_id`. Product decision (2026-09): equal, not second-class;
+the accountability story shifts from "pinned to a GitHub account" to
+"pinned to some account the user can prove they own".
+
+Key pieces of the amendment:
+
+- `users.username` is the canonical handle for both paths. Unique across
+  all users, case-insensitive, 6–32 chars, must start with a letter,
+  lowercase + digits + `_.-`. GitHub-authed users get one auto-derived
+  from `lower(github_login)` at insert time, padded to 6 chars and
+  suffix-deduped on collision. The 2026-09 backfill migration was safe:
+  prod audit showed zero `lower(github_login)` collisions among existing
+  rows.
+- `users.password_hash` is a bcrypt hash, nullable. GitHub-only accounts
+  won't have one until they set one from `/me`. The virtual `:password`
+  field on the schema is `:redact`, so nothing plaintext survives past
+  the changeset.
+- `Accounts.register_user/1` handles signups; `authenticate_user/2` is
+  constant-time (`Bcrypt.no_user_verify/0` for missing users) so the
+  timing signal doesn't leak username existence.
+- `Accounts.update_password/3` powers the `/me` password panel. Requires
+  the current password when one is already set; first-time password (a
+  GitHub-only user opting in) skips the check.
+- Sessions are shared. Both `AuthController.callback/2` (GitHub) and
+  `SessionController.create/2` (local) call the same
+  `Plugs.User.put_current_user/2`, so downstream code doesn't care which
+  path the user took.
+- `SessionController.register/2` handles POST /entrar/registrar; failures
+  redirect back to `/entrar?tab=registrar` with a flash and safe params
+  (username, email, name) so the user doesn't lose their input.
+
+The original invariants below still hold: no accountability outside creation
+(joining stays anonymous), no per-user preferences persisted on the server
+beyond ownership + persisted group unlocks, and the same mass-assignment
+rules for `:admin`, `:password_hash`, `:github_id`.
+
 ## When to revisit
 
 Write a new ADR superseding this one if:
 
-- We ever consider adding a second identity provider (Google, Apple, magic
-  links). The single-provider assumption simplifies the code; adding a second
-  provider is a design decision that must be made deliberately, not by growing
-  it.
+- We add a third identity provider (Google, Apple, magic links).
+  Two paths is the tipping point where a shared abstraction ("auth
+  strategy") starts making sense.
 - Accounts start being required for anything besides creation (e.g. joining a
   list). That would be a product pivot on the guest side and needs its own
   ADR.

@@ -210,6 +210,7 @@ defmodule RolezinhoWeb.InviteLive do
           data-current-user-name={
             (@current_user && Rolezinho.Accounts.User.display_name(@current_user)) || ""
           }
+          data-current-user-id={(@current_user && to_string(@current_user.id)) || ""}
         >
           <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
 
@@ -285,13 +286,17 @@ defmodule RolezinhoWeb.InviteLive do
               let profile = {}
               try { profile = JSON.parse(localStorage.getItem(KEY) || "{}") } catch (_) {}
 
-              // ADR-0002: seed the name from the signed-in GitHub identity
-              // when the device profile has no name yet, and persist so the
-              // next visit and the /me screen see it too. Same logic as the
-              // matching hook on `EventLive`.
-              const fromGithub = this.el.dataset.currentUserName || ""
-              if (fromGithub && !profile.name) {
-                profile.name = fromGithub
+              // ADR-0002: seed the name from the signed-in identity when
+              // the device profile has no name yet OR when the previously
+              // cached name was seeded from a different user id (account
+              // switch on the same browser). Same logic as the matching
+              // hook on `EventLive`.
+              const fromName = this.el.dataset.currentUserName || ""
+              const fromUserId = this.el.dataset.currentUserId || ""
+              const stale = fromUserId && profile.seededFromUserId !== fromUserId
+              if (fromName && (!profile.name || stale)) {
+                profile.name = fromName
+                profile.seededFromUserId = fromUserId
                 try { localStorage.setItem(KEY, JSON.stringify(profile)) } catch (_) {}
               }
 

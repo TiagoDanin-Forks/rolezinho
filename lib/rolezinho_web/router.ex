@@ -63,6 +63,11 @@ defmodule RolezinhoWeb.Router do
     post "/g/criar", GroupCreateController, :create
     post "/g/:slug/unlock", GroupUnlockController, :unlock
 
+    # Local (username + password) auth. GitHub OAuth stays alongside
+    # at `/auth/github` — both paths land on the same session.
+    post "/entrar/senha", SessionController, :create
+    post "/entrar/registrar", SessionController, :register
+
     get "/admin/login", AdminSessionController, :new
     post "/admin/login", AdminSessionController, :create
     delete "/admin/logout", AdminSessionController, :delete

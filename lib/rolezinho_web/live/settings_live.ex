@@ -15,9 +15,59 @@ defmodule RolezinhoWeb.SettingsLive do
   """
   use RolezinhoWeb, :live_view
 
+  alias Rolezinho.Accounts
+  alias Rolezinho.Accounts.User
+
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, :page_title, "Suas preferências")}
+    {:ok,
+     socket
+     |> assign(:page_title, "Suas preferências")
+     |> assign(:password_error, nil)}
+  end
+
+  # Set (first time) OR change (subsequent) the signed-in user's
+  # password. Rendered only when there's a signed-in user; still
+  # guarded server-side so a hostile push_event over the socket for
+  # an anonymous session is a silent no-op.
+  @impl true
+  def handle_event("set_password", params, socket) do
+    case socket.assigns.current_user do
+      %User{} = user ->
+        current_password = Map.get(params, "current_password", "")
+        new_password = Map.get(params, "password", "")
+
+        case Accounts.update_password(user, current_password, new_password) do
+          {:ok, updated} ->
+            {:noreply,
+             socket
+             |> assign(:current_user, updated)
+             |> assign(:password_error, nil)
+             |> put_flash(:info, "Senha atualizada.")}
+
+          {:error, :invalid_current_password} ->
+            {:noreply, assign(socket, :password_error, "Senha atual não confere.")}
+
+          {:error, %Ecto.Changeset{} = changeset} ->
+            {:noreply, assign(socket, :password_error, first_password_error(changeset))}
+        end
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  defp first_password_error(%Ecto.Changeset{errors: errors}) do
+    case Enum.find(errors, fn {field, _} -> field == :password end) do
+      {:password, {"should be at least " <> _, _}} ->
+        "Senha muito curta (mínimo 8 caracteres)."
+
+      {:password, {msg, _}} ->
+        "Senha: #{msg}"
+
+      _ ->
+        "Não deu pra salvar a senha."
+    end
   end
 
   # Empty string (not nil) when the visitor is signed out. That lets the
@@ -27,6 +77,12 @@ defmodule RolezinhoWeb.SettingsLive do
 
   defp current_user_display_name(user),
     do: Rolezinho.Accounts.User.display_name(user)
+
+  # Both `name` and `email` are optional user-provided strings that may
+  # arrive as nil, "", or whitespace-only. Treat all three as absent so
+  # the account panel doesn't render a blank muted line.
+  defp present?(nil), do: false
+  defp present?(value) when is_binary(value), do: String.trim(value) != ""
 
   @impl true
   def render(assigns) do
@@ -41,6 +97,7 @@ defmodule RolezinhoWeb.SettingsLive do
         id="settings"
         phx-hook=".Settings"
         data-current-user-name={current_user_display_name(@current_user)}
+        data-current-user-id={(@current_user && to_string(@current_user.id)) || ""}
         class="mx-auto max-w-[560px]"
       >
         <header>
@@ -67,10 +124,35 @@ defmodule RolezinhoWeb.SettingsLive do
               referrerpolicy="no-referrer"
             />
             <div class="min-w-0 flex-1">
-              <p class="truncate text-[13px] font-bold">
+              <!-- Identifier line: GitHub login for OAuth users (with the
+                   @ prefix people recognise), username otherwise. Local-
+                   auth accounts have no avatar so the `:if` above just
+                   renders the text. -->
+              <p :if={@current_user.github_login} class="truncate text-[13px] font-bold">
                 @{@current_user.github_login}
               </p>
-              <p class="truncate text-[11px] text-muted">
+              <p :if={is_nil(@current_user.github_login)} class="truncate text-[13px] font-bold">
+                {@current_user.username}
+              </p>
+              <!-- Name and email are optional. Show them when present so
+                   the user can confirm what's on file; the empty case
+                   still gets the introductory copy below. -->
+              <p
+                :if={present?(@current_user.name)}
+                class="truncate text-[11px] text-muted"
+              >
+                {@current_user.name}
+              </p>
+              <p
+                :if={present?(@current_user.email)}
+                class="truncate text-[11px] text-muted"
+              >
+                {@current_user.email}
+              </p>
+              <p
+                :if={not present?(@current_user.name) and not present?(@current_user.email)}
+                class="truncate text-[11px] text-muted"
+              >
                 Você pode criar rolês e grupos, e gerenciar em qualquer aparelho.
               </p>
             </div>
@@ -83,17 +165,104 @@ defmodule RolezinhoWeb.SettingsLive do
             </.link>
           </div>
 
-          <div :if={is_nil(@current_user)} class="mt-3 space-y-2">
+          <!--
+            Password panel. Two flavors:
+
+              * `password_hash` is nil (GitHub-only account) → offer
+                to "Definir senha": one field, no current-password
+                check. This is the "add a second login path to my
+                GitHub account" flow from the 2026-09 amendment.
+              * `password_hash` is set → offer to "Alterar senha":
+                current + new, both required.
+
+            Server-side (`Accounts.update_password/3`) enforces the
+            same rule as the template, so a hostile client that
+            fabricates the event without the current-password field
+            still gets rejected with `:invalid_current_password`.
+          -->
+          <div :if={@current_user} class="mt-4 rounded-row border border-hairline bg-base-100 p-3">
+            <p class="text-[11px] font-bold text-muted">
+              {password_panel_title(@current_user)}
+            </p>
+            <p class="mt-0.5 text-[11px] leading-snug text-muted">
+              {password_panel_hint(@current_user)}
+            </p>
+
+            <form phx-submit="set_password" class="mt-3 space-y-2" autocomplete="off">
+              <label :if={@current_user.password_hash} class="block">
+                <span class="mb-1 block text-[11px] font-bold text-muted">Senha atual</span>
+                <input
+                  type="password"
+                  name="current_password"
+                  required
+                  autocomplete="current-password"
+                  class="w-full rounded-row border border-ink/12 bg-base-100 px-3 py-2 text-[13px] text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                />
+              </label>
+
+              <label class="block">
+                <span class="mb-1 block text-[11px] font-bold text-muted">Nova senha</span>
+                <input
+                  type="password"
+                  name="password"
+                  required
+                  minlength="8"
+                  autocomplete="new-password"
+                  class="w-full rounded-row border border-ink/12 bg-base-100 px-3 py-2 text-[13px] text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                />
+              </label>
+
+              <p :if={@password_error} class="text-[11px] font-bold text-error">
+                {@password_error}
+              </p>
+
+              <button
+                type="submit"
+                class="w-full rounded-row bg-ink px-3 py-2 text-[11px] font-bold text-ink-content"
+              >
+                {password_panel_submit(@current_user)}
+              </button>
+            </form>
+          </div>
+
+          <!--
+            Two paths land on the same account (ADR-0002, 2026-09
+            amendment): GitHub OAuth or local username + password.
+            Both are surfaced here so a signed-out visitor knows the
+            options before deciding — the GitHub button used to be the
+            only entry point and it still is for existing users, but a
+            new visitor without a GitHub account should not have to
+            guess that they can also register with a username.
+          -->
+          <div :if={is_nil(@current_user)} class="mt-3 space-y-3">
             <p class="text-[11px] leading-relaxed text-muted">
               Você não precisa de conta pra entrar em listas ou ver rolês. Só
-              precisa pra criar.
+              precisa pra criar. Dá pra usar GitHub ou usuário + senha, o que
+              preferir.
             </p>
-            <.link
-              navigate={~p"/entrar"}
-              class="inline-flex items-center gap-2 rounded-row bg-ink px-3 py-2 text-[11px] font-bold text-ink-content"
-            >
-              <.icon name="tabler-brand-github" class="size-4" /> Entrar com GitHub
-            </.link>
+
+            <div class="flex flex-wrap gap-2">
+              <.link
+                navigate={~p"/entrar"}
+                class="inline-flex items-center gap-2 rounded-row bg-ink px-3 py-2 text-[11px] font-bold text-ink-content"
+              >
+                <.icon name="tabler-brand-github" class="size-4" /> Entrar com GitHub
+              </.link>
+
+              <.link
+                navigate={~p"/entrar?tab=entrar"}
+                class="inline-flex items-center gap-2 rounded-row border border-ink/15 px-3 py-2 text-[11px] font-bold text-ink"
+              >
+                <.icon name="tabler-user" class="size-4" /> Entrar com usuário
+              </.link>
+
+              <.link
+                navigate={~p"/entrar?tab=registrar"}
+                class="inline-flex items-center gap-2 rounded-row border border-ink/15 px-3 py-2 text-[11px] font-bold text-ink"
+              >
+                <.icon name="tabler-user-plus" class="size-4" /> Criar conta
+              </.link>
+            </div>
           </div>
         </section>
 
@@ -204,13 +373,21 @@ defmodule RolezinhoWeb.SettingsLive do
           mounted() {
             const profile = read()
 
-            // ADR-0002: seed the name field from the signed-in user's
-            // GitHub name (or login) if the device profile has no name yet.
-            // This runs once, on first visit after login, and only when the
-            // field is empty — we never overwrite a name the user chose.
-            const fromGithub = this.el.dataset.currentUserName || ""
-            if (fromGithub && !profile.name) {
-              profile.name = fromGithub
+            // ADR-0002: seed the name field from the signed-in identity if
+            // the device profile has no name yet OR was seeded from a
+            // different user id (account switch on the same browser). We
+            // record `seededFromUserId` alongside the name so that a
+            // subsequent edit by the same user stays sticky, but a new
+            // account brings its own name into the field. Users always
+            // keep the last-word here — the input listener below stamps
+            // the current user id whenever they type, so their
+            // intentional choice is respected on the next mount.
+            const fromName = this.el.dataset.currentUserName || ""
+            const fromUserId = this.el.dataset.currentUserId || ""
+            const stale = fromUserId && profile.seededFromUserId !== fromUserId
+            if (fromName && (!profile.name || stale)) {
+              profile.name = fromName
+              profile.seededFromUserId = fromUserId
               write(profile)
             }
 
@@ -221,6 +398,12 @@ defmodule RolezinhoWeb.SettingsLive do
               input.addEventListener("input", () => {
                 const next = read()
                 next[input.dataset.field] = input.value
+                // Stamp the current user id when the user edits the name
+                // so the join hook doesn't treat it as stale and re-seed
+                // on the next visit.
+                if (input.dataset.field === "name" && fromUserId) {
+                  next.seededFromUserId = fromUserId
+                }
                 write(next)
               })
             })
@@ -248,4 +431,21 @@ defmodule RolezinhoWeb.SettingsLive do
     </Layouts.app>
     """
   end
+
+  # Copy for the password panel, keyed on whether the user already has
+  # a password hash. GitHub-only users see "Definir"; anyone with a
+  # password sees "Alterar".
+  defp password_panel_title(%User{password_hash: nil}), do: "Definir senha"
+  defp password_panel_title(%User{}), do: "Alterar senha"
+
+  defp password_panel_hint(%User{password_hash: nil}) do
+    "Ativa o login com usuário e senha pra essa conta — fica em paralelo ao GitHub."
+  end
+
+  defp password_panel_hint(%User{}) do
+    "Precisa da senha atual pra trocar. Mínimo 8 caracteres na nova."
+  end
+
+  defp password_panel_submit(%User{password_hash: nil}), do: "Definir senha"
+  defp password_panel_submit(%User{}), do: "Alterar senha"
 end

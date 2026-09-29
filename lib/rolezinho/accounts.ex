@@ -1,19 +1,27 @@
 defmodule Rolezinho.Accounts do
   @moduledoc """
-  Context for user accounts backed by GitHub OAuth.
+  Context for user accounts.
 
-  There is exactly one identity provider (ADR-0002). A user is
-  find-or-created by their `github_id` on every sign-in; the changing fields
-  (`github_login`, `name`, `avatar_url`) are refreshed each time.
+  Two identity paths land here (ADR-0002, amended 2026-09):
 
-  This context is intentionally small: users exist so we can gate creation and
-  attribute ownership, and for nothing else. There is no per-user preferences,
-  no per-user settings, and no listing of \"my events\" beyond what the
-  ownership pointer already gives us.
+    * **GitHub OAuth** — `find_or_create_by_github/1` upserts by
+      `github_id`, refreshing `github_login`/`name`/`avatar_url` on
+      every sign-in. On first insert it auto-derives a `:username`
+      from `lower(github_login)`, suffixing with a number on collision
+      with an existing local-auth user.
+
+    * **Local username + password** — `register_user/1` inserts a row
+      keyed on `:username` with a bcrypt `:password_hash`.
+      `authenticate_user/2` verifies the pair in constant time.
+
+  Both paths produce the same session (`:current_user_id`) and the
+  same downstream widening (`user.admin` flips `:current_admin?`,
+  persisted group unlocks merge into `:unlocked_groups`).
   """
 
   import Ecto.Query, warn: false
 
+  alias Ecto.Changeset
   alias Rolezinho.Accounts.User
   alias Rolezinho.Repo
 
@@ -54,12 +62,163 @@ defmodule Rolezinho.Accounts do
       # error deep in Ecto.
       {:error,
        User.github_changeset(%User{}, attrs)
-       |> Ecto.Changeset.add_error(:github_id, "obrigatório")}
+       |> Changeset.add_error(:github_id, "obrigatório")}
     else
       case get_by_github_id(github_id) do
-        nil -> %User{} |> User.github_changeset(attrs) |> Repo.insert()
-        %User{} = user -> user |> User.github_changeset(attrs) |> Repo.update()
+        nil ->
+          # Insert path: auto-derive a `:username` from `github_login`
+          # and suffix on collision. `github_login` is already unique
+          # per-GitHub-user, so the pool of candidates is small; the
+          # loop caps at 100 tries and gives up loudly if we somehow
+          # exhaust it (which means production has bigger problems).
+          attrs =
+            Map.put(attrs, "username", derive_username(Map.get(attrs, "github_login")))
+
+          %User{} |> User.github_changeset(attrs) |> Repo.insert()
+
+        %User{} = user ->
+          user |> User.github_changeset(attrs) |> Repo.update()
       end
+    end
+  end
+
+  # Turns a GitHub login into a valid, unique local username. Same
+  # normalization the schema does (`lower`), plus a suffix on
+  # collision with an existing local-auth user. Prod audit before
+  # ship (2026-09) showed zero collisions on lower(github_login), so
+  # the suffix path is defensive rather than routine.
+  defp derive_username(nil), do: nil
+
+  defp derive_username(github_login) when is_binary(github_login) do
+    base =
+      github_login
+      |> String.downcase()
+      |> String.replace(~r/[^a-z0-9_.-]/u, "")
+
+    base =
+      cond do
+        base == "" -> "user"
+        # Schema regex requires the username to start with a letter;
+        # a GitHub login starting with a digit gets prefixed.
+        String.match?(base, ~r/^[a-z]/) -> base
+        true -> "u-" <> base
+      end
+
+    # Pad to the 6-char minimum so a short handle ("me", "ex") still
+    # satisfies the length rule. Padding character is `0`, matching
+    # the allowed alphabet.
+    base = String.pad_trailing(base, 6, "0")
+
+    unique_username(base, 0, 100)
+  end
+
+  defp unique_username(_base, tries, tries), do: raise("could not derive a unique username")
+
+  defp unique_username(base, n, max_tries) do
+    candidate = if n == 0, do: base, else: "#{base}#{n}"
+
+    case Repo.get_by(User, username: candidate) do
+      nil -> candidate
+      %User{} -> unique_username(base, n + 1, max_tries)
+    end
+  end
+
+  @doc """
+  Case-insensitive lookup by `:username`. The username column stores
+  lowercase (see `User.register_changeset/2`) so a downcase on the way
+  in is enough — no need for a `lower(?)` SQL fragment here.
+  """
+  @spec get_by_username(String.t()) :: User.t() | nil
+  def get_by_username(username) when is_binary(username) do
+    Repo.get_by(User, username: String.downcase(String.trim(username)))
+  end
+
+  def get_by_username(_), do: nil
+
+  @doc """
+  Registers a new local-auth user from a params map.
+
+  Expected string keys: `"username"`, `"password"`, and optionally
+  `"email"` and `"name"`. Password rules and username format live on
+  the schema (see `User.register_changeset/2`).
+
+  Returns `{:ok, user}` on success and `{:error, changeset}` on
+  validation failure (invalid username, duplicate username, weak
+  password, etc.). The controller re-renders the form with the
+  changeset's errors attached to the fields.
+  """
+  @spec register_user(map()) :: {:ok, User.t()} | {:error, Changeset.t()}
+  def register_user(attrs) when is_map(attrs) do
+    %User{}
+    |> User.register_changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Verifies a `(username, password)` pair.
+
+  Returns `{:ok, user}` on match, `{:error, :invalid_credentials}` on
+  anything else — missing user, missing password_hash (GitHub-only
+  account), or wrong password.
+
+  Constant-time: when the user is missing we still run a dummy bcrypt
+  verify via `Bcrypt.no_user_verify/0` so the timing signal doesn't
+  reveal whether a username exists.
+  """
+  @spec authenticate_user(String.t() | nil, String.t() | nil) ::
+          {:ok, User.t()} | {:error, :invalid_credentials}
+  def authenticate_user(username, password) when is_binary(username) and is_binary(password) do
+    case get_by_username(username) do
+      %User{password_hash: hash} = user when is_binary(hash) ->
+        if Bcrypt.verify_pass(password, hash) do
+          {:ok, user}
+        else
+          {:error, :invalid_credentials}
+        end
+
+      _ ->
+        Bcrypt.no_user_verify()
+        {:error, :invalid_credentials}
+    end
+  end
+
+  def authenticate_user(_username, _password) do
+    Bcrypt.no_user_verify()
+    {:error, :invalid_credentials}
+  end
+
+  @doc """
+  Sets or replaces a user's password.
+
+  If the user already has a `:password_hash`, the caller must supply
+  `current_password` and it must match (so a stolen session can't
+  quietly reset the password); if they don't, a first-time password
+  is fine without the check. Meant to be called from `/me` by the
+  signed-in user themselves.
+  """
+  @spec update_password(User.t(), String.t() | nil, String.t()) ::
+          {:ok, User.t()} | {:error, :invalid_current_password | Changeset.t()}
+  def update_password(%User{password_hash: hash} = user, current_password, new_password)
+      when is_binary(hash) do
+    if is_binary(current_password) and Bcrypt.verify_pass(current_password, hash) do
+      do_update_password(user, new_password)
+    else
+      Bcrypt.no_user_verify()
+      {:error, :invalid_current_password}
+    end
+  end
+
+  def update_password(%User{} = user, _current_password, new_password) do
+    do_update_password(user, new_password)
+  end
+
+  defp do_update_password(%User{} = user, new_password) do
+    user
+    |> User.password_changeset(%{"password" => new_password})
+    |> Repo.update()
+    |> case do
+      {:ok, updated} -> {:ok, updated}
+      {:error, changeset} -> {:error, changeset}
     end
   end
 
