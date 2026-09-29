@@ -23,14 +23,41 @@ defmodule RolezinhoWeb.SettingsLive do
     {:ok,
      socket
      |> assign(:page_title, "Suas preferências")
-     |> assign(:password_error, nil)}
+     |> assign(:password_error, nil)
+     |> assign(:email_error, nil)}
   end
 
   # Set (first time) OR change (subsequent) the signed-in user's
   # password. Rendered only when there's a signed-in user; still
   # guarded server-side so a hostile push_event over the socket for
   # an anonymous session is a silent no-op.
+  # Sets or clears the signed-in user's email. Empty submit clears
+  # the value (email is optional). Only reachable server-side when
+  # `current_user` is set — an anonymous socket sending the event is
+  # a silent no-op, same shape as `set_password`.
   @impl true
+  def handle_event("save_email", params, socket) do
+    case socket.assigns.current_user do
+      %User{} = user ->
+        new_email = Map.get(params, "email", "")
+
+        case Accounts.update_email(user, new_email) do
+          {:ok, updated} ->
+            {:noreply,
+             socket
+             |> assign(:current_user, updated)
+             |> assign(:email_error, nil)
+             |> put_flash(:info, email_saved_flash(updated))}
+
+          {:error, %Ecto.Changeset{} = changeset} ->
+            {:noreply, assign(socket, :email_error, first_email_error(changeset))}
+        end
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
   def handle_event("set_password", params, socket) do
     case socket.assigns.current_user do
       %User{} = user ->
@@ -54,6 +81,22 @@ defmodule RolezinhoWeb.SettingsLive do
 
       _ ->
         {:noreply, socket}
+    end
+  end
+
+  defp email_saved_flash(%User{email: nil}), do: "Email removido."
+  defp email_saved_flash(%User{}), do: "Email atualizado."
+
+  defp first_email_error(%Ecto.Changeset{errors: errors}) do
+    case Enum.find(errors, fn {field, _} -> field == :email end) do
+      {:email, {"should be at most " <> _, _}} ->
+        "Email muito longo (máximo 200 caracteres)."
+
+      {:email, {msg, _}} ->
+        "Email: #{msg}"
+
+      _ ->
+        "Não deu pra salvar o email."
     end
   end
 
@@ -221,6 +264,48 @@ defmodule RolezinhoWeb.SettingsLive do
                 class="w-full rounded-row bg-ink px-3 py-2 text-[11px] font-bold text-ink-content"
               >
                 {password_panel_submit(@current_user)}
+              </button>
+            </form>
+          </div>
+
+          <!--
+            Email panel. Optional field — the only ambient reason
+            it exists is the password-reset flow (2026-09 amendment),
+            which needs a mailbox to send the link to. An empty
+            submit clears the value, since "I don't want an email on
+            file anymore" is a valid state and matches how the
+            registration form allows skipping it.
+          -->
+          <div :if={@current_user} class="mt-4 rounded-row border border-hairline bg-base-100 p-3">
+            <p class="text-[11px] font-bold text-muted">Email</p>
+            <p class="mt-0.5 text-[11px] leading-snug text-muted">
+              Opcional. Guardamos só pra te mandar um link caso precise redefinir a senha — nunca aparece em rolê nenhum.
+            </p>
+
+            <form phx-submit="save_email" class="mt-3 space-y-2" autocomplete="on">
+              <label class="block">
+                <span class="mb-1 block text-[11px] font-bold text-muted">Seu email</span>
+                <input
+                  type="text"
+                  inputmode="email"
+                  name="email"
+                  value={@current_user.email || ""}
+                  maxlength="200"
+                  autocomplete="email"
+                  placeholder="deixa em branco pra remover"
+                  class="w-full rounded-row border border-ink/12 bg-base-100 px-3 py-2 text-[13px] text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                />
+              </label>
+
+              <p :if={@email_error} class="text-[11px] font-bold text-error">
+                {@email_error}
+              </p>
+
+              <button
+                type="submit"
+                class="w-full rounded-row bg-ink px-3 py-2 text-[11px] font-bold text-ink-content"
+              >
+                Salvar email
               </button>
             </form>
           </div>

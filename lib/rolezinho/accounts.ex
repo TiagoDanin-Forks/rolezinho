@@ -22,8 +22,23 @@ defmodule Rolezinho.Accounts do
   import Ecto.Query, warn: false
 
   alias Ecto.Changeset
+  alias Ecto.Multi
+  alias Rolezinho.Accounts.PasswordResetToken
   alias Rolezinho.Accounts.User
+  alias Rolezinho.Accounts.UserNotifier
   alias Rolezinho.Repo
+
+  # Reset tokens live for one hour. Long enough that a user who
+  # switches tabs and comes back after lunch still has time; short
+  # enough that a leaked reset URL closes on its own within a work
+  # session. Enforced by the context, not the DB.
+  @reset_token_ttl_seconds 60 * 60
+
+  # 32 bytes of randomness before base64 = 43 URL-safe chars. Enough
+  # entropy that guessing is not a threat model. What lands in the DB
+  # is `:crypto.hash(:sha256, token)`, so a DB dump does not translate
+  # to instant reset ability.
+  @reset_token_bytes 32
 
   @doc """
   Loads a user by primary key. Returns `nil` when not found (or when `nil` is
@@ -220,6 +235,227 @@ defmodule Rolezinho.Accounts do
       {:ok, updated} -> {:ok, updated}
       {:error, changeset} -> {:error, changeset}
     end
+  end
+
+  @doc """
+  Updates a signed-in user's email address.
+
+  Accepts a plain string. Trimming + empty-collapse-to-nil happens in
+  the changeset, so a whitespace-only value clears the email (which
+  is a valid state — email is optional).
+
+  Returns `{:ok, user}` on success and `{:error, %Ecto.Changeset{}}`
+  on validation failure (currently only length).
+  """
+  @spec update_email(User.t(), String.t() | nil) :: {:ok, User.t()} | {:error, Changeset.t()}
+  def update_email(%User{} = user, new_email) do
+    user
+    |> User.email_changeset(%{"email" => new_email})
+    |> Repo.update()
+  end
+
+  # ---------- Password reset ----------
+
+  @doc """
+  Requests a password-reset link.
+
+  Accepts a username or an email. Always returns `:ok` regardless of
+  whether a user was found or an email was actually sent — the
+  callsite must not leak whether an account exists (RFC 8628 style,
+  and consistent with the login flow's opaque "usuário ou senha
+  inválidos"). Inserts a fresh token and mails the reset URL when:
+
+    * the identifier resolves to a user, AND
+    * the user has an `:email` on file.
+
+  Any prior unused tokens for the same user are deleted first, so at
+  most one active reset link exists per user at a time — the last
+  request wins.
+
+  `url_builder` is a 1-arity function that turns the plaintext token
+  into an absolute URL. Passed in by the controller so this module
+  does not depend on the router.
+  """
+  @spec request_password_reset(String.t() | nil, (String.t() -> String.t())) :: :ok
+  def request_password_reset(identifier, url_builder) when is_function(url_builder, 1) do
+    case resolve_reset_target(identifier) do
+      %User{email: email} = user when is_binary(email) and email != "" ->
+        {token, hash} = generate_reset_token()
+
+        # Wipe any prior outstanding token for this user, then insert
+        # the new one. In one transaction so a crash mid-request never
+        # leaves the user with two live tokens.
+        {:ok, _} =
+          Multi.new()
+          |> Multi.delete_all(
+            :delete_prior,
+            from(t in PasswordResetToken, where: t.user_id == ^user.id)
+          )
+          |> Multi.insert(
+            :insert_token,
+            PasswordResetToken.new_changeset(%{
+              user_id: user.id,
+              token_hash: hash,
+              sent_to_email: email,
+              expires_at: reset_token_expiry()
+            })
+          )
+          |> Repo.transaction()
+
+        # Best-effort delivery. A transport error is logged silently:
+        # the caller must not learn whether the address bounced.
+        _ = UserNotifier.deliver_reset_password_instructions(user, url_builder.(token))
+
+        :ok
+
+      _ ->
+        # No user, or user with no email. Still consume a token-hash
+        # to keep the timing profile in the same ballpark as the
+        # happy path (bcrypt-style "do the work anyway" trick).
+        _ = generate_reset_token()
+        :ok
+    end
+  end
+
+  @doc """
+  Redeems a reset token and sets a new password in one transaction.
+
+  Returns:
+
+    * `{:ok, user}` on success — the token is marked used, the
+      password hash is replaced, and the reloaded user is returned.
+    * `{:error, :invalid_token}` if the token doesn't exist, is
+      expired, or has already been used.
+    * `{:error, %Ecto.Changeset{}}` if the new password fails
+      validation.
+
+  The plaintext token is never stored; this function hashes what the
+  caller provides and looks up by hash. All prior outstanding tokens
+  for the user (including the one just redeemed) are deleted on
+  success — so a link, once used, is dead everywhere.
+  """
+  @spec reset_password_with_token(String.t() | nil, String.t()) ::
+          {:ok, User.t()} | {:error, :invalid_token | Changeset.t()}
+  def reset_password_with_token(token, new_password)
+      when is_binary(token) and is_binary(new_password) do
+    case fetch_valid_reset_token(token) do
+      {:ok, %PasswordResetToken{user_id: user_id}} ->
+        user = Repo.get!(User, user_id)
+        hash = hash_token(token)
+
+        Multi.new()
+        |> Multi.update(:user, User.password_changeset(user, %{"password" => new_password}))
+        |> Multi.delete_all(
+          :delete_tokens,
+          from(t in PasswordResetToken, where: t.user_id == ^user.id or t.token_hash == ^hash)
+        )
+        |> Repo.transaction()
+        |> case do
+          {:ok, %{user: updated}} -> {:ok, updated}
+          {:error, :user, changeset, _} -> {:error, changeset}
+        end
+
+      :error ->
+        {:error, :invalid_token}
+    end
+  end
+
+  def reset_password_with_token(_token, _new_password), do: {:error, :invalid_token}
+
+  @doc """
+  Loads the user associated with a valid reset token, or returns
+  `:error`.
+
+  Same validity rules as the redeem path (exists, not expired, not
+  used), but does not consume the token — used by the reset-form
+  screen to decide whether to render the form or a "link expired"
+  message before the user has typed anything.
+  """
+  @spec fetch_user_by_reset_token(String.t() | nil) :: {:ok, User.t()} | :error
+  def fetch_user_by_reset_token(token) when is_binary(token) do
+    case fetch_valid_reset_token(token) do
+      {:ok, %PasswordResetToken{user_id: user_id}} ->
+        case Repo.get(User, user_id) do
+          %User{} = user -> {:ok, user}
+          nil -> :error
+        end
+
+      :error ->
+        :error
+    end
+  end
+
+  def fetch_user_by_reset_token(_), do: :error
+
+  # Resolves a free-form identifier to a user. Accepts a username (the
+  # canonical, lowercase-normalized handle) OR an email. Order matters:
+  # try username first because it's the primary identity; only fall
+  # back to email if that fails. Both lookups are case-insensitive.
+  defp resolve_reset_target(nil), do: nil
+  defp resolve_reset_target(""), do: nil
+
+  defp resolve_reset_target(identifier) when is_binary(identifier) do
+    trimmed = String.trim(identifier)
+
+    cond do
+      trimmed == "" ->
+        nil
+
+      String.contains?(trimmed, "@") ->
+        get_by_email(trimmed) || get_by_username(trimmed)
+
+      true ->
+        get_by_username(trimmed) || get_by_email(trimmed)
+    end
+  end
+
+  defp resolve_reset_target(_), do: nil
+
+  # Case-insensitive email lookup. The `:email` column is not unique on
+  # this project (two GitHub accounts can share a private email in
+  # theory, and email is optional / unverified), so this returns the
+  # first match — which is stable enough for a reset request path
+  # (the same email means the same physical inbox, whoever the row
+  # picked belongs to).
+  defp get_by_email(email) when is_binary(email) do
+    normalized = email |> String.trim() |> String.downcase()
+
+    Repo.one(
+      from u in User,
+        where: fragment("lower(?) = ?", u.email, ^normalized),
+        order_by: [asc: u.id],
+        limit: 1
+    )
+  end
+
+  defp fetch_valid_reset_token(token) when is_binary(token) do
+    hash = hash_token(token)
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    case Repo.get_by(PasswordResetToken, token_hash: hash) do
+      %PasswordResetToken{used_at: nil, expires_at: expires_at} = row ->
+        if DateTime.compare(expires_at, now) == :gt do
+          {:ok, row}
+        else
+          :error
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp generate_reset_token do
+    token = @reset_token_bytes |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+    {token, hash_token(token)}
+  end
+
+  defp hash_token(token), do: :crypto.hash(:sha256, token)
+
+  defp reset_token_expiry do
+    DateTime.utc_now()
+    |> DateTime.add(@reset_token_ttl_seconds, :second)
+    |> DateTime.truncate(:second)
   end
 
   @doc """

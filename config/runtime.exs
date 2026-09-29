@@ -142,19 +142,30 @@ if config_env() == :prod do
 
   # ## Configuring the mailer
   #
-  # In production you need to configure the mailer to use a different adapter.
-  # Here is an example configuration for Mailgun:
+  # Password-reset emails (2026-09 ADR-0002 amendment) go through
+  # `Rolezinho.Mailer`. The default compile-time adapter is
+  # `Swoosh.Adapters.Local` — fine for dev, useless in prod. Set the
+  # `RESEND_API_KEY` env var and this block flips the adapter to
+  # Resend at boot; leaving it unset keeps prod on the Local adapter
+  # (no crash, no email delivered).
   #
-  #     config :rolezinho, Rolezinho.Mailer,
-  #       adapter: Swoosh.Adapters.Mailgun,
-  #       api_key: System.get_env("MAILGUN_API_KEY"),
-  #       domain: System.get_env("MAILGUN_DOMAIN")
+  # Resend is a good starter transactional provider because the setup
+  # is a single API key plus a verified sending domain. The API
+  # client Req is already loaded (see `config/prod.exs`).
   #
-  # Most non-SMTP adapters require an API client. Swoosh supports Req, Hackney,
-  # and Finch out-of-the-box. This configuration is typically done at
-  # compile-time in your config/prod.exs:
+  # Env vars:
   #
-  #     config :swoosh, :api_client, Swoosh.ApiClient.Req
-  #
-  # See https://swoosh.hexdocs.pm/Swoosh.html#module-installation for details.
+  #   * `RESEND_API_KEY` — required to enable the adapter.
+  #   * `MAILER_FROM` — optional. The From address on outgoing mail;
+  #     must belong to a domain you've verified in the Resend
+  #     dashboard. Defaults to `no-reply@rolezinho.lubien.dev`.
+  if resend_key = System.get_env("RESEND_API_KEY") do
+    config :rolezinho, Rolezinho.Mailer,
+      adapter: Swoosh.Adapters.Resend,
+      api_key: resend_key
+  end
+
+  if from = System.get_env("MAILER_FROM") do
+    config :rolezinho, :mailer_from, from
+  end
 end

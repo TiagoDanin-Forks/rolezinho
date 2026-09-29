@@ -168,6 +168,69 @@ The original invariants below still hold: no accountability outside creation
 beyond ownership + persisted group unlocks, and the same mass-assignment
 rules for `:admin`, `:password_hash`, `:github_id`.
 
+### Sub-amendment: password reset via email
+
+The first draft of this amendment said explicitly "no password reset via
+email (no verified email → no reset)". Product reversed that: reset is
+now available for users who have an email address on file, even though
+email is not verified.
+
+The risk model we accepted:
+
+- Email is optional at registration and never verified. In theory Alice
+  could register with `bob@example.com` by typo or on purpose.
+- If Bob later requests a reset for that account, he receives the link
+  and gains access to the account Alice created — but Bob is the
+  rightful owner of that inbox, so the account is going where it should
+  have gone in the first place. This is not "an attacker hijacking
+  Alice"; it is Bob taking possession of an account that was pointed at
+  him without his consent.
+- An attacker cannot force a reset targeting an account they do not
+  already control: only the account owner can edit the email on file
+  (`/me`, behind their existing session), and reset links only travel
+  to that address.
+
+Implementation shape:
+
+- `password_reset_tokens` table (see the 2026-09 migration). The DB
+  stores the **SHA-256 of the token**, never the plaintext. The
+  plaintext lives only inside the outgoing email.
+- Tokens live for 1 hour, are single-use, and every fresh request wipes
+  any prior outstanding token for the same user (last request wins).
+- `Accounts.request_password_reset/2` always returns `:ok`. Whether the
+  identifier resolved to a user, and whether that user had an email on
+  file, are not disclosed to the caller — same anti-enumeration
+  posture as the login flow's "usuário ou senha inválidos".
+- The reset redemption path (`Accounts.reset_password_with_token/2`)
+  updates the password and deletes every outstanding token for that
+  user in the same transaction, so a redeemed link is dead everywhere.
+- Delivery uses the existing `Rolezinho.Mailer` and its Swoosh adapter.
+  Prod ships with a Resend-adapter opt-in in `config/runtime.exs`,
+  gated on `RESEND_API_KEY`: set the env var, the adapter flips at
+  boot; leave it unset, the mailer stays on the compile-time default
+  (`Swoosh.Adapters.Local`) and no email is delivered (no crash). The
+  From address comes from `MAILER_FROM` when set, otherwise the
+  compile-time `:mailer_from` config. Dev views mail at `/dev/mailbox`.
+- Users with no email address on file cannot reset. `/me` carries an
+  email panel so a signed-in user can add one after the fact —
+  `Accounts.update_email/2` writes the field via a narrow
+  `User.email_changeset/2` that only casts `:email` (mass-assignment
+  protection stays intact). An empty submit clears the value, matching
+  the "optional" contract at registration.
+- Rate-limiting runs in-process via an ETS-backed fixed-window counter
+  (`Rolezinho.Accounts.ResetRateLimiter`, initialized in
+  `Rolezinho.Application.start/2`). Two dimensions run independently
+  and a request must clear both: **5 per hour per identifier**
+  (downcased + trimmed before keying) and **20 per hour per source
+  IP** (Fly injects `x-forwarded-for`; the controller reads that first,
+  falling back to `conn.remote_ip`). A rate-limited request is a
+  silent no-op that still lands on the same generic "if the account
+  exists, the link was sent" flash — saying "you're throttled" would
+  be a signal the anti-enumeration story is meant to hide.
+
+Rate-limit values are deliberately generous. They exist to blunt abuse,
+not to inconvenience a person who fat-fingered the form.
+
 ## When to revisit
 
 Write a new ADR superseding this one if:
@@ -191,3 +254,8 @@ Write a new ADR superseding this one if:
 - [user.ex plug](../../lib/rolezinho_web/plugs/user.ex)
 - [policy.ex](../../lib/rolezinho/event/policy.ex) — new `:organizer` clause
 - [group.ex](../../lib/rolezinho/group.ex) — `editable_by?/3` extended
+- [password_reset_token.ex](../../lib/rolezinho/accounts/password_reset_token.ex)
+- [user_notifier.ex](../../lib/rolezinho/accounts/user_notifier.ex)
+- [password_reset_controller.ex](../../lib/rolezinho_web/controllers/password_reset_controller.ex)
+- [reset_rate_limiter.ex](../../lib/rolezinho/accounts/reset_rate_limiter.ex)
+- [runtime.exs](../../config/runtime.exs) — `RESEND_API_KEY` / `MAILER_FROM` gates

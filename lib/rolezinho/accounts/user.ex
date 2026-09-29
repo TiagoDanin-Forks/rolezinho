@@ -151,6 +151,40 @@ defmodule Rolezinho.Accounts.User do
     |> hash_password_if_valid()
   end
 
+  @doc """
+  Changeset for a signed-in user updating just their email.
+
+  Only `:email` is cast — `:admin`, `:password_hash`, `:username`,
+  and everything GitHub-side is mass-assignment-protected. An empty
+  or whitespace-only value clears the email (nil on the row), which
+  is the same shape a user with no email on file has at
+  registration.
+
+  Length is bounded but the value is not format-validated: email is
+  optional and unverified (per ADR-0002 amendment), so accepting
+  anything the user types keeps the flow honest. If they typo, they
+  can fix it here.
+  """
+  def email_changeset(%User{} = user, attrs) do
+    user
+    |> cast(attrs, [:email])
+    |> update_change(:email, &normalize_email/1)
+    |> validate_length(:email, max: 200)
+  end
+
+  # Whitespace-only email collapses to nil so a stray space bar does
+  # not leave the user with an unreachable email address.
+  defp normalize_email(nil), do: nil
+
+  defp normalize_email(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp normalize_email(_), do: nil
+
   @doc "Regex used to validate the username on creation."
   def username_regex, do: @username_regex
 

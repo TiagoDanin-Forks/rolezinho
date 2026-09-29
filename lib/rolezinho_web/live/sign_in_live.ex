@@ -180,7 +180,15 @@ defmodule RolezinhoWeb.SignInLive do
       </label>
 
       <label class="block">
-        <span class="mb-1 block text-[11px] font-bold text-muted">Senha</span>
+        <div class="mb-1 flex items-baseline justify-between gap-2">
+          <span class="text-[11px] font-bold text-muted">Senha</span>
+          <.link
+            navigate={~p"/entrar/esqueci"}
+            class="text-[11px] font-bold text-muted underline hover:text-ink"
+          >
+            Esqueci a senha
+          </.link>
+        </div>
         <input
           type="password"
           name="password"

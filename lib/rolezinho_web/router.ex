@@ -42,6 +42,8 @@ defmodule RolezinhoWeb.Router do
       live "/g/criar", GroupNewLive, :new
       live "/g/:slug", GroupLive, :show
       live "/entrar", SignInLive, :show
+      live "/entrar/esqueci", ForgotPasswordLive, :show
+      live "/entrar/nova-senha/:token", ResetPasswordLive, :show
 
       # Edit surfaces: reachable by admin OR by the resource's own
       # owner. The paths keep the `/admin/` prefix for bookmark
@@ -67,6 +69,8 @@ defmodule RolezinhoWeb.Router do
     # at `/auth/github` — both paths land on the same session.
     post "/entrar/senha", SessionController, :create
     post "/entrar/registrar", SessionController, :register
+    post "/entrar/esqueci", PasswordResetController, :create
+    post "/entrar/nova-senha/:token", PasswordResetController, :update
 
     get "/admin/login", AdminSessionController, :new
     post "/admin/login", AdminSessionController, :create

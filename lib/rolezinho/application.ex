@@ -7,6 +7,13 @@ defmodule Rolezinho.Application do
 
   @impl true
   def start(_type, _args) do
+    # Password-reset rate limiter: an ETS-backed fixed-window counter
+    # shared across all requesting processes. Named + public, so a
+    # supervision restart during code reload doesn't need to hand the
+    # tid around. Created before the endpoint so the first request
+    # hitting `/entrar/esqueci` after boot never races the table.
+    :ok = Rolezinho.Accounts.ResetRateLimiter.init()
+
     children = [
       RolezinhoWeb.Telemetry,
       Rolezinho.Repo,
