@@ -1131,6 +1131,68 @@ defmodule Rolezinho.Events do
     if Event.locked_signups?(event), do: {:error, :signups_locked}, else: :ok
   end
 
+  @doc """
+  Returns the `limit` most recently typed names by this signed-in user,
+  canonicalized and deduplicated, in "most recent first" order.
+
+  Powers the join-form autocomplete: someone who signs into every rolê
+  and always brings the same friends should not have to type their names
+  from scratch every time. "Names by this user" = every attendee row
+  (main OR wait) whose `user_id` matches, across every event; that
+  includes the user themselves and any guests they added on their party
+  (guests inherit `user_id` at join time, see `Event.new_attendee/2`).
+
+  Canonicalization collapses casing/whitespace variants to one entry —
+  "Pedro costa" and "pedro Costa" both become "Pedro Costa" and count
+  as one suggestion. See `Attendee.canonical_name/1`.
+
+  Returns `[]` for `nil` (anonymous caller) so the callsite can pipe an
+  optional user id in without branching.
+  """
+  @spec recent_names_for_user(integer() | nil, pos_integer()) :: [String.t()]
+  def recent_names_for_user(user_id, limit \\ 25)
+
+  def recent_names_for_user(nil, _limit), do: []
+
+  def recent_names_for_user(user_id, limit) when is_integer(user_id) and limit > 0 do
+    # Postgres path: unnest both attendee arrays together (`array_cat` on
+    # jsonb[]) into rows of jsonb, then extract `name` and `joined_at`
+    # for those matching the user id. Casts:
+    #   * `user_id` field is stored as jsonb number — `->>` returns text,
+    #     so we cast to int for the equality.
+    #   * `joined_at` is an ISO 8601 string — cast to timestamp so we can
+    #     ORDER BY it in the outer step.
+    rows =
+      from(e in Event,
+        cross_join: att in fragment("unnest(array_cat(?, ?))", e.main_list, e.wait_list),
+        where:
+          fragment("(?)->>'user_id'", att) != "" and
+            fragment("((?)->>'user_id')::int", att) == ^user_id and
+            fragment("(?)->>'name'", att) != "",
+        select: {
+          fragment("(?)->>'name'", att),
+          fragment("(?)->>'joined_at'", att)
+        }
+      )
+      |> Repo.all()
+
+    rows
+    |> Enum.map(fn {raw_name, joined_at} ->
+      {Event.Attendee.canonical_name(raw_name), joined_at}
+    end)
+    |> Enum.reject(fn {canonical, _} -> canonical == "" end)
+    |> Enum.group_by(fn {canonical, _} -> canonical end)
+    |> Enum.map(fn {canonical, tuples} ->
+      # "Latest" per canonical name so the ordering reflects the most
+      # recent time the person appeared, not the first.
+      latest = tuples |> Enum.map(fn {_, joined_at} -> joined_at end) |> Enum.max()
+      {canonical, latest}
+    end)
+    |> Enum.sort_by(fn {_canonical, joined_at} -> joined_at end, :desc)
+    |> Enum.take(limit)
+    |> Enum.map(fn {canonical, _joined_at} -> canonical end)
+  end
+
   def remove_main(%Event{} = event, index), do: save(Event.remove_main(event, index))
   def remove_wait(%Event{} = event, index), do: save(Event.remove_wait(event, index))
   def toggle_paid_main(%Event{} = event, index), do: save(Event.toggle_paid_main(event, index))

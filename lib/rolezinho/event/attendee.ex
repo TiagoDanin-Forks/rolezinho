@@ -91,4 +91,41 @@ defmodule Rolezinho.Event.Attendee do
   def owns?(%__MODULE__{} = attendee, participant_id, user_id) do
     owned_by?(attendee, participant_id) or owned_by_user?(attendee, user_id)
   end
+
+  @doc """
+  Canonicalizes a name so two typings of the same person collapse to one
+  suggestion in the autocomplete: leading/trailing whitespace trimmed,
+  internal whitespace collapsed to a single space, each word capitalized.
+
+  Word-cap is naive on purpose — Portuguese-language personal names are
+  the vast majority of what this app sees, and the cost of getting a
+  "de"/"da" wrong here (they render capitalized in a suggestion) is much
+  smaller than the cost of missing a dedup between "Pedro costa" and
+  "pedro Costa".
+
+  ## Examples
+
+      iex> Rolezinho.Event.Attendee.canonical_name("  pedro   costa  ")
+      "Pedro Costa"
+
+      iex> Rolezinho.Event.Attendee.canonical_name("PEDRO COSTA")
+      "Pedro Costa"
+
+      iex> Rolezinho.Event.Attendee.canonical_name("")
+      ""
+  """
+  @spec canonical_name(String.t() | nil) :: String.t()
+  def canonical_name(nil), do: ""
+
+  def canonical_name(value) when is_binary(value) do
+    value
+    |> String.split(~r/\s+/u, trim: true)
+    |> Enum.map_join(" ", &capitalize_word/1)
+  end
+
+  def canonical_name(_), do: ""
+
+  # `String.capitalize/1` lowercases the rest of the word, which is what
+  # we want (so "MARIA" → "Maria" instead of "MARIA"). Preserves Unicode.
+  defp capitalize_word(word), do: String.capitalize(word)
 end

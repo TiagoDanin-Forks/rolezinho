@@ -522,7 +522,8 @@ defmodule Rolezinho.Event do
   def max_party_size, do: 9
 
   defp place_party(%Event{} = event, name, size, opts) do
-    names = party_names(name, size)
+    guest_names = Keyword.get(opts, :guest_names, [])
+    names = party_names(name, size, guest_names)
     {for_main, overflow} = Enum.split(names, free_main_slots(event))
 
     # Without a waiting list there is nowhere for the overflow to go. Taking the
@@ -553,12 +554,28 @@ defmodule Rolezinho.Event do
     end
   end
 
-  # The person who joined keeps their name; everyone they brought is identified
-  # by them, since that is how the group refers to them and who settles up.
-  defp party_names(name, 1), do: [name]
+  # The person who joined keeps their name; each guest gets whatever the
+  # form typed for that position, or falls back to "Convidado de X" (which
+  # is how the group refers to them when nobody bothered to name them and
+  # who settles up).
+  defp party_names(name, 1, _guests), do: [name]
 
-  defp party_names(name, size) do
-    [name | Enum.map(2..size, fn _ -> "Convidado de #{name}" end)]
+  defp party_names(name, size, guests) do
+    fallbacks = Enum.map(2..size, fn _ -> "Convidado de #{name}" end)
+    typed = Enum.map(guests, &clean_name/1)
+
+    guest_names =
+      fallbacks
+      |> Enum.with_index()
+      |> Enum.map(fn {fallback, index} ->
+        case Enum.at(typed, index) do
+          "" -> fallback
+          nil -> fallback
+          value -> value
+        end
+      end)
+
+    [name | guest_names]
   end
 
   # The whole party shares one participant_id: it came from one browser, and the

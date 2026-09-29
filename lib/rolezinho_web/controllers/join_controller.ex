@@ -38,6 +38,7 @@ defmodule RolezinhoWeb.JoinController do
     # after the per-device `participant_id` is gone. Nil for anonymous
     # joins — in that case only the token identifies the row.
     user_id = conn.assigns[:current_user_id]
+    guest_names = parse_guest_names(params["guest_names"])
 
     with :ok <- ensure_unlocked(conn, event),
          :ok <- ensure_open(conn, event),
@@ -47,7 +48,8 @@ defmodule RolezinhoWeb.JoinController do
            Events.add_party(event, name, size,
              participant_id: participant_id,
              user_id: user_id,
-             values: values
+             values: values,
+             guest_names: guest_names
            ) do
       conn
       |> Participant.put_participant(event.slug, participant_id)
@@ -120,6 +122,23 @@ defmodule RolezinhoWeb.JoinController do
   end
 
   defp parse_size(_), do: 1
+
+  # HTML forms with repeated `guest_names[]` inputs arrive as either a
+  # list (typical) or an index-keyed map (some plug versions). Coerce to
+  # a plain list of strings; anything else means the form did not send
+  # per-guest names, and the caller falls back to "Convidado de X".
+  defp parse_guest_names(nil), do: []
+
+  defp parse_guest_names(values) when is_list(values),
+    do: Enum.map(values, &to_string/1)
+
+  defp parse_guest_names(values) when is_map(values) do
+    values
+    |> Enum.sort_by(fn {k, _} -> k end)
+    |> Enum.map(fn {_, v} -> to_string(v) end)
+  end
+
+  defp parse_guest_names(_), do: []
 
   # A password-gated event has to be unlocked before anyone can join it, or the
   # gate would only be hiding the list rather than protecting it. The same

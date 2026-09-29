@@ -242,6 +242,10 @@ defmodule RolezinhoWeb.EventLive do
     |> assign(:confirmed_names, confirmed_names(event, unlocked?))
     |> assign(:party_room, party_room(event))
     |> assign(:extra_fields, extra_fields(event))
+    # Autocomplete suggestions for the join form's name + guest fields.
+    # `[]` for anonymous callers (no cross-event history to draw from),
+    # otherwise the 25 most recent canonical names this user has typed.
+    |> assign(:recent_names, Events.recent_names_for_user(user_id, 25))
     # Snapshot the policy inputs for the template. The pencil affordance on
     # each row asks `Policy.can_edit_row?/3` for the answer and needs the
     # same shape `handle_event/3` uses server-side, so keeping the two in
@@ -1664,6 +1668,27 @@ defmodule RolezinhoWeb.EventLive do
           <span class="text-[11px] font-semibold text-muted">{confirmed_summary(@confirmed_names)}</span>
         </div>
 
+        <!-- Autocomplete pool for the user's own name. Empty for anonymous
+             callers — no cross-event history to pull from — so the browser
+             just doesn't offer suggestions, which is the right no-op. -->
+        <datalist id="join-name-suggestions">
+          <option :for={name <- @recent_names} value={name} />
+        </datalist>
+
+        <!--
+          Same pool, but for the guest fields, and filtered live by the
+          `.PartyGuests` hook to exclude the name the user just typed as
+          their own — no reason to suggest yourself as your own guest.
+          Renders as a copy of the name pool on the server; the hook
+          prunes it as the name field changes. Two datalists rather than
+          one so the user's own field keeps ALL its suggestions (they
+          are typing prefix-first; the browser already stops offering
+          the option once it fully matches, so no dedup needed there).
+        -->
+        <datalist id="join-guest-suggestions">
+          <option :for={name <- @recent_names} value={name} />
+        </datalist>
+
         <form
           id="join-form"
           method="post"
@@ -1683,6 +1708,10 @@ defmodule RolezinhoWeb.EventLive do
             more disruptive than helpful — and we already prefill the name
             from the /me profile via the `.JoinDefaults` hook + localStorage,
             which is a strictly better UX than the browser's own guess.
+
+            `list=` is orthogonal to `autocomplete` — the datalist above
+            drives our own "names you've typed before" suggestions without
+            competing with the password-manager suppressions.
           -->
           <label class="block">
             <span class="mb-1 block text-[11px] font-bold text-muted">Seu nome *</span>
@@ -1690,8 +1719,10 @@ defmodule RolezinhoWeb.EventLive do
               type="text"
               name="name"
               data-profile="name"
+              data-name-field
               required
               maxlength="60"
+              list="join-name-suggestions"
               autocomplete="off"
               data-1p-ignore="true"
               data-lpignore="true"
@@ -1738,6 +1769,56 @@ defmodule RolezinhoWeb.EventLive do
             class="mt-3"
           />
 
+          <!--
+            One text field per guest slot the event can still hold. All are
+            rendered up-front and toggled by the `.PartyGuests` hook based
+            on the stepper's qty; that keeps party-size changes purely
+            client-side (no round trip) and cheap (max 8 pre-rendered
+            inputs is nothing compared to the shared datalist).
+
+            Placeholder is "Convidado de <nome>" and updates live as the
+            person types their own name above — the hook watches
+            `[data-name-field]`.
+
+            Same autocomplete guards as the main name field. `list=`
+            hangs them off the shared datalist so the same recent-names
+            suggestions appear on each guest slot.
+          -->
+          <div
+            :if={@party_room > 1}
+            id="party-guests"
+            phx-hook=".PartyGuests"
+            data-current-name=""
+            class="mt-3 space-y-2"
+          >
+            <label
+              :for={index <- 1..(@party_room - 1)}
+              hidden
+              data-guest-slot
+              data-guest-index={index}
+              class="block"
+            >
+              <span class="mb-1 block text-[11px] font-bold text-muted">
+                Acompanhante {index}
+              </span>
+              <input
+                type="text"
+                name="guest_names[]"
+                data-guest-input
+                disabled
+                maxlength="60"
+                list="join-guest-suggestions"
+                autocomplete="off"
+                data-1p-ignore="true"
+                data-lpignore="true"
+                data-bwignore="true"
+                data-form-type="other"
+                placeholder="Convidado de você"
+                class="w-full rounded-row border border-ink/12 bg-base-100 px-3.5 py-3 text-[13px] font-semibold text-ink outline-none placeholder:font-normal placeholder:text-ink/35 focus:border-accent focus:ring-2 focus:ring-accent/20"
+              />
+            </label>
+          </div>
+
           <button
             type="submit"
             class="mt-3.5 w-full rounded-cta bg-ink px-4 py-4 text-[15px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97]"
@@ -1769,6 +1850,117 @@ defmodule RolezinhoWeb.EventLive do
               this.el.querySelectorAll("[data-profile]").forEach((input) => {
                 if (!input.value) input.value = profile[input.dataset.profile] || ""
               })
+            }
+          }
+        </script>
+
+        <script :type={Phoenix.LiveView.ColocatedHook} name=".PartyGuests">
+          // The party controls: show N-1 guest inputs (where N is the qty
+          // stepper), and keep every guest input's placeholder in sync
+          // with the user's name so it always reads "Convidado de <name>".
+          // Disabled + hidden inputs stay out of the POST body, which is
+          // how we make sure only the active guest slots submit.
+          export default {
+            mounted() {
+              const form = this.el.closest("form")
+              if (!form) return
+
+              const nameField = form.querySelector("[data-name-field]")
+              const qtyField = form.querySelector("[data-field][name='qty']")
+              const slots = Array.from(this.el.querySelectorAll("[data-guest-slot]"))
+
+              const currentName = () => (nameField && nameField.value.trim()) || "você"
+
+              const applyPlaceholders = () => {
+                const label = `Convidado de ${currentName()}`
+                slots.forEach((slot) => {
+                  const input = slot.querySelector("[data-guest-input]")
+                  if (input) input.placeholder = label
+                })
+              }
+
+              const applyVisibility = () => {
+                const qty = Number(qtyField ? qtyField.value : 1) || 1
+                const active = Math.max(0, qty - 1)
+                slots.forEach((slot, index) => {
+                  const isActive = index < active
+                  slot.hidden = !isActive
+                  const input = slot.querySelector("[data-guest-input]")
+                  if (input) input.disabled = !isActive
+                })
+              }
+
+              // The name-shaped suggestion pool the guests use. We keep
+              // an in-memory copy of every option the server rendered,
+              // then re-materialize the datalist on every name change,
+              // dropping any option whose canonical form matches what
+              // the user just typed as their own. Same normalization
+              // rule as `Rolezinho.Event.Attendee.canonical_name/1`:
+              // trim, collapse whitespace, capitalize each word.
+              const guestList = document.getElementById("join-guest-suggestions")
+              const allSuggestions = guestList
+                ? Array.from(guestList.querySelectorAll("option")).map((o) => o.value)
+                : []
+
+              const canonical = (s) =>
+                (s || "")
+                  .trim()
+                  .split(/\s+/)
+                  .filter(Boolean)
+                  .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+                  .join(" ")
+
+              const applyGuestSuggestions = () => {
+                if (!guestList) return
+                const mine = canonical(nameField ? nameField.value : "")
+                const kept = mine === ""
+                  ? allSuggestions
+                  : allSuggestions.filter((v) => canonical(v) !== mine)
+
+                // Replace children in one pass; datalists are small
+                // (≤25 options) so this is cheap and avoids per-option
+                // toggling that some browsers ignore for `<option>`.
+                guestList.replaceChildren(
+                  ...kept.map((v) => {
+                    const el = document.createElement("option")
+                    el.value = v
+                    return el
+                  })
+                )
+              }
+
+              // Watch the name field for placeholder + suggestion updates.
+              if (nameField) {
+                nameField.addEventListener("input", () => {
+                  applyPlaceholders()
+                  applyGuestSuggestions()
+                })
+              }
+
+              // The stepper doesn't fire a change event on its hidden
+              // input (it mutates `.value` directly), so we observe the
+              // attribute + polling as a belt-and-suspenders. `input`
+              // fires when the user types a number in dev tools; the
+              // MutationObserver catches the stepper's programmatic
+              // updates.
+              if (qtyField) {
+                qtyField.addEventListener("input", applyVisibility)
+                const observer = new MutationObserver(applyVisibility)
+                observer.observe(qtyField, { attributes: true, attributeFilter: ["value"] })
+                // Also intercept clicks on the stepper buttons — they
+                // set .value imperatively, which MutationObserver on the
+                // `value` *attribute* may miss (properties vs attrs).
+                const stepper = qtyField.closest("[data-min]")
+                if (stepper) {
+                  stepper.querySelectorAll("[data-step]").forEach((btn) => {
+                    btn.addEventListener("click", () => setTimeout(applyVisibility, 0))
+                  })
+                }
+              }
+
+              applyPlaceholders()
+              applyGuestSuggestions()
+              applyVisibility()
             }
           }
         </script>
