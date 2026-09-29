@@ -135,6 +135,39 @@ defmodule Rolezinho.Events do
   @doc "Lists done events."
   def list_done, do: do_list(:done)
 
+  @doc """
+  Lists events the given signed-in user can update via `/atualizar`:
+  everything they created that's still accepting changes to its list
+  (`:active` or `:maybe`; not `:done`, not `:payments_only`), ordered
+  by most-recently-touched first so the picker's top row is almost
+  always the one they meant.
+
+  Admins get the same query without the creator constraint — same
+  "still updatable" filter, but across every event, since the whole
+  point of the admin role is being able to fix things for anyone.
+
+  `nil` in and you get `[]` — anonymous visitors have nothing to
+  offer, and the picker page shows a sign-in prompt instead.
+  """
+  @spec list_updatable_for(integer() | nil, keyword()) :: [Event.t()]
+  def list_updatable_for(user_id, opts \\ [])
+
+  def list_updatable_for(nil, _opts), do: []
+
+  def list_updatable_for(user_id, opts) when is_integer(user_id) do
+    admin? = Keyword.get(opts, :admin?, false)
+    open_statuses = [:active, :maybe]
+
+    base = from e in Event, where: e.status in ^open_statuses, order_by: [desc: e.updated_at]
+
+    query =
+      if admin?,
+        do: base,
+        else: from(e in base, where: e.created_by_user_id == ^user_id)
+
+    Repo.all(query)
+  end
+
   defp do_list(status) do
     from(e in Event, where: e.status == ^status, order_by: [asc: e.title])
     |> Repo.all()
@@ -1223,6 +1256,255 @@ defmodule Rolezinho.Events do
   @spec update_wait(Event.t(), pos_integer(), map()) :: {:ok, Event.t()} | {:error, map()}
   def update_wait(%Event{} = event, index, params) when is_map(params) do
     save(Event.update_wait(event, index, sanitize_update_params(event, params)))
+  end
+
+  @doc """
+  Applies a `/atualizar`-shaped bulk update to an event.
+
+  `changes` is the structured form the LiveView hands us after the
+  human has reviewed the LLM's proposal and confirmed. Shape:
+
+      %{
+        add_fields: [%{"label" => "Tamanho"}, ...],
+        remove_field_ids: ["typo-field"],
+        main: %{1 => row, 2 => row, ...},   # 1-based row index
+        wait: %{1 => row, ...}
+      }
+
+  Row shape (all keys optional):
+
+      %{
+        "name"   => "Alice",    # empty string clears the slot
+        "values" => %{"tamanho" => "M"},
+        "paid"   => true | false
+      }
+
+  Update rules per row:
+
+    * empty name — the slot is cleared (empty `%Attendee{}`).
+    * name changed vs. current — the slot is **replaced** with a
+      fresh attendee (no `participant_id`, no `user_id`,
+      `joined_at = utc_now`). Sending a new name is treated as "a
+      different person is here now", so we do not carry the old
+      identity forward.
+    * name unchanged (or the current slot was empty) — values and
+      paid update in place, preserving `participant_id` / `user_id`
+      when they were already there.
+
+  When `changes[:main_capacity]` differs from the event's current
+  capacity, the list is resized around the row updates: **grow first**
+  (so a row keyed at a slot past the current end has somewhere to land),
+  then **shrink after** (`Event.resize_main/2` clamps at the number of
+  filled slots, so a shrink can only take effect if the row updates
+  cleared the excess names first). This makes the two directions safe
+  in the same transaction: the URL can send `capacity=8` alongside
+  `names[8]=` / `names[9]=` to shrink from 10 down to 8 in one hop.
+
+  Adds and removes on the event's form-field set run **before** the
+  row updates, so a row that references a newly-added field lands on
+  disk with that field already recognised.
+
+  Returns `{:ok, event}` on success, `{:error, reason}` on the first
+  failure (mirrors how `Events.add_form_field/2` and
+  `Events.remove_form_field/2` fail today).
+  """
+  @spec apply_chat_update(Event.t(), map()) :: {:ok, Event.t()} | {:error, term()}
+  def apply_chat_update(%Event{} = event, changes) when is_map(changes) do
+    add = Map.get(changes, :add_fields, [])
+    remove = Map.get(changes, :remove_field_ids, [])
+    main = Map.get(changes, :main, %{})
+    wait = Map.get(changes, :wait, %{})
+    target_capacity = Map.get(changes, :main_capacity)
+
+    with {:ok, event} <- add_fields(event, add),
+         {:ok, event} <- remove_fields(event, remove) do
+      # Grow-only pre-pass: if the target is larger than current, or
+      # the row proposals name a slot past the end, expand first so
+      # the row loop has real slots to iterate over.
+      max_slot = main |> Map.keys() |> Enum.max(fn -> 0 end)
+      grow_target = Enum.max([event.main_capacity, target_capacity || 0, max_slot])
+
+      event = maybe_resize(event, grow_target)
+      event = apply_row_proposals(event, main, wait)
+
+      # Post-pass shrink: only fires when the target was set AND is
+      # smaller than current capacity. `resize_main/2` clamps at the
+      # filled count, so an ambitious "capacity=1" with 5 filled rows
+      # lands at 5, not 1 — no one is silently dropped by a resize.
+      event =
+        if is_integer(target_capacity) and target_capacity < event.main_capacity do
+          Event.resize_main(event, target_capacity)
+        else
+          event
+        end
+
+      save(event)
+    end
+  end
+
+  defp maybe_resize(%Event{main_capacity: current} = event, target)
+       when is_integer(target) and target > current,
+       do: Event.resize_main(event, target)
+
+  defp maybe_resize(event, _), do: event
+
+  defp add_fields(event, []), do: {:ok, event}
+
+  defp add_fields(event, [field | rest]) do
+    case add_form_field(event, field) do
+      {:ok, event} -> add_fields(event, rest)
+      {:error, reason} -> {:error, {:add_field, field, reason}}
+    end
+  end
+
+  defp remove_fields(event, []), do: {:ok, event}
+
+  defp remove_fields(event, [id | rest]) do
+    case remove_form_field(event, id) do
+      # `:not_found` on a remove is not fatal — the field the human
+      # marked "discard" may already have been absent (e.g. a stale
+      # form submission after a concurrent add). Move on.
+      {:ok, event} -> remove_fields(event, rest)
+      {:error, :not_found} -> remove_fields(event, rest)
+      {:error, reason} -> {:error, {:remove_field, id, reason}}
+    end
+  end
+
+  # Applies every proposal to `event.main_list` / `event.wait_list`
+  # in memory, so we only Repo-hit once at `save/1` below.
+  defp apply_row_proposals(%Event{} = event, main, wait) do
+    event
+    |> apply_list_proposals(:main_list, main)
+    |> apply_list_proposals(:wait_list, wait)
+  end
+
+  defp apply_list_proposals(event, _list_key, proposals) when map_size(proposals) == 0, do: event
+
+  defp apply_list_proposals(%Event{} = event, list_key, proposals) do
+    list = Map.fetch!(event, list_key)
+
+    updated =
+      list
+      |> Enum.with_index(1)
+      |> Enum.map(fn {attendee, index} ->
+        case Map.get(proposals, index) do
+          nil -> attendee
+          proposal -> merge_proposal(attendee, proposal, event)
+        end
+      end)
+
+    Map.put(event, list_key, updated)
+  end
+
+  # The per-row merge. Trusts sanitize_chat_row_values/2 to have
+  # already filtered `"values"` to known field ids.
+  defp merge_proposal(%Event.Attendee{} = attendee, proposal, %Event{} = event) do
+    proposed_name =
+      case Map.get(proposal, "name") do
+        nil -> nil
+        value when is_binary(value) -> String.trim(value)
+      end
+
+    cond do
+      # Empty (or explicitly cleared) name — wipe the slot back to a
+      # placeholder. Same shape `remove_main/2` leaves behind.
+      proposed_name == "" ->
+        %Event.Attendee{}
+
+      # No name change (or the URL didn't touch the name field) —
+      # update values/paid in place and preserve identity.
+      is_nil(proposed_name) or
+        same_name?(proposed_name, attendee.name) or
+          String.trim(attendee.name) == "" ->
+        attendee
+        |> maybe_set_name(proposed_name)
+        |> merge_values(proposal, event)
+        |> merge_paid(proposal)
+
+      # Name changed — the slot is a different person now, so drop
+      # the old identity and start fresh. Values and paid come from
+      # the proposal; if the proposal doesn't set them, they default
+      # to "empty" / false (a fresh row).
+      true ->
+        %Event.Attendee{
+          name: proposed_name,
+          participant_id: nil,
+          user_id: nil,
+          joined_at: DateTime.utc_now() |> DateTime.truncate(:second),
+          values: sanitize_chat_row_values(event, Map.get(proposal, "values", %{})),
+          paid: Map.get(proposal, "paid", false) == true
+        }
+    end
+  end
+
+  defp maybe_set_name(attendee, nil), do: attendee
+
+  defp maybe_set_name(%Event.Attendee{} = attendee, name) when is_binary(name),
+    do: %{attendee | name: name}
+
+  defp merge_values(%Event.Attendee{values: current} = attendee, proposal, event) do
+    case Map.get(proposal, "values") do
+      nil ->
+        attendee
+
+      map when is_map(map) ->
+        cleaned = sanitize_chat_row_values(event, map)
+        %{attendee | values: Map.merge(current || %{}, cleaned)}
+    end
+  end
+
+  defp merge_paid(%Event.Attendee{} = attendee, proposal) do
+    case Map.get(proposal, "paid") do
+      nil -> attendee
+      value when is_boolean(value) -> %{attendee | paid: value}
+      _ -> attendee
+    end
+  end
+
+  # Same allow-listing as `sanitize_answers/2` but skips the
+  # "drop nils / trim" branch — chat proposals are already trimmed
+  # by `ChatUpdate.parse/1`. Values that name an unknown field are
+  # dropped: the LiveView should have surfaced them as "new field"
+  # suggestions and either created the field or discarded the value
+  # before calling us.
+  defp sanitize_chat_row_values(%Event{} = event, values) when is_map(values) do
+    allowed_ids =
+      event
+      |> form_fields()
+      |> Enum.reject(& &1.locked)
+      |> Enum.map(& &1.id)
+      |> MapSet.new()
+
+    Enum.reduce(values, %{}, fn {key, value}, acc ->
+      id = to_string(key)
+
+      cond do
+        not MapSet.member?(allowed_ids, id) -> acc
+        not is_binary(value) -> acc
+        true -> Map.put(acc, id, String.slice(value, 0, 200))
+      end
+    end)
+  end
+
+  defp sanitize_chat_row_values(_event, _), do: %{}
+
+  # Same-name check that ignores case + surrounding whitespace, so an
+  # LLM sending "joao" doesn't wipe a slot named "João " over case /
+  # accent noise. Full-string equality on the *cleaned* form so
+  # "Alice Silva" and "Alice" still count as different people.
+  defp same_name?(a, b) do
+    normalize_name_for_compare(a) == normalize_name_for_compare(b)
+  end
+
+  defp normalize_name_for_compare(nil), do: ""
+
+  defp normalize_name_for_compare(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> String.downcase()
+    |> :unicode.characters_to_nfd_binary()
+    |> String.replace(~r/[^a-z0-9\s]+/u, "")
+    |> String.replace(~r/\s+/u, " ")
   end
 
   @doc """

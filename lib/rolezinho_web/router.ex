@@ -44,6 +44,7 @@ defmodule RolezinhoWeb.Router do
       live "/entrar", SignInLive, :show
       live "/entrar/esqueci", ForgotPasswordLive, :show
       live "/entrar/nova-senha/:token", ResetPasswordLive, :show
+      live "/atualizar", UpdateFromChatLive, :show
 
       # Edit surfaces: reachable by admin OR by the resource's own
       # owner. The paths keep the `/admin/` prefix for bookmark
@@ -59,6 +60,7 @@ defmodule RolezinhoWeb.Router do
 
     get "/r/txt/:slug", RawController, :show
     get "/r/:slug/calendar", CalendarController, :show
+    get "/atualizar.md", UpdateFromChatController, :docs
     post "/r/:slug/unlock", EventUnlockController, :unlock
     post "/r/:slug/join", JoinController, :create
     post "/criar", EventCreateController, :create
