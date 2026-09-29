@@ -97,9 +97,12 @@ defmodule RolezinhoWeb.GroupEditLive do
   end
 
   def handle_event("set_visibility", %{"visibility" => v}, socket) do
-    # Visibility is admin-only — a non-admin editor picking "public"
-    # would be a self-promotion into the home listing (see moduledoc).
-    require_admin!(socket)
+    # Anyone with edit access on the group can flip visibility — same
+    # rule as name/password. The "admin only" guard used to worry about
+    # self-promotion into the home listing, but a group's editor either
+    # created the group or holds its password, so they already have
+    # more than enough authority over what it shows.
+    require_editable!(socket)
     visibility = String.to_existing_atom(v)
 
     case Groups.update_visibility(socket.assigns.group, visibility) do
@@ -256,16 +259,12 @@ defmodule RolezinhoWeb.GroupEditLive do
       </section>
 
       <!--
-        Visibility + delete are admin-only — a group's own editor can
-        change name and password (the two things they actually own),
-        but flipping visibility (self-promoting into the home) and
-        the destructive delete stay with the platform admin. Companion
-        to `require_admin!/1` on both handlers.
+        Visibility is open to any editor now (creator OR unlocked OR
+        admin) — the same rule as name/password. Delete stays admin-
+        only below because it cascades: every event in the group gets
+        marked hidden.
       -->
-      <section
-        :if={@current_admin?}
-        class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3"
-      >
+      <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
         <h2 class="text-[13px] font-extrabold mb-3">Visibilidade</h2>
         <div class="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Visibilidade do grupo">
           <button

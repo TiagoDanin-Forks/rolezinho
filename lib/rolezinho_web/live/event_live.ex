@@ -21,45 +21,81 @@ defmodule RolezinhoWeb.EventLive do
 
   @impl true
   def mount(%{"slug" => slug}, _session, socket) do
-    visibility = if socket.assigns.current_admin?, do: :any, else: :public
+    # Look up with `:any` visibility so we can also serve archived
+    # (`:done`) events to their owner — the anonymous-public gate is a
+    # second, in-mount check. Without this, an organizer couldn't
+    # reach the event page of their own archived rolê, which broke
+    # the clone ("Repetir esse rolê") entry point that only renders
+    # on `:done`.
+    with %Event{} = event <- Events.find(slug, visibility: :any),
+         true <- visible_to_caller?(event, socket),
+         :ok <- gated_by_group(event, socket) do
+      if connected?(socket), do: Events.subscribe(slug)
 
-    case Events.find(slug, visibility: visibility) do
-      nil ->
+      {:ok,
+       socket
+       |> assign(:show_password_in_share?, false)
+       |> assign_event(event)
+       |> assign(:new_main_name, "")
+       |> assign(:new_wait_name, "")
+       |> assign(:editing_main, nil)
+       |> assign(:editing_wait, nil)
+       |> assign(:expanded_rows, MapSet.new())
+       |> assign(:confirming_removal, nil)}
+    else
+      # Password-protected group we haven't unlocked yet: send the
+      # visitor to the group page (SECURITY.md §3) so they enter the
+      # bundle through its single door.
+      {:redirect, group_slug} ->
+        {:ok,
+         socket
+         |> put_flash(
+           :info,
+           "Esse rolê faz parte de um grupo protegido. Digite a senha do grupo pra ver."
+         )
+         |> push_navigate(to: ~p"/g/#{group_slug}")}
+
+      # Same "not found" for nil (slug doesn't resolve) AND for a real
+      # event the caller cannot see — no reason to reveal that a slug
+      # they can't reach exists at all.
+      _ ->
         {:ok,
          socket
          |> put_flash(:error, "Rolezinho não encontrado.")
          |> push_navigate(to: ~p"/")}
-
-      event ->
-        # Events in a password-protected group inherit the group's gate. If the
-        # visitor hasn't unlocked the group yet, send them there — that's the
-        # single entry point for the group's contents (SECURITY.md §3). Admins
-        # see everything and bypass the redirect.
-        case gated_by_group(event, socket) do
-          {:redirect, group_slug} ->
-            {:ok,
-             socket
-             |> put_flash(
-               :info,
-               "Esse rolê faz parte de um grupo protegido. Digite a senha do grupo pra ver."
-             )
-             |> push_navigate(to: ~p"/g/#{group_slug}")}
-
-          :ok ->
-            if connected?(socket), do: Events.subscribe(slug)
-
-            {:ok,
-             socket
-             |> assign(:show_password_in_share?, false)
-             |> assign_event(event)
-             |> assign(:new_main_name, "")
-             |> assign(:new_wait_name, "")
-             |> assign(:editing_main, nil)
-             |> assign(:editing_wait, nil)
-             |> assign(:expanded_rows, MapSet.new())
-             |> assign(:confirming_removal, nil)}
-        end
     end
+  end
+
+  # Whether the caller may open this event's page at all. Public
+  # statuses are open to anyone; anything else (`:done`, plus any
+  # future non-public status) requires admin OR the event's own
+  # organizer, so an owner keeps a way back to their own arquivo.
+  # The password gate applies inside the page — not here.
+  defp visible_to_caller?(%Event{} = event, socket) do
+    cond do
+      event.status in Event.public_statuses() -> true
+      socket.assigns[:current_admin?] == true -> true
+      Policy.can_edit?(event, mount_policy_opts(socket, event)) -> true
+      true -> false
+    end
+  end
+
+  # Same shape `assign_identity/3` builds later; extracted so
+  # `visible_to_caller?/2` can ask the same question in mount before
+  # the socket has been enriched. Named `mount_policy_opts/2` to keep
+  # it separate from the `policy_opts/1` used post-mount (which reads
+  # the already-assigned socket.assigns.event / .organizer? / .participant_id).
+  defp mount_policy_opts(socket, %Event{} = event) do
+    [
+      admin?: socket.assigns[:current_admin?] == true,
+      organizer?:
+        Participant.organizer?(
+          %{"organizer_tokens" => socket.assigns[:organizer_tokens] || %{}},
+          event
+        ),
+      participant_id: Map.get(socket.assigns[:participants] || %{}, event.slug),
+      current_user_id: socket.assigns[:current_user_id]
+    ]
   end
 
   # Only redirect when the group is password-protected *and* the visitor is not
@@ -957,21 +993,25 @@ defmodule RolezinhoWeb.EventLive do
   end
 
   def handle_event("grow_main", _params, socket) do
-    require_admin!(socket)
+    require_can_edit!(socket)
     new_size = socket.assigns.event.main_capacity + 1
     {:ok, event} = Events.resize_main(socket.assigns.event, new_size)
     {:noreply, assign_event(socket, event)}
   end
 
   def handle_event("shrink_main", _params, socket) do
-    require_admin!(socket)
+    require_can_edit!(socket)
     new_size = socket.assigns.event.main_capacity - 1
     {:ok, event} = Events.resize_main(socket.assigns.event, max(new_size, 1))
     {:noreply, assign_event(socket, event)}
   end
 
   def handle_event("clone", _params, socket) do
-    require_admin!(socket)
+    # Cloning is a copy-then-navigate flow; the copy's ownership goes
+    # to whoever performed the clone (see `Events.clone/2`), which is
+    # what an editor of the source event should expect — their repeat,
+    # under their name. No need to gate on admin any more.
+    require_can_edit!(socket)
 
     # ADR-0002: the clone's `created_by_user_id` points at the caller (the
     # admin performing the repeat), so they can manage it from any device
@@ -1071,6 +1111,18 @@ defmodule RolezinhoWeb.EventLive do
   defp require_admin!(socket) do
     unless socket.assigns.current_admin? do
       raise "unauthorized"
+    end
+
+    :ok
+  end
+
+  # Companion of `require_admin!/1`: asserts the caller passes
+  # `Policy.can_edit?/2` on the current event. Same shape as the
+  # `require_can_edit!/1` in `EventEditLive`, kept in sync so the two
+  # surfaces agree on "who owns this event".
+  defp require_can_edit!(socket) do
+    unless Policy.can_edit?(socket.assigns.event, policy_opts(socket)) do
+      raise "unauthorized: not an editor of this event"
     end
 
     :ok
@@ -1263,7 +1315,7 @@ defmodule RolezinhoWeb.EventLive do
              finished event it becomes the primary action, named for what it
              does rather than for the operation behind it. -->
         <button
-          :if={@current_admin? and @event.status == :done}
+          :if={@can_edit_event? and @event.status == :done}
           type="button"
           phx-click="clone"
           class="flex w-full items-center justify-center gap-2 rounded-cta bg-ink px-4 py-4 text-[15px] font-bold text-ink-content shadow-cta transition-transform active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
@@ -1288,7 +1340,7 @@ defmodule RolezinhoWeb.EventLive do
                 </span>
               </p>
             </div>
-            <div :if={@current_admin?} class="inline-flex -space-x-px">
+            <div :if={@can_edit_event?} class="inline-flex -space-x-px">
               <button
                 type="button"
                 phx-click="shrink_main"

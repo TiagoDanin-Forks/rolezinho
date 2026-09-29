@@ -79,7 +79,7 @@ defmodule RolezinhoWeb.OwnerEditAccessTest do
       assert to == "/r/#{event.slug}"
     end
 
-    test "owner sees the details section but NOT the admin-only Delete/Owner/Group panels",
+    test "owner sees details + group + capacity, but NOT the admin-only Owner/Delete panels",
          %{conn: conn} do
       user = new_user!("owner-edit-panels")
       event = create_event(%{}, admin?: false, created_by_user_id: user.id)
@@ -89,9 +89,12 @@ defmodule RolezinhoWeb.OwnerEditAccessTest do
       # Details form is there.
       assert has_element?(view, "form#details-form")
 
-      # Admin-only sections are gone from the DOM.
+      # Group move is now open to organizers (restricted to groups they
+      # can reach, but the panel itself renders).
+      assert has_element?(view, "form#group-form")
+
+      # Admin-only sections stay hidden.
       refute has_element?(view, "form#creator-form")
-      refute has_element?(view, "form#group-form")
       refute html =~ "Zona perigosa"
     end
 
@@ -153,7 +156,8 @@ defmodule RolezinhoWeb.OwnerEditAccessTest do
       assert html =~ "Editar"
     end
 
-    test "owner does NOT see the visibility toggle nor delete panel", %{conn: conn} do
+    test "owner sees the visibility toggle (open to editors now); delete stays admin-only",
+         %{conn: conn} do
       user = new_user!("owner-group-panels")
 
       {:ok, group} =
@@ -164,7 +168,7 @@ defmodule RolezinhoWeb.OwnerEditAccessTest do
 
       {:ok, _view, html} = live(signed_in(conn, user), ~p"/admin/g/#{group.slug}/edit")
 
-      refute html =~ "Visibilidade"
+      assert html =~ "Visibilidade"
       refute html =~ "Zona perigosa"
     end
 

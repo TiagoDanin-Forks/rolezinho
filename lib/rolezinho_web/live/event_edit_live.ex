@@ -16,6 +16,7 @@ defmodule RolezinhoWeb.EventEditLive do
   alias Rolezinho.Event.Meta
   alias Rolezinho.Event.Policy
   alias Rolezinho.Events
+  alias Rolezinho.Group
   alias Rolezinho.Groups
   alias Rolezinho.Repo
   alias RolezinhoWeb.Plugs.Participant
@@ -94,6 +95,16 @@ defmodule RolezinhoWeb.EventEditLive do
   end
 
   defp maybe_assign_admin_extras(socket, %Event{} = event) do
+    # `:groups` is the option pool for the Grupo select. Admins see every
+    # group; organizers see only the groups they can move the event into
+    # (`Group.editable_by?/4` — admin or creator or session-unlocked),
+    # PLUS the event's current group (so the current state is visible
+    # even when they can't otherwise touch that group). Un-grouping is
+    # always allowed for an editor — that's their own event.
+    #
+    # `:users` and `:creator` back the admin-only "Dono" panel and stay
+    # admin-scoped — no need to load a users table for a non-admin who
+    # can't reassign ownership anyway.
     if socket.assigns[:current_admin?] == true do
       socket
       |> assign(:groups, Groups.list_all())
@@ -101,9 +112,29 @@ defmodule RolezinhoWeb.EventEditLive do
       |> assign(:creator, Accounts.get_user(event.created_by_user_id))
     else
       socket
-      |> assign(:groups, [])
+      |> assign(:groups, editable_groups_for(socket, event))
       |> assign(:users, [])
       |> assign(:creator, nil)
+    end
+  end
+
+  defp editable_groups_for(socket, %Event{} = event) do
+    unlocked = socket.assigns[:unlocked_groups] || MapSet.new()
+    user_id = socket.assigns[:current_user_id]
+    all = Groups.list_all()
+
+    editable = Enum.filter(all, &Group.editable_by?(&1, false, unlocked, user_id))
+
+    # Preserve the current group in the list even if the caller can't
+    # otherwise reach it — without this, the select would show
+    # "Nenhum" selected while the event still belongs to that group,
+    # which is a lie.
+    current = event.group_id && Enum.find(all, &(&1.id == event.group_id))
+
+    if current && not Enum.any?(editable, &(&1.id == current.id)) do
+      [current | editable]
+    else
+      editable
     end
   end
 
@@ -290,22 +321,39 @@ defmodule RolezinhoWeb.EventEditLive do
      |> assign_event(event)}
   end
 
+  # Move the event between groups (or out of any group).
+  #
+  #  * Un-grouping (`nil`) is always allowed for an editor — they own
+  #    the event, they can pull it out of any bundle.
+  #  * Moving INTO a group requires the caller to have edit access to
+  #    that target group (`Group.editable_by?/4`: admin OR creator OR
+  #    session-unlocked). Admins can move into any group; organizers
+  #    can only move into groups they've unlocked or created.
   def handle_event("set_group", %{"group_id" => raw}, socket) do
-    require_admin!(socket)
+    require_can_edit!(socket)
     group_id = parse_group_id(raw)
 
-    case Events.set_group(socket.assigns.event, group_id) do
-      {:ok, event} ->
-        message =
-          if is_nil(group_id), do: "Rolê removido do grupo.", else: "Rolê movido pro grupo."
+    if reachable_group?(socket, group_id) do
+      case Events.set_group(socket.assigns.event, group_id) do
+        {:ok, event} ->
+          message =
+            if is_nil(group_id), do: "Rolê removido do grupo.", else: "Rolê movido pro grupo."
 
-        {:noreply,
-         socket
-         |> put_flash(:info, message)
-         |> assign_event(event)}
+          {:noreply,
+           socket
+           |> put_flash(:info, message)
+           |> assign_event(event)}
 
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Não deu pra mover: #{inspect(reason)}")}
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, "Não deu pra mover: #{inspect(reason)}")}
+      end
+    else
+      {:noreply,
+       put_flash(
+         socket,
+         :error,
+         "Você não tem acesso a esse grupo. Desbloqueie o grupo antes de mover."
+       )}
     end
   end
 
@@ -338,6 +386,32 @@ defmodule RolezinhoWeb.EventEditLive do
      socket
      |> put_flash(:info, "Rolezinho apagado.")
      |> push_navigate(to: ~p"/admin")}
+  end
+
+  # Whether the caller can move the event INTO the given group id.
+  # `nil` (un-group) is always allowed for an editor; a positive id is
+  # only reachable when the caller is admin OR has edit access on that
+  # specific group. Kept next to the `set_group` handler so the two
+  # rules are obviously the same rule.
+  defp reachable_group?(_socket, nil), do: true
+
+  defp reachable_group?(socket, id) when is_integer(id) do
+    if socket.assigns[:current_admin?] == true do
+      true
+    else
+      case Groups.get(id) do
+        %Group{} = group ->
+          Group.editable_by?(
+            group,
+            false,
+            socket.assigns[:unlocked_groups] || MapSet.new(),
+            socket.assigns[:current_user_id]
+          )
+
+        _ ->
+          false
+      end
+    end
   end
 
   # Server-side permission asserts. Mirror the template's `:if` gates —
@@ -705,15 +779,12 @@ defmodule RolezinhoWeb.EventEditLive do
         </form>
       </section>
 
-      <section
-        :if={@current_admin?}
-        class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3"
-      >
+      <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
         <h2 class="text-[13px] font-extrabold mb-3">Grupo</h2>
         <p class="text-[11px] text-muted mb-3">
-          Mover esse rolê pra outro grupo (ou pra fora de qualquer grupo). Apenas
-          admin — usuários com senha do grupo só criam rolês dentro dele, não os
-          movem depois.
+          Mover esse rolê pra outro grupo (ou pra fora de qualquer grupo). Você
+          só vê os grupos que você criou ou desbloqueou; admin vê todos.
+          Tirar do grupo atual funciona sempre.
         </p>
 
         <form phx-change="set_group" id="group-form" class="flex flex-wrap items-end gap-3">
