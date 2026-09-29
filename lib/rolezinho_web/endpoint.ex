@@ -1,14 +1,34 @@
 defmodule RolezinhoWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :rolezinho
 
-  # The session will be stored in the cookie and signed,
-  # this means its contents can be read but not tampered with.
-  # Set :encryption_salt if you would also like to encrypt it.
+  # The session lives in a signed cookie — contents readable, not
+  # tampered with. Set :encryption_salt if you would also like to encrypt it.
+  #
+  # `max_age` and `secure` are here to keep Safari mobile happy across the
+  # OAuth roundtrip (app → github.com → app):
+  #
+  #   * `max_age` — without it, the cookie is a Session cookie, which
+  #     mobile Safari (ITP) drops aggressively when the tab is
+  #     backgrounded or the browser is memory-pressured. That was the
+  #     visible "kept getting disconnected from login" symptom: the
+  #     Ueberauth state cookie was gone by the time GitHub redirected
+  #     back, so the callback failed and the user was signed out again.
+  #     60 days is long enough to survive any real-world OAuth flow and
+  #     the app's own usage patterns without being effectively permanent.
+  #
+  #   * `secure` — in prod (`force_ssl` on, HTTPS-only) the cookie should
+  #     be marked Secure so Safari treats it as first-class; without the
+  #     flag Safari's SameSite=Lax handling can be inconsistent for
+  #     redirects arriving from a third-party origin. Read at compile
+  #     time from `:session_secure` so dev (HTTP on localhost) keeps
+  #     working without a warning.
   @session_options [
     store: :cookie,
     key: "_rolezinho_key",
     signing_salt: "sAaZCF8t",
-    same_site: "Lax"
+    same_site: "Lax",
+    max_age: 60 * 60 * 24 * 60,
+    secure: Application.compile_env(:rolezinho, :session_secure, false)
   ]
 
   socket "/live", Phoenix.LiveView.Socket,

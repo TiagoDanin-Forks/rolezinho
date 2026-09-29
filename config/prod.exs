@@ -19,6 +19,14 @@ config :rolezinho, RolezinhoWeb.Endpoint,
     ]
   ]
 
+# Mark the session cookie as Secure in production. Read by the endpoint at
+# compile time (`Application.compile_env(:rolezinho, :session_secure, ...)`),
+# so this has to live in a compile-time config file, not `runtime.exs`.
+# Combined with the compile-time `force_ssl` above and Fly.io's HTTPS
+# proxy, the cookie is only ever set/sent over HTTPS anyway; the flag
+# just tells Safari to trust it accordingly across OAuth redirects.
+config :rolezinho, :session_secure, true
+
 # Configure Swoosh API Client
 config :swoosh, api_client: Swoosh.ApiClient.Req
 

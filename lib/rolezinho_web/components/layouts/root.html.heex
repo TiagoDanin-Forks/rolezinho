@@ -2,9 +2,44 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="csrf-token" content={get_csrf_token()} />
+
     <.live_title default="Rolezinho" suffix=" · Rolezinho" phx-no-format>{assigns[:page_title]}</.live_title>
+
+    <!--
+      Home-screen + browser-chrome polish (mostly iOS).
+
+      `apple-mobile-web-app-capable` + `-status-bar-style` make Safari
+      launch us fullscreen when opened from the home screen instead of
+      inside the mobile browser chrome. `black-translucent` lets the
+      page's own background bleed under the status bar; combined with
+      `viewport-fit=cover` above and safe-area-inset padding on the app
+      layout, the status bar feels part of the app rather than a strip
+      pasted on top.
+
+      `theme-color` colors the browser UI (Android address bar, iOS 15+
+      Safari tab tint) with our warm ink so the app reads as one
+      surface rather than a card floating on browser chrome. Pair for
+      dark mode is the same tone — our dark theme uses this ink for the
+      canvas, so the browser bar matches the page in both modes.
+
+      `apple-mobile-web-app-title` is what shows under the home-screen
+      icon; the tab title already has " · Rolezinho" appended, which
+      reads oddly under an icon, so we set the short form explicitly.
+    -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Rolezinho" />
+    <meta name="theme-color" content="#232019" />
+
+    <link rel="icon" type="image/svg+xml" href={~p"/images/app-icon.svg"} />
+    <link rel="icon" type="image/png" sizes="32x32" href={~p"/images/favicon-32.png"} />
+    <link rel="icon" type="image/png" sizes="16x16" href={~p"/images/favicon-16.png"} />
+    <link rel="apple-touch-icon" sizes="180x180" href={~p"/images/apple-touch-icon.png"} />
+    <link rel="manifest" href={~p"/manifest.webmanifest"} />
+
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Rolezinho app icon.
+
+  A stylized calendar in the app's own palette (ink for the page, accent
+  orange for the tear-off strip, tint for the paper, ink again for the
+  binding rings). Designed to read at 180x180 (apple-touch-icon), still
+  readable at 32x32 (favicon). Solid ink background so it plays well on
+  both light and dark iOS home screens.
+
+  Colors mirror `assets/css/app.css` and `DESIGN.md`:
+    ink      oklch(18.76% 0.0085 84.57)   -> #232019
+    tint     oklch(95.26% 0.0272 63.96)   -> #f6ebe1
+    accent   oklch(69.81% 0.1771 48.76)   -> #e07038
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <!-- Rounded-square base, warm ink. iOS clips to a superellipse at
+       ~22% corner radius; we round to about 22.5% so the shape looks
+       intentional even without the OS mask (favicon, Android). -->
+  <rect x="0" y="0" width="512" height="512" rx="115" fill="#232019" />
+
+  <!-- Calendar body. Sits centered with padding. Tint (warm cream) for
+       the paper so the accent strip on top pops. -->
+  <rect x="80" y="120" width="352" height="312" rx="40" fill="#f6ebe1" />
+
+  <!-- Tear-off strip / month header, accent orange. -->
+  <rect x="80" y="120" width="352" height="90" rx="40" fill="#e07038" />
+  <!-- Square off the bottom of the strip so it meets the paper flush. -->
+  <rect x="80" y="170" width="352" height="40" fill="#e07038" />
+
+  <!-- Two binding rings poking above the strip, ink. Positioned so they
+       read as calendar rings at every size down to 32x32. -->
+  <rect x="150" y="70" width="30" height="90" rx="15" fill="#232019" />
+  <rect x="332" y="70" width="30" height="90" rx="15" fill="#232019" />
+
+  <!-- Day grid: three rows of three dots, ink. Positioned inside the
+       paper. The middle dot on the middle row is filled solid accent
+       to hint "today" — a small tell that this is a scheduling app,
+       not just a generic calendar. -->
+  <g fill="#232019">
+    <!-- row 1 -->
+    <circle cx="160" cy="270" r="18" />
+    <circle cx="256" cy="270" r="18" />
+    <circle cx="352" cy="270" r="18" />
+    <!-- row 2: middle dot swapped for the accent "today" mark -->
+    <circle cx="160" cy="342" r="18" />
+    <circle cx="352" cy="342" r="18" />
+    <!-- row 3 -->
+    <circle cx="160" cy="414" r="18" />
+    <circle cx="256" cy="414" r="18" />
+    <circle cx="352" cy="414" r="18" />
+  </g>
+  <circle cx="256" cy="342" r="24" fill="#e07038" />
+</svg>
