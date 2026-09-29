@@ -1210,7 +1210,7 @@ defmodule RolezinhoWeb.EventLive do
                 />
               </button>
               <.link
-                :if={@current_admin?}
+                :if={@can_edit_event?}
                 navigate={~p"/admin/r/#{@event.slug}/edit"}
                 class="grid size-11 place-items-center rounded-full bg-ink/[0.06] text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                 aria-label="Editar o rolê"

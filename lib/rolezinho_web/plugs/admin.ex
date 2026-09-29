@@ -48,9 +48,20 @@ defmodule RolezinhoWeb.Plugs.Admin do
     put_session(conn, :unlocked_groups, MapSet.put(unlocked_groups(conn), slug))
   end
 
-  @doc "Halts with a 403 response when the current session is not an admin."
+  @doc """
+  Halts with a redirect when the current caller does not have admin
+  capability. Reads the widened `:current_admin?` assign rather than the
+  session's `:admin?` flag directly, so both admin paths land here:
+
+    * the environment-wide session flag set by `/admin/login`, and
+    * a user account flagged `admin: true` (widened by `Plugs.User`
+      after `fetch_admin` runs).
+
+  Reading only `session[:admin?]` here was the bug: a user flagged
+  admin on their account still got bounced to the password form.
+  """
   def require_admin(conn, _opts) do
-    if get_session(conn, :admin?) == true do
+    if conn.assigns[:current_admin?] == true do
       conn
     else
       conn
@@ -87,7 +98,21 @@ defmodule RolezinhoWeb.Plugs.Admin do
   end
 
   def on_mount(:require_admin, _params, session, socket) do
-    if Map.get(session, "admin?") == true do
+    # Same rule as the plug: admin capability can come from the session
+    # flag OR from a user account flagged `admin: true`. The user-
+    # flagged path resolves inside `Plugs.User.on_mount(:fetch, ...)`,
+    # which runs AFTER this hook, so we consult both sources here.
+    session_admin? = Map.get(session, "admin?") == true
+
+    user_admin? =
+      case session
+           |> RolezinhoWeb.Plugs.User.current_user_id()
+           |> Rolezinho.Accounts.get_user() do
+        %Rolezinho.Accounts.User{admin: true} -> true
+        _ -> false
+      end
+
+    if session_admin? or user_admin? do
       {:cont,
        socket
        |> Phoenix.Component.assign(:current_admin?, true)

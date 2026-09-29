@@ -1,13 +1,24 @@
 defmodule RolezinhoWeb.EventEditLive do
-  @moduledoc "Admin raw markdown editor for an event."
+  @moduledoc """
+  Editor for an event. Reachable by admin OR by the event's own
+  organizer (`Event.Policy.can_edit?/2`) — the URL still lives under
+  `/admin/r/:slug/edit` for bookmark backward-compat, but the pipeline
+  gate is off and each handler double-checks permission on the socket.
+
+  A subset of controls (owner reassignment, group move, delete) stays
+  admin-only regardless. Those handlers call `require_admin!/1`; the
+  template hides them for non-admin editors.
+  """
   use RolezinhoWeb, :live_view
 
   alias Rolezinho.Accounts
   alias Rolezinho.Event
   alias Rolezinho.Event.Meta
+  alias Rolezinho.Event.Policy
   alias Rolezinho.Events
   alias Rolezinho.Groups
   alias Rolezinho.Repo
+  alias RolezinhoWeb.Plugs.Participant
 
   @impl true
   def mount(%{"slug" => slug}, _session, socket) do
@@ -16,21 +27,44 @@ defmodule RolezinhoWeb.EventEditLive do
         {:ok,
          socket
          |> put_flash(:error, "Rolezinho não encontrado.")
-         |> push_navigate(to: ~p"/admin")}
+         |> push_navigate(to: ~p"/")}
 
       event ->
-        {:ok,
-         socket
-         |> assign(:page_title, "Editar #{event.title}")
-         # `slug_touched?` gates the live retag: once the user has typed into
-         # the slug field themselves, we stop rewriting it from date edits.
-         # `slug_reference_date` is the date the current slug's `-DD-MM` tail
-         # matches — seeded from the event, updated after every successful
-         # retag so a second date change also retags cleanly.
-         |> assign(:slug_touched?, false)
-         |> assign(:slug_reference_date, extract_current_date(event))
-         |> assign_event(event)}
+        if Policy.can_edit?(event, policy_opts(socket, event)) do
+          {:ok,
+           socket
+           |> assign(:page_title, "Editar #{event.title}")
+           # `slug_touched?` gates the live retag: once the user has typed into
+           # the slug field themselves, we stop rewriting it from date edits.
+           # `slug_reference_date` is the date the current slug's `-DD-MM` tail
+           # matches — seeded from the event, updated after every successful
+           # retag so a second date change also retags cleanly.
+           |> assign(:slug_touched?, false)
+           |> assign(:slug_reference_date, extract_current_date(event))
+           |> assign_event(event)}
+        else
+          {:ok,
+           socket
+           |> put_flash(:error, "Você não pode editar esse rolê.")
+           |> push_navigate(to: ~p"/r/#{event.slug}")}
+        end
     end
+  end
+
+  # Snapshot of the caller's identity for `Policy.can_edit?/2` and every
+  # in-handler `require_can_edit!/1` check. Mirrors `EventLive.policy_opts/1`
+  # so the two surfaces agree on who counts as an organizer.
+  defp policy_opts(socket, %Event{} = event) do
+    [
+      admin?: socket.assigns[:current_admin?] == true,
+      organizer?:
+        Participant.organizer?(
+          %{"organizer_tokens" => socket.assigns[:organizer_tokens] || %{}},
+          event
+        ),
+      participant_id: socket.assigns[:participant_id],
+      current_user_id: socket.assigns[:current_user_id]
+    ]
   end
 
   defp assign_event(socket, %Event{} = event) do
@@ -52,9 +86,25 @@ defmodule RolezinhoWeb.EventEditLive do
     # button controls (capacity, status, group, owner, delete) each keep
     # their own dedicated section below.
     |> assign(:details_form, to_form(details_form_params(event, meta, description), as: :details))
-    |> assign(:groups, Groups.list_all())
-    |> assign(:users, list_users())
-    |> assign(:creator, Accounts.get_user(event.created_by_user_id))
+    # Owner + group lists are only used by the admin-only sections at
+    # the bottom of the template; a non-admin editor never reads them,
+    # so skip the queries when the caller isn't admin. `@creator` is
+    # still read by the admin-only "Dono" panel; scoped the same way.
+    |> maybe_assign_admin_extras(event)
+  end
+
+  defp maybe_assign_admin_extras(socket, %Event{} = event) do
+    if socket.assigns[:current_admin?] == true do
+      socket
+      |> assign(:groups, Groups.list_all())
+      |> assign(:users, list_users())
+      |> assign(:creator, Accounts.get_user(event.created_by_user_id))
+    else
+      socket
+      |> assign(:groups, [])
+      |> assign(:users, [])
+      |> assign(:creator, nil)
+    end
   end
 
   defp details_form_params(%Event{} = event, %Meta{} = meta, description) do
@@ -132,6 +182,7 @@ defmodule RolezinhoWeb.EventEditLive do
   end
 
   def handle_event("save_details", %{"details" => params}, socket) do
+    require_can_edit!(socket)
     original_event = socket.assigns.event
     submitted_slug = params |> Map.get("slug", "") |> to_string() |> String.trim()
 
@@ -188,6 +239,7 @@ defmodule RolezinhoWeb.EventEditLive do
   end
 
   def handle_event("resize_lists", %{"main_size" => main_raw} = params, socket) do
+    require_can_edit!(socket)
     wait_raw = Map.get(params, "wait_size", "0")
 
     with {:ok, main_size} <- parse_int_in_range(main_raw, 1, 500),
@@ -213,6 +265,7 @@ defmodule RolezinhoWeb.EventEditLive do
   end
 
   def handle_event("set_status", %{"status" => status}, socket) do
+    require_can_edit!(socket)
     status_atom = String.to_existing_atom(status)
     {:ok, event} = Events.set_status(socket.assigns.event, status_atom)
 
@@ -222,10 +275,11 @@ defmodule RolezinhoWeb.EventEditLive do
      |> assign_event(event)}
   end
 
-  # Visibility toggle, orthogonal to status. Admin-only in this screen
-  # today (the whole `/admin/r/:slug/edit` route is admin-only), which
-  # keeps parity with `set_status` next door.
+  # Visibility toggle, orthogonal to status. Matches the inline
+  # eye/eye-off toggle on `/r/:slug` — available to anyone with
+  # `Policy.can_edit?/2`, not just admin.
   def handle_event("toggle_hidden", _params, socket) do
+    require_can_edit!(socket)
     {:ok, event} = Events.set_hidden(socket.assigns.event, not socket.assigns.event.hidden)
 
     message = if event.hidden, do: "Rolê agora está oculto.", else: "Rolê agora aparece na home."
@@ -237,6 +291,7 @@ defmodule RolezinhoWeb.EventEditLive do
   end
 
   def handle_event("set_group", %{"group_id" => raw}, socket) do
+    require_admin!(socket)
     group_id = parse_group_id(raw)
 
     case Events.set_group(socket.assigns.event, group_id) do
@@ -255,6 +310,7 @@ defmodule RolezinhoWeb.EventEditLive do
   end
 
   def handle_event("set_created_by", %{"user_id" => raw}, socket) do
+    require_admin!(socket)
     user_id = parse_group_id(raw)
 
     case Events.set_created_by(socket.assigns.event, user_id) do
@@ -275,12 +331,35 @@ defmodule RolezinhoWeb.EventEditLive do
   end
 
   def handle_event("delete", _params, socket) do
+    require_admin!(socket)
     :ok = Events.delete(socket.assigns.event)
 
     {:noreply,
      socket
      |> put_flash(:info, "Rolezinho apagado.")
      |> push_navigate(to: ~p"/admin")}
+  end
+
+  # Server-side permission asserts. Mirror the template's `:if` gates —
+  # they exist because a template gate is not authentication (a hostile
+  # client can push any event over the socket). Raise rather than
+  # returning a graceful error: reaching these with the wrong role
+  # means the client fabricated the event and there's nothing polite to
+  # say back.
+  defp require_can_edit!(socket) do
+    unless Policy.can_edit?(socket.assigns.event, policy_opts(socket, socket.assigns.event)) do
+      raise "unauthorized: not an editor of this event"
+    end
+
+    :ok
+  end
+
+  defp require_admin!(socket) do
+    unless socket.assigns[:current_admin?] == true do
+      raise "unauthorized: admin required"
+    end
+
+    :ok
   end
 
   @impl true
@@ -587,7 +666,18 @@ defmodule RolezinhoWeb.EventEditLive do
         </label>
       </section>
 
-      <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
+      <!--
+        Admin-only sections below: owner reassignment, group move, and
+        the destructive delete. Everything above this line is fair game
+        for the event's organizer too. The template gate is a companion
+        to the server-side `require_admin!/1` in each handler — the
+        template just stops rendering the controls a non-admin editor
+        would not be able to use anyway.
+      -->
+      <section
+        :if={@current_admin?}
+        class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3"
+      >
         <h2 class="text-[13px] font-extrabold mb-3">Dono do rolê</h2>
         <p class="text-[11px] text-muted mb-3">
           Quem criou o rolê logado com GitHub. Um dono pode administrar em
@@ -615,7 +705,10 @@ defmodule RolezinhoWeb.EventEditLive do
         </form>
       </section>
 
-      <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
+      <section
+        :if={@current_admin?}
+        class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3"
+      >
         <h2 class="text-[13px] font-extrabold mb-3">Grupo</h2>
         <p class="text-[11px] text-muted mb-3">
           Mover esse rolê pra outro grupo (ou pra fora de qualquer grupo). Apenas
@@ -644,7 +737,7 @@ defmodule RolezinhoWeb.EventEditLive do
         </form>
       </section>
 
-      <section class="rounded-2xl border border-error/40 bg-error/5 p-5">
+      <section :if={@current_admin?} class="rounded-2xl border border-error/40 bg-error/5 p-5">
         <h2 class="font-semibold text-error mb-2">Zona perigosa</h2>
         <p class="text-sm text-base-content/70 mb-3">
           Apagar remove o arquivo permanentemente. Não dá pra desfazer.

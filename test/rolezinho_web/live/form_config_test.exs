@@ -306,11 +306,17 @@ defmodule RolezinhoWeb.FormConfigTest do
       assert name_field.label == "Nome"
     end
 
-    test "is admin-only", %{conn: conn} do
+    test "an anonymous visitor is bounced to the event page", %{conn: conn} do
+      # Post-2026-09 the form-config route is no longer pipeline-
+      # gated by admin; `Policy.can_edit?/2` decides. An anonymous
+      # visitor is neither admin nor organizer nor row-owner, so they
+      # get redirected back to the event page.
       event = seed()
 
-      assert {:error, {:redirect, %{to: "/admin/login"}}} =
+      assert {:error, {:live_redirect, %{to: to}}} =
                live(conn, ~p"/admin/r/#{event.slug}/formulario")
+
+      assert to == "/r/#{event.slug}"
     end
   end
 

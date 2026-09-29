@@ -13,26 +13,50 @@ defmodule RolezinhoWeb.FormConfigLive do
   use RolezinhoWeb, :live_view
 
   alias Rolezinho.Event
+  alias Rolezinho.Event.Policy
   alias Rolezinho.Events
+  alias RolezinhoWeb.Plugs.Participant
 
   @impl true
   def mount(%{"slug" => slug}, _session, socket) do
     case Events.find(slug) do
       %Event{} = event ->
-        {:ok,
-         socket
-         |> assign(:page_title, "Formulário · #{event.title}")
-         |> assign(:new_label, "")
-         |> assign(:new_type, "text")
-         |> assign(:editing_field_id, nil)
-         |> assign_event(event)}
+        if Policy.can_edit?(event, policy_opts(socket, event)) do
+          {:ok,
+           socket
+           |> assign(:page_title, "Formulário · #{event.title}")
+           |> assign(:new_label, "")
+           |> assign(:new_type, "text")
+           |> assign(:editing_field_id, nil)
+           |> assign_event(event)}
+        else
+          {:ok,
+           socket
+           |> put_flash(:error, "Você não pode editar o formulário desse rolê.")
+           |> push_navigate(to: ~p"/r/#{event.slug}")}
+        end
 
       nil ->
         {:ok,
          socket
          |> put_flash(:error, "Rolezinho não encontrado.")
-         |> push_navigate(to: ~p"/admin")}
+         |> push_navigate(to: ~p"/")}
     end
+  end
+
+  # Same shape `EventEditLive.policy_opts/2` builds — organizer via any
+  # of the three paths (admin flag, held token, signed-in creator).
+  defp policy_opts(socket, %Event{} = event) do
+    [
+      admin?: socket.assigns[:current_admin?] == true,
+      organizer?:
+        Participant.organizer?(
+          %{"organizer_tokens" => socket.assigns[:organizer_tokens] || %{}},
+          event
+        ),
+      participant_id: socket.assigns[:participant_id],
+      current_user_id: socket.assigns[:current_user_id]
+    ]
   end
 
   defp assign_event(socket, %Event{} = event) do
@@ -51,6 +75,7 @@ defmodule RolezinhoWeb.FormConfigLive do
   end
 
   def handle_event("add_field", %{"label" => label}, socket) do
+    require_can_edit!(socket)
     params = %{"label" => label, "type" => socket.assigns.new_type}
 
     case Events.add_form_field(socket.assigns.event, params) do
@@ -66,6 +91,8 @@ defmodule RolezinhoWeb.FormConfigLive do
   end
 
   def handle_event("toggle_required", %{"id" => id}, socket) do
+    require_can_edit!(socket)
+
     case Events.toggle_form_field_required(socket.assigns.event, id) do
       {:ok, event} -> {:noreply, assign_event(socket, event)}
       {:error, reason} -> {:noreply, put_flash(socket, :error, message_for(reason))}
@@ -73,6 +100,8 @@ defmodule RolezinhoWeb.FormConfigLive do
   end
 
   def handle_event("remove_field", %{"id" => id}, socket) do
+    require_can_edit!(socket)
+
     case Events.remove_form_field(socket.assigns.event, id) do
       {:ok, event} -> {:noreply, assign_event(socket, event)}
       {:error, reason} -> {:noreply, put_flash(socket, :error, message_for(reason))}
@@ -80,6 +109,7 @@ defmodule RolezinhoWeb.FormConfigLive do
   end
 
   def handle_event("start_rename_field", %{"id" => id}, socket) do
+    require_can_edit!(socket)
     # Guard: never enter edit mode for a locked field — the pencil is hidden
     # in the template for those already, but a fabricated event should not
     # be able to talk us into rendering an editable name row.
@@ -96,6 +126,8 @@ defmodule RolezinhoWeb.FormConfigLive do
   end
 
   def handle_event("rename_field", %{"id" => id, "label" => label}, socket) do
+    require_can_edit!(socket)
+
     case Events.rename_form_field(socket.assigns.event, id, label) do
       {:ok, event} ->
         {:noreply, socket |> assign(:editing_field_id, nil) |> assign_event(event)}
@@ -103,6 +135,16 @@ defmodule RolezinhoWeb.FormConfigLive do
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, message_for(reason))}
     end
+  end
+
+  # Mirrors `EventEditLive.require_can_edit!/1`: template `:if` hides
+  # the controls, this raises the fabricated-event case.
+  defp require_can_edit!(socket) do
+    unless Policy.can_edit?(socket.assigns.event, policy_opts(socket, socket.assigns.event)) do
+      raise "unauthorized: not an editor of this event"
+    end
+
+    :ok
   end
 
   defp message_for(:empty_label), do: "Dê um nome pro campo."

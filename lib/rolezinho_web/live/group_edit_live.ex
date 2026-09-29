@@ -25,13 +25,25 @@ defmodule RolezinhoWeb.GroupEditLive do
         {:ok,
          socket
          |> put_flash(:error, "Grupo não encontrado.")
-         |> push_navigate(to: ~p"/admin")}
+         |> push_navigate(to: ~p"/")}
 
       group ->
-        {:ok,
-         socket
-         |> assign(:page_title, "Editar #{group.name}")
-         |> assign_group(group)}
+        if Group.editable_by?(
+             group,
+             socket.assigns[:current_admin?] == true,
+             socket.assigns[:unlocked_groups] || MapSet.new(),
+             socket.assigns[:current_user_id]
+           ) do
+          {:ok,
+           socket
+           |> assign(:page_title, "Editar #{group.name}")
+           |> assign_group(group)}
+        else
+          {:ok,
+           socket
+           |> put_flash(:error, "Você não pode editar esse grupo.")
+           |> push_navigate(to: ~p"/g/#{group.slug}")}
+        end
     end
   end
 
@@ -48,6 +60,8 @@ defmodule RolezinhoWeb.GroupEditLive do
   end
 
   def handle_event("save_name", %{"name" => name}, socket) do
+    require_editable!(socket)
+
     case Groups.update_name(socket.assigns.group, name) do
       {:ok, group} ->
         {:noreply,
@@ -65,6 +79,8 @@ defmodule RolezinhoWeb.GroupEditLive do
   end
 
   def handle_event("save_password", %{"password" => password}, socket) do
+    require_editable!(socket)
+
     case Groups.update_password(socket.assigns.group, password) do
       {:ok, group} ->
         message =
@@ -81,6 +97,9 @@ defmodule RolezinhoWeb.GroupEditLive do
   end
 
   def handle_event("set_visibility", %{"visibility" => v}, socket) do
+    # Visibility is admin-only — a non-admin editor picking "public"
+    # would be a self-promotion into the home listing (see moduledoc).
+    require_admin!(socket)
     visibility = String.to_existing_atom(v)
 
     case Groups.update_visibility(socket.assigns.group, visibility) do
@@ -96,6 +115,10 @@ defmodule RolezinhoWeb.GroupEditLive do
   end
 
   def handle_event("delete", _params, socket) do
+    # Delete cascades to every event in the group (marks them hidden);
+    # keep it admin-only regardless of who can otherwise edit the group.
+    require_admin!(socket)
+
     case Groups.delete(socket.assigns.group) do
       {:ok, _} ->
         {:noreply,
@@ -109,6 +132,33 @@ defmodule RolezinhoWeb.GroupEditLive do
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "Não deu pra apagar o grupo.")}
     end
+  end
+
+  # Server-side guards, mirror the template's `:if` gates. Raise on
+  # violation — reaching these with the wrong role means the client
+  # fabricated the event.
+  defp require_editable!(socket) do
+    editable? =
+      Group.editable_by?(
+        socket.assigns.group,
+        socket.assigns[:current_admin?] == true,
+        socket.assigns[:unlocked_groups] || MapSet.new(),
+        socket.assigns[:current_user_id]
+      )
+
+    unless editable? do
+      raise "unauthorized: not an editor of this group"
+    end
+
+    :ok
+  end
+
+  defp require_admin!(socket) do
+    unless socket.assigns[:current_admin?] == true do
+      raise "unauthorized: admin required"
+    end
+
+    :ok
   end
 
   @impl true
@@ -205,7 +255,17 @@ defmodule RolezinhoWeb.GroupEditLive do
         </p>
       </section>
 
-      <section class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3">
+      <!--
+        Visibility + delete are admin-only — a group's own editor can
+        change name and password (the two things they actually own),
+        but flipping visibility (self-promoting into the home) and
+        the destructive delete stay with the platform admin. Companion
+        to `require_admin!/1` on both handlers.
+      -->
+      <section
+        :if={@current_admin?}
+        class="rounded-card border border-hairline bg-base-100 p-4 shadow-card mb-3"
+      >
         <h2 class="text-[13px] font-extrabold mb-3">Visibilidade</h2>
         <div class="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Visibilidade do grupo">
           <button
@@ -236,7 +296,7 @@ defmodule RolezinhoWeb.GroupEditLive do
         </dl>
       </section>
 
-      <section class="rounded-2xl border border-error/40 bg-error/5 p-5">
+      <section :if={@current_admin?} class="rounded-2xl border border-error/40 bg-error/5 p-5">
         <h2 class="font-semibold text-error mb-2">Zona perigosa</h2>
         <p class="text-sm text-base-content/70 mb-3">
           Apagar o grupo marca todos os rolês dele como <strong>ocultos</strong>

@@ -42,6 +42,17 @@ defmodule RolezinhoWeb.Router do
       live "/g/criar", GroupNewLive, :new
       live "/g/:slug", GroupLive, :show
       live "/entrar", SignInLive, :show
+
+      # Edit surfaces: reachable by admin OR by the resource's own
+      # owner. The paths keep the `/admin/` prefix for bookmark
+      # backward-compat, but the pipeline gate is off — each LiveView
+      # does its own `Policy.can_edit?/2` (event) or
+      # `Group.editable_by?/4` (group) check in `mount/3`, and each
+      # handler that mutates admin-only bits (owner reassignment,
+      # group visibility, deletes) still calls `require_admin!/1`.
+      live "/admin/r/:slug/edit", EventEditLive, :edit
+      live "/admin/r/:slug/formulario", FormConfigLive, :show
+      live "/admin/g/:slug/edit", GroupEditLive, :edit
     end
 
     get "/r/txt/:slug", RawController, :show
@@ -64,7 +75,10 @@ defmodule RolezinhoWeb.Router do
     delete "/auth/logout", AuthController, :delete
   end
 
-  ## Admin-only routes
+  ## Admin-only routes — the ADMIN dashboard proper. Edit surfaces
+  ## used to live here too, but moved to the public scope with per-
+  ## LiveView policy checks so a role/group owner can edit their own
+  ## thing without also holding the shared admin password.
   scope "/admin", RolezinhoWeb do
     pipe_through [:browser, :admin_required]
 
@@ -74,9 +88,6 @@ defmodule RolezinhoWeb.Router do
         {RolezinhoWeb.Plugs.User, :fetch}
       ] do
       live "/", AdminHomeLive, :index
-      live "/r/:slug/edit", EventEditLive, :edit
-      live "/r/:slug/formulario", FormConfigLive, :show
-      live "/g/:slug/edit", GroupEditLive, :edit
     end
   end
 

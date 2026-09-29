@@ -38,11 +38,14 @@ defmodule RolezinhoWeb.GroupEditTest do
   end
 
   describe "authorization" do
-    test "non-admin cannot reach the edit page", %{conn: conn} do
-      group = create_group()
-      # No admin session → redirect to /admin/login.
-      conn = get(conn, ~p"/admin/g/#{group.slug}/edit")
-      assert redirected_to(conn) =~ "/admin/login"
+    test "an anonymous visitor is bounced to the group page", %{conn: conn} do
+      # Post-2026-09 the route is no longer pipeline-gated by admin;
+      # `Group.editable_by?/4` decides. An anonymous visitor with no
+      # session unlock and no signed-in identity fails the check and
+      # gets sent back to the group's public page.
+      group = create_group(%{"password" => "s"})
+      assert {:error, {:live_redirect, %{to: to}}} = live(conn, ~p"/admin/g/#{group.slug}/edit")
+      assert to == "/g/#{group.slug}"
     end
 
     test "admin can reach it", %{conn: conn} do
