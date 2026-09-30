@@ -5,10 +5,11 @@ defmodule RolezinhoWeb.UpdateFromChatLiveTest do
 
   Two flows:
 
-    * **picker** — no `event=<slug>`, we render the caller's updatable
-      events; picking one keeps the LLM params intact.
-    * **diff** — `event=<slug>` resolves, the two-column view renders,
-      the human confirms, the DB reflects the changes.
+    * **picker** at `/atualizar` — we render the caller's updatable
+      events; picking one navigates to `/atualizar/:slug` with the
+      LLM params preserved.
+    * **diff** at `/atualizar/:slug` — slug resolves, the two-column
+      view renders, the human confirms, the DB reflects the changes.
 
   Anonymous visitors get bounced to `/entrar` with `return_to` set,
   so an LLM link they clicked before signing in still reaches its
@@ -22,7 +23,10 @@ defmodule RolezinhoWeb.UpdateFromChatLiveTest do
   alias Rolezinho.Events
 
   defp register do
-    n = System.unique_integer([:positive])
+    # Pad to guarantee >= 6 chars (username min length), so tests
+    # don't intermittently fail when `unique_integer` returns a
+    # single-digit value — "chat4" is 5 chars and would be rejected.
+    n = System.unique_integer([:positive]) |> Integer.to_string() |> String.pad_leading(4, "0")
 
     {:ok, user} =
       Accounts.register_user(%{
@@ -89,29 +93,136 @@ defmodule RolezinhoWeb.UpdateFromChatLiveTest do
       assert html =~ "Você não tem rolês"
     end
 
-    test "picker link preserves LLM query params", %{conn: conn} do
+    test "picker link binds slug into the path and preserves LLM query params",
+         %{conn: conn} do
       user = register()
       event = create_event(user)
       conn = signed_in(conn, user)
 
       {:ok, view, _html} = live(conn, ~p"/atualizar?names[0]=Alice&checks[0]=1")
 
-      # The picker row's href includes both the chosen event and the
-      # original LLM params.
-      assert has_element?(view, ~s(a[href*="event=#{event.slug}"][href*="names"]))
+      # The picker row's href puts the slug in the path
+      # (`/atualizar/:slug`) and keeps the LLM proposal in the query.
+      # This is the invariant that guarantees the LLM's URL contract
+      # stays event-agnostic — the slug lives in the routing layer,
+      # never in the query the LLM built.
+      assert has_element?(view, ~s(a[href^="/atualizar/#{event.slug}?"][href*="names"]))
     end
 
-    test "an `event` slug the caller cannot update falls back to the picker",
+    test "a `/atualizar/:slug` the caller cannot update falls back to the picker",
          %{conn: conn} do
       owner = register()
       other = register()
       event = create_event(owner)
       conn = signed_in(conn, other)
 
-      {:ok, _view, html} = live(conn, ~p"/atualizar?event=#{event.slug}")
+      {:ok, _view, html} = live(conn, ~p"/atualizar/#{event.slug}")
 
       # Falls back to the picker (empty for `other`).
       assert html =~ "Você não tem rolês"
+    end
+
+    test "encoded=<base64> is expanded before rendering the picker link",
+         %{conn: conn} do
+      user = register()
+      event = create_event(user)
+      conn = signed_in(conn, user)
+
+      # LLM sent everything through the base64 shortcut. When the
+      # human picks an event, the resulting link must carry the
+      # decoded, human-readable query — not the opaque blob — so a
+      # copy-paste from the address bar is inspectable and the diff
+      # URL is a normal `/atualizar/:slug?names[0]=...`.
+      encoded = Base.url_encode64("names[0]=Alice&checks[0]=1")
+      {:ok, view, _html} = live(conn, ~p"/atualizar?encoded=#{encoded}")
+
+      assert has_element?(
+               view,
+               ~s(a[href^="/atualizar/#{event.slug}?"][href*="names"])
+             )
+
+      # And the blob itself is gone from the picker href.
+      refute render(view) =~ "encoded="
+    end
+
+    # Regression: the picker link used to be a live `patch`, which
+    # crashed on the picker → diff transition because it fires
+    # `handle_params/3` (undefined here) and crosses live_actions.
+    # `navigate` is the right primitive — the two views load
+    # completely different assign sets, so a clean re-mount is
+    # correct. Verify it by walking the link end-to-end.
+    test "clicking a picker link lands on the diff view without crashing",
+         %{conn: conn} do
+      user = register()
+      event = create_event(user)
+      conn = signed_in(conn, user)
+
+      {:ok, view, _html} =
+        live(conn, ~p"/atualizar?names[0]=Alice&checks[0]=1")
+
+      # `follow_redirect/2` traverses a `live_redirect` (navigate)
+      # and mounts the target LV; if the picker used `patch`, the
+      # crash would surface here.
+      {:ok, diff_view, diff_html} =
+        view
+        |> element(~s(a[href^="/atualizar/#{event.slug}?"]))
+        |> render_click()
+        |> follow_redirect(conn)
+
+      # We reached the diff view: the LLM's Alice is pre-filled on
+      # the right column, and the Confirmar form is present.
+      assert diff_html =~ "Editando"
+      assert diff_html =~ ~s(value="Alice")
+      assert has_element?(diff_view, "#confirm-form")
+    end
+
+    # End-to-end sanity for the compact-alias combo. This is the
+    # "real-world" URL shape the docs recommend; the parser tests
+    # cover equivalence at the pure-function layer, this one proves
+    # the whole stack (picker → diff → confirm → DB) works with it.
+    test "compact aliases (n=, c=, k=) flow through picker to a persisted update",
+         %{conn: conn} do
+      user = register()
+      event = create_event(user, %{"main_size" => "4"})
+      conn = signed_in(conn, user)
+
+      # Compact form: 3 names, 2 marked paid, capacity bumped to 5.
+      {:ok, view, _html} =
+        live(conn, ~p"/atualizar?n=Alice|Bruno|Carla&c=1-1&k=5")
+
+      # The picker's href passes the compact form through untouched
+      # (expanding would defeat the whole point of the shorts).
+      assert has_element?(view, ~s(a[href^="/atualizar/#{event.slug}?"][href*="n="]))
+
+      # Follow into the diff view.
+      {:ok, diff_view, diff_html} =
+        view
+        |> element(~s(a[href^="/atualizar/#{event.slug}?"]))
+        |> render_click()
+        |> follow_redirect(conn)
+
+      # All three names pre-filled on the depois column.
+      assert diff_html =~ ~s(value="Alice")
+      assert diff_html =~ ~s(value="Bruno")
+      assert diff_html =~ ~s(value="Carla")
+
+      # Capacity input bumped to 5 per `k=5`.
+      assert has_element?(diff_view, ~s(input[name="capacity"][value="5"]))
+
+      # Confirm and check the DB.
+      diff_view |> form("#confirm-form") |> render_submit()
+
+      reloaded = Events.find(event.slug)
+      assert reloaded.main_capacity == 5
+      names = reloaded.main_list |> Enum.map(& &1.name) |> Enum.filter(&(&1 != ""))
+      assert names == ["Alice", "Bruno", "Carla"]
+
+      # `c=1-1` — slots 0 and 2 paid, slot 1 (Bruno) unspecified
+      # (which for a brand-new row defaults to false).
+      [alice, bruno, carla | _] = reloaded.main_list
+      assert alice.paid == true
+      assert bruno.paid == false
+      assert carla.paid == true
     end
   end
 
@@ -126,8 +237,8 @@ defmodule RolezinhoWeb.UpdateFromChatLiveTest do
 
     test "renders both columns with the LLM proposal on the right",
          %{conn: conn, event: event} do
-      params = %{"event" => event.slug, "names" => %{"0" => "Alice"}, "checks" => %{"0" => "1"}}
-      {:ok, _view, html} = live(conn, ~p"/atualizar?#{params}")
+      params = %{"names" => %{"0" => "Alice"}, "checks" => %{"0" => "1"}}
+      {:ok, _view, html} = live(conn, ~p"/atualizar/#{event.slug}?#{params}")
 
       # Left (antes) shows Bruno at slot 1.
       assert html =~ "Bruno"
@@ -139,8 +250,8 @@ defmodule RolezinhoWeb.UpdateFromChatLiveTest do
 
     test "confirm submits the form and applies the update",
          %{conn: conn, event: event} do
-      params = %{"event" => event.slug, "names" => %{"0" => "Alice"}, "checks" => %{"0" => "1"}}
-      {:ok, view, _html} = live(conn, ~p"/atualizar?#{params}")
+      params = %{"names" => %{"0" => "Alice"}, "checks" => %{"0" => "1"}}
+      {:ok, view, _html} = live(conn, ~p"/atualizar/#{event.slug}?#{params}")
 
       # Simulate what a click on "Confirmar" would send: the whole
       # form with LLM defaults intact. `render_submit/2` on the form
@@ -163,12 +274,11 @@ defmodule RolezinhoWeb.UpdateFromChatLiveTest do
     test "new field chips render and can be discarded",
          %{conn: conn, event: event} do
       params = %{
-        "event" => event.slug,
         "names" => %{"0" => "Alice"},
         "fields" => %{"0" => %{"tamanho" => "M"}}
       }
 
-      {:ok, view, html} = live(conn, ~p"/atualizar?#{params}")
+      {:ok, view, html} = live(conn, ~p"/atualizar/#{event.slug}?#{params}")
 
       # New-field chip is present.
       assert html =~ "Campos novos"
@@ -189,12 +299,11 @@ defmodule RolezinhoWeb.UpdateFromChatLiveTest do
     test "confirming with a new-field chip creates the field on the event",
          %{conn: conn, event: event} do
       params = %{
-        "event" => event.slug,
         "names" => %{"0" => "Alice"},
         "fields" => %{"0" => %{"tamanho" => "M"}}
       }
 
-      {:ok, view, _html} = live(conn, ~p"/atualizar?#{params}")
+      {:ok, view, _html} = live(conn, ~p"/atualizar/#{event.slug}?#{params}")
 
       view
       |> form("#confirm-form")
@@ -212,13 +321,12 @@ defmodule RolezinhoWeb.UpdateFromChatLiveTest do
     test "field_labels[<key>] carries through to the created field's label",
          %{conn: conn, event: event} do
       params = %{
-        "event" => event.slug,
         "names" => %{"0" => "Alice"},
         "fields" => %{"0" => %{"nome-na-camisa" => "Alice A."}},
         "field_labels" => %{"nome-na-camisa" => "Nome na camisa"}
       }
 
-      {:ok, view, html} = live(conn, ~p"/atualizar?#{params}")
+      {:ok, view, html} = live(conn, ~p"/atualizar/#{event.slug}?#{params}")
 
       # Chip shows the human-cased label, not the humanized slug
       # ("Nome Na Camisa").
@@ -245,8 +353,7 @@ defmodule RolezinhoWeb.UpdateFromChatLiveTest do
 
     test "the diff header renders the capacity input pre-filled",
          %{conn: conn, event: event} do
-      params = %{"event" => event.slug, "capacity" => "6"}
-      {:ok, view, _html} = live(conn, ~p"/atualizar?#{params}")
+      {:ok, view, _html} = live(conn, ~p"/atualizar/#{event.slug}?capacity=6")
 
       # Input is present and pre-filled with 6, and the "antes"
       # badge shows the current capacity (4) so the change is
@@ -257,8 +364,7 @@ defmodule RolezinhoWeb.UpdateFromChatLiveTest do
 
     test "submitting the form applies the new capacity",
          %{conn: conn, event: event} do
-      params = %{"event" => event.slug, "capacity" => "6"}
-      {:ok, view, _html} = live(conn, ~p"/atualizar?#{params}")
+      {:ok, view, _html} = live(conn, ~p"/atualizar/#{event.slug}?capacity=6")
 
       view
       |> form("#confirm-form")
@@ -271,8 +377,8 @@ defmodule RolezinhoWeb.UpdateFromChatLiveTest do
     test "URL name at a slot past current capacity grows implicitly",
          %{conn: conn, event: event} do
       # Slot 5 (0-based 4) is past the event's capacity of 4.
-      params = %{"event" => event.slug, "names" => %{"4" => "Ester"}}
-      {:ok, view, _html} = live(conn, ~p"/atualizar?#{params}")
+      params = %{"names" => %{"4" => "Ester"}}
+      {:ok, view, _html} = live(conn, ~p"/atualizar/#{event.slug}?#{params}")
 
       # Header capacity input auto-bumps to fit.
       assert has_element?(view, ~s(input[name="capacity"][value="5"]))
@@ -303,12 +409,11 @@ defmodule RolezinhoWeb.UpdateFromChatLiveTest do
     test "wait_fields values render on the wait depois column",
          %{conn: conn, event: event} do
       params = %{
-        "event" => event.slug,
         "wait_names" => %{"0" => "Ana"},
         "wait_fields" => %{"0" => %{"tamanho" => "P"}}
       }
 
-      {:ok, view, _html} = live(conn, ~p"/atualizar?#{params}")
+      {:ok, view, _html} = live(conn, ~p"/atualizar/#{event.slug}?#{params}")
 
       # The wait scope's field input exists and is pre-filled.
       assert has_element?(
@@ -320,12 +425,11 @@ defmodule RolezinhoWeb.UpdateFromChatLiveTest do
     test "confirm persists the wait-row's custom-field value",
          %{conn: conn, event: event} do
       params = %{
-        "event" => event.slug,
         "wait_names" => %{"0" => "Ana"},
         "wait_fields" => %{"0" => %{"tamanho" => "P"}}
       }
 
-      {:ok, view, _html} = live(conn, ~p"/atualizar?#{params}")
+      {:ok, view, _html} = live(conn, ~p"/atualizar/#{event.slug}?#{params}")
 
       view
       |> form("#confirm-form")

@@ -11,25 +11,86 @@
 Build a URL like:
 
 ```
-https://<host>/atualizar?event=<slug>&names[0]=Alice&names[1]=Bob&checks[0]=1
+https://<host>/atualizar?n=Alice|Bruno|Camila&c=11-
 ```
 
-Send it to the human. When they click it, Rolezinho shows the
-event's current attendee list on the left and your proposal on the
-right. The human tweaks anything you got wrong and hits *Confirmar*.
+Send it to the human. When they click it, Rolezinho shows them a
+**picker of their events**, and once they choose one, the current
+attendee list on the left with your proposal on the right. The human
+tweaks anything you got wrong and hits *Confirmar*.
 
 No API keys, no request signing, no request at all — the URL **is**
-the payload. The final DB write happens on the human's session
-after they confirm.
+the payload. The URL is also event-agnostic on purpose: you don't
+need to know which event to update, and you shouldn't try to encode
+that guess into the link. The picker is the human's chance to bind
+the proposal to the right rolê (they may have several open at once).
+The final DB write happens on the human's session after they confirm.
 
-## The full parameter reference
+## Compact aliases (recommended for long lists)
 
-Every index is **0-based**. Slot `0` is the first row of the main
-list, slot `1` is the second, and so on.
+Every param has a short alias. For a 24-attendee list, using them
+cuts the URL by roughly 75%:
+
+| Compact | Long form | What it means |
+|---|---|---|
+| `n=Alice\|Bruno\|Camila` | `names[0]=Alice&names[1]=Bruno&names[2]=Camila` | Pipe-separated positional names. Empty slot (`Alice\|\|Camila`) clears position 1. |
+| `c=1101-` | `checks[0]=1&checks[1]=1&checks[2]=0&checks[3]=1` | Paid bitmap. `1`/`y` = paid, `0`/`n` = unpaid, `-` (or anything else) = leave alone. |
+| `wn=Foo\|Bar` | `wait_names[0]=Foo&wait_names[1]=Bar` | Same shape, wait list. |
+| `wc=1-0` | `wait_checks[0]=1&wait_checks[2]=0` | Same shape, wait list. |
+| `f` | `fields` | Same nested shape (`f[0][tamanho]=M`). |
+| `wf` | `wait_fields` | Same. |
+| `fl` | `field_labels` | Same. |
+| `k=25` | `capacity=25` | |
+| `e=<base64>` | `encoded=<base64>` | See *base64 shortcut* below. |
+
+Mix and match freely. If both a compact and its long form set a value
+at the same slot, **the long form wins** — handy when you want the
+bulk in compact form but need to pin one slot explicitly.
+
+### Real-world example — 24 attendees, all paid
+
+```
+/atualizar?n=Alice|Bruno|Camila|Diego|Ester|Fabio|Gabi|Hugo|Ivan|Julia|Karla|Leo|Marina|Nina|Otavio|Paula|Rafa|Sofia|Tulio|Ursula|Vinicius|Wagner|Xico|Yara&c=111111111111111111111111
+```
+
+That's ~240 chars. The verbose equivalent would be ~1,050 chars, and
+would crash some chat clients that truncate long links.
+
+## Extra shortcut: base64-encoded query (`encoded=` / `e=`)
+
+For *very* long chats where even the compact form gets unwieldy,
+bundle the whole thing into a single param:
+
+```
+https://<host>/atualizar?e=bj1BbGljZXxCcnVub3xDYW1pbGEmYz0xMTE
+```
+
+The decoded value is the *exact same query string* you'd otherwise
+assemble longhand — `n=Alice|Bruno|Camila&c=111` in the example
+above. All the compact aliases work inside the encoded payload,
+so base64 stacks on top of them for maximum compression.
+
+Encoding rules:
+
+- Prefer **URL-safe** base64 (`-` and `_` instead of `+` and `/`)
+  so the resulting URL doesn't need extra percent-encoding.
+- Padding (`=` at the end) is optional. Both padded and unpadded
+  are accepted.
+- Standard base64 is also accepted as a fallback, in case your
+  runtime doesn't expose a URL-safe variant.
+- Any other query params sent alongside `encoded` (like `k=25`)
+  are merged in, with the decoded values winning on collision. When
+  in doubt, put everything inside `encoded`.
+
+## The full parameter reference (long form)
+
+Use this table when you need per-slot precision, or when the compact
+form above doesn't fit your prompt. Every index is **0-based**. Slot
+`0` is the first row of the main list, slot `1` is the second, and
+so on.
 
 | Parameter | Purpose | Example |
 |---|---|---|
-| `event=<slug>` | Optional. Pre-selects an event so the user skips the picker. When you don't know the slug, omit this and the picker lets the human choose. | `event=volei-quarta-30-09` |
 | `names[<i>]=<name>` | The attendee's name at slot `i`. An explicit empty (`names[3]=`) **clears** slot 3. Omitting the param leaves the slot alone. | `names[0]=Alice` |
 | `fields[<i>][<key>]=<value>` | Custom form-field value at slot `i`. `<key>` is the field label slugified (case + accent insensitive; spaces become dashes). If the event does not have a field named `<key>` yet, the human sees a *"criar campo"* suggestion. | `fields[0][tamanho]=M` |
 | `checks[<i>]=<truthy/falsy>` | Paid checkbox at slot `i`. Truthy: `1`, `true`, `yes`, `on`, `sim`. Falsy: `0`, `false`, `no`, `off`, `não`. Absent means "leave whatever is stored". | `checks[0]=1` |
@@ -38,6 +99,7 @@ list, slot `1` is the second, and so on.
 | `wait_fields[<i>][<key>]=<value>` | Same as `fields`, wait list. Wait rows share the same event-wide custom-field set as main rows. | `wait_fields[0][tamanho]=P` |
 | `capacity=<N>` | Optional. Proposes a new size for the main list. The human sees an editable number they can override before confirming. Growing is free; shrinking clamps at the number of filled slots — so `capacity=5` on a list with 8 filled rows lands at 8, unless your URL also clears the extras with `names[<i>]=`. | `capacity=25` |
 | `field_labels[<key>]=<Human Label>` | Optional. When a `fields[i][<key>]` names a field the event doesn't have yet, this param tells the app what human label to give the new field. Without it, the label is auto-derived from the slug key ("nome-na-camisa" → "Nome Na Camisa"). With it, casing and diacritics come through as you wrote them. | `field_labels[nome-na-camisa]=Nome%20na%20camisa` |
+| `encoded=<base64>` | Optional shortcut. URL-safe base64 of a query string containing any of the params above (or their compact aliases). Expanded server-side before parsing; see *base64 shortcut* section above. | `encoded=bmFtZXNbMF09QWxpY2U` |
 
 **Encode values**. Spaces are `%20` or `+`. Names with parentheses,
 accents, or emojis should be percent-encoded — most languages have
@@ -64,19 +126,28 @@ Pix: 91984933238
 The LLM should produce:
 
 ```
-/atualizar
-  ?names[0]=Alice&checks[0]=1
-  &names[1]=Bruno&checks[1]=1
-  &names[2]=Camila
-  &names[3]=Diego&checks[3]=1
+/atualizar?n=Alice|Bruno|Camila|Diego|Fernanda&c=11-11
+```
+
+Notice the URL has **no event slug**: the human picks the event on
+the next screen. All the LLM sends is the proposal.
+
+Notice slot `2` (Camila) is `-` in the paid bitmap — that's the
+correct translation of "no ✅ next to her name". `-` means "leave
+whatever's stored alone"; do **not** use `0` unless the chat
+message explicitly says she has not paid.
+
+The long-form equivalent is:
+
+```
+/atualizar?names[0]=Alice&checks[0]=1&names[1]=Bruno&checks[1]=1
+  &names[2]=Camila&names[3]=Diego&checks[3]=1
   &names[4]=Fernanda&checks[4]=1
 ```
 
-Notice slot `2` (Camila) has no `checks[2]` — that's the correct
-translation of "no ✅ next to her name". Do **not** send `checks[2]=0`
-unless the chat message explicitly says she has not paid; leaving it
-absent means "preserve whatever's stored", which is what the human
-usually wants.
+Same result — the parser accepts both. Use whichever is easier for
+you to produce; the compact form is dramatically shorter for lists
+over ~10 attendees.
 
 ## Example — with custom fields
 
@@ -101,19 +172,17 @@ Nome na camisa: Bru
 Número: 7
 ```
 
-The LLM should produce:
+The LLM should produce (compact form):
 
 ```
-/atualizar
-  ?names[0]=Alice
-  &fields[0][tamanho]=M
-  &fields[0][nome-na-camisa]=Alice%20A.
-  &fields[0][numero]=10
-  &names[1]=Bruno
-  &fields[1][tamanho]=G
-  &fields[1][nome-na-camisa]=Bru
-  &fields[1][numero]=7
+/atualizar?n=Alice|Bruno
+  &f[0][tamanho]=M&f[0][nome-na-camisa]=Alice%20A.&f[0][numero]=10
+  &f[1][tamanho]=G&f[1][nome-na-camisa]=Bru&f[1][numero]=7
 ```
+
+Custom fields don't have a positional shorthand — they carry
+per-field values, which don't compress cleanly — but `f` is 5 chars
+shorter than `fields` per row, which adds up on longer lists.
 
 If the event doesn't have those fields yet, the human sees a
 *"criar campo Tamanho"* chip they can click to add it before
@@ -150,11 +219,11 @@ When the chat message shows more attendees than the event's list has
 room for, add a `capacity` param:
 
 ```
-/atualizar?event=<slug>&capacity=25
+/atualizar?capacity=25
   &names[0]=Alice&names[1]=Bruno&...&names[24]=Yara
 ```
 
-The human sees a *Tamanho* number input in the diff header pre-filled
+The human sees a *Vagas* number input in the diff header pre-filled
 with your value; they can tweak it before confirming. Rows past the
 event's current capacity render as new empty slots on the *Antes*
 side so the diff still makes sense visually.
@@ -163,7 +232,7 @@ Shrinking works too, but only if your URL clears the extra rows in
 the same request:
 
 ```
-/atualizar?event=<slug>&capacity=8
+/atualizar?capacity=8
   &names[0]=Alice&...&names[7]=Hugo
   &names[8]=&names[9]=&names[10]=&names[11]=
 ```
@@ -181,8 +250,7 @@ Camisa`. If you want the original human casing (`Nome na camisa`),
 send it explicitly:
 
 ```
-/atualizar?event=<slug>
-  &fields[0][nome-na-camisa]=Alice%20A.
+/atualizar?fields[0][nome-na-camisa]=Alice%20A.
   &field_labels[nome-na-camisa]=Nome%20na%20camisa
 ```
 
@@ -196,18 +264,18 @@ the wait list. The custom-field set is event-wide, so a field created
 via a wait-row proposal is also usable on main rows and vice versa.
 
 ```
-/atualizar?event=<slug>
-  &wait_names[0]=Fulano
-  &wait_fields[0][tamanho]=P
+/atualizar?wait_names[0]=Fulano&wait_fields[0][tamanho]=P
 ```
 
 ## What the human sees
 
 The `/atualizar` page shows:
 
-- A picker of events they can update (only shown when `event=` was
-  not supplied or was invalid).
-- Two columns side by side:
+- A picker of events they can update. Every link opens with your
+  proposal pre-applied to the chosen event. This screen always
+  shows first — the LLM never picks the event on the human's
+  behalf.
+- After picking, two columns side by side:
   - **Antes** — the event's current main list, read-only, index-numbered.
   - **Depois** — your proposal, editable. Every input starts at the
     value your URL implied; the human can retype anything.
@@ -270,13 +338,18 @@ You will read a WhatsApp message describing the state of an event's
 attendee list. Turn it into a URL for https://<host>/atualizar
 following the rules at https://<host>/atualizar.md.
 
+- Prefer the compact form: `n=A|B|C` for names, `c=110-` for the paid
+  bitmap, `k=<N>` for capacity, `f`/`wf`/`fl` for the field families.
 - Use 0-based indices matching the numbered positions in the message.
 - Preserve the exact names as written, including parentheticals.
-- Only include `checks[i]=1` when the message shows an explicit
-  paid indicator (✅, ✔️, "pago", the word "sim").
-- Only include `fields[i][key]=value` when the message pairs a
-  labeled attribute with an attendee.
+- Only mark `1` in the paid bitmap where the message shows an explicit
+  paid indicator (✅, ✔️, "pago", the word "sim"). Use `-` for
+  "unspecified" — do not guess.
+- Only include `f[i][key]=value` when the message pairs a labeled
+  attribute with an attendee.
 - Do not invent slots that the message didn't mention.
+- For very long lists (60+ attendees), also wrap the whole compact
+  query into `e=<url-safe-base64>` so the URL stays on a single line.
 
 Return only the URL, one line, ready to click.
 ```

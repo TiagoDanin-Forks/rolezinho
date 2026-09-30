@@ -44,7 +44,8 @@ defmodule RolezinhoWeb.Router do
       live "/entrar", SignInLive, :show
       live "/entrar/esqueci", ForgotPasswordLive, :show
       live "/entrar/nova-senha/:token", ResetPasswordLive, :show
-      live "/atualizar", UpdateFromChatLive, :show
+      live "/atualizar", UpdateFromChatLive, :pick
+      live "/atualizar/:slug", UpdateFromChatLive, :diff
 
       # Edit surfaces: reachable by admin OR by the resource's own
       # owner. The paths keep the `/admin/` prefix for bookmark

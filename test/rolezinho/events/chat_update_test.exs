@@ -2,6 +2,7 @@ defmodule Rolezinho.Events.ChatUpdateTest do
   @moduledoc """
   Unit coverage for the URL-scheme parser that turns LLM-generated
   query strings into `%ChatUpdate{}` proposals. Locks in:
+  What we lock in:
 
     * `names[i]` → indexed row names, absent means "leave alone",
       explicit empty means "clear".
@@ -10,26 +11,20 @@ defmodule Rolezinho.Events.ChatUpdateTest do
     * `checks[i]` → paid tri-state (truthy / falsy / unspecified),
       including Portuguese synonyms (`sim`, `não`).
     * `wait_names[i]` / `wait_checks[i]` populate the wait rows.
-    * `event=<slug>` becomes `event_slug`.
     * `field_keys` collect **unique** keys in first-appearance order.
     * Malformed entries (non-numeric indices, non-map fields, unknown
       truthiness values) are silently dropped.
+
+  The parser does NOT read any `event` slug from the URL — event
+  selection lives at the routing layer (`/atualizar/:slug`), never in
+  the query string. This keeps the LLM's URL contract event-agnostic.
   """
   use ExUnit.Case, async: true
 
   alias Rolezinho.Events.ChatUpdate
   alias Rolezinho.Events.ChatUpdate.Row
 
-  describe "parse/1 — names & event" do
-    test "picks up the event slug" do
-      assert %ChatUpdate{event_slug: "volei-30-09"} =
-               ChatUpdate.parse(%{"event" => "volei-30-09"})
-    end
-
-    test "blank event collapses to nil" do
-      assert %ChatUpdate{event_slug: nil} = ChatUpdate.parse(%{"event" => "  "})
-    end
-
+  describe "parse/1 — names" do
     test "translates names[i]=Foo into indexed Row{name: 'Foo'}" do
       params = %{"names" => %{"0" => "Alice", "1" => "Bruno"}}
 
@@ -245,13 +240,285 @@ defmodule Rolezinho.Events.ChatUpdateTest do
 
   describe "parse/1 — resilience" do
     test "returns empty ChatUpdate for a non-map input" do
-      assert %ChatUpdate{main_rows: [], wait_rows: [], event_slug: nil} =
-               ChatUpdate.parse("not a map")
+      assert %ChatUpdate{main_rows: [], wait_rows: []} = ChatUpdate.parse("not a map")
     end
 
     test "returns empty ChatUpdate for an empty map" do
-      assert %ChatUpdate{main_rows: [], wait_rows: [], event_slug: nil} =
-               ChatUpdate.parse(%{})
+      assert %ChatUpdate{main_rows: [], wait_rows: []} = ChatUpdate.parse(%{})
+    end
+
+    test "an `event` param is silently ignored (parser is event-agnostic)" do
+      # Regression: the URL scheme moved event selection out of the
+      # query string in 2026-09; a stale LLM sending `?event=<slug>`
+      # should still produce a valid, empty proposal rather than
+      # accidentally binding to a field.
+      parsed = ChatUpdate.parse(%{"event" => "some-slug"})
+      refute Map.has_key?(parsed, :event_slug)
+    end
+  end
+
+  describe "parse/1 — encoded shortcut" do
+    # Equivalence is the whole contract: sending `encoded=<b64 of qs>`
+    # must produce the same ChatUpdate as sending `qs` unencoded.
+    test "URL-safe base64 with padding decodes to the same result" do
+      qs = "names[0]=Alice&checks[0]=1"
+      encoded = Base.url_encode64(qs)
+
+      via_encoded = ChatUpdate.parse(%{"encoded" => encoded})
+      via_raw = ChatUpdate.parse(Plug.Conn.Query.decode(qs))
+
+      assert via_encoded == via_raw
+    end
+
+    test "URL-safe base64 without padding also decodes" do
+      qs = "names[0]=Alice"
+      encoded = Base.url_encode64(qs, padding: false)
+
+      assert %ChatUpdate{main_rows: [%Row{index: 0, name: "Alice"}]} =
+               ChatUpdate.parse(%{"encoded" => encoded})
+    end
+
+    test "standard base64 falls back cleanly for LLMs that don't reach for URL-safe" do
+      qs = "names[0]=Bob"
+      encoded = Base.encode64(qs)
+
+      assert %ChatUpdate{main_rows: [%Row{index: 0, name: "Bob"}]} =
+               ChatUpdate.parse(%{"encoded" => encoded})
+    end
+
+    test "nested query params survive the round-trip" do
+      qs = "names[0]=Alice&fields[0][tamanho]=M&checks[0]=1&capacity=6"
+      encoded = Base.url_encode64(qs)
+
+      assert %ChatUpdate{
+               main_rows: [row],
+               main_capacity: 6
+             } = ChatUpdate.parse(%{"encoded" => encoded})
+
+      assert row.name == "Alice"
+      assert row.values == %{"tamanho" => "M"}
+      assert row.paid == true
+    end
+
+    test "malformed base64 collapses to an empty ChatUpdate (no 500)" do
+      assert %ChatUpdate{main_rows: [], wait_rows: []} =
+               ChatUpdate.parse(%{"encoded" => "not_valid_base64!@#$%"})
+    end
+
+    test "encoded values win on collision with sibling query params" do
+      # Sibling `names[0]=Zoe` is overridden by encoded `names[0]=Alice`.
+      qs = "names[0]=Alice"
+      encoded = Base.url_encode64(qs)
+
+      params = %{"encoded" => encoded, "names" => %{"0" => "Zoe"}}
+
+      assert %ChatUpdate{main_rows: [%Row{name: "Alice"}]} = ChatUpdate.parse(params)
+    end
+
+    test "absent / empty encoded is a no-op" do
+      assert %ChatUpdate{main_rows: [%Row{name: "Alice"}]} =
+               ChatUpdate.parse(%{"encoded" => "", "names" => %{"0" => "Alice"}})
+    end
+  end
+
+  describe "compact aliases — positional names" do
+    # Equivalence is the whole contract: `n=A|B|C` must parse to the
+    # same result as `names[0]=A&names[1]=B&names[2]=C`.
+    test "n=A|B|C decodes to the same result as the long form" do
+      via_short = ChatUpdate.parse(%{"n" => "Alice|Bruno|Camila"})
+
+      via_long =
+        ChatUpdate.parse(%{
+          "names" => %{"0" => "Alice", "1" => "Bruno", "2" => "Camila"}
+        })
+
+      assert via_short == via_long
+    end
+
+    test "empty position clears the slot (n=A||C)" do
+      assert %ChatUpdate{main_rows: rows} = ChatUpdate.parse(%{"n" => "Alice||Camila"})
+
+      # Slot 1 is an explicit empty — same semantics as `names[1]=`.
+      assert [
+               %Row{index: 0, name: "Alice"},
+               %Row{index: 1, name: ""},
+               %Row{index: 2, name: "Camila"}
+             ] = rows
+    end
+
+    test "wn=A|B populates wait rows" do
+      assert %ChatUpdate{wait_rows: [%Row{name: "Ana"}, %Row{name: "Bia"}]} =
+               ChatUpdate.parse(%{"wn" => "Ana|Bia"})
+    end
+
+    test "long form wins at conflicting indices" do
+      # `n=Alice|Bruno|Camila` puts Bruno at slot 1;
+      # `names[1]=Zoe` overrides Bruno with Zoe.
+      parsed =
+        ChatUpdate.parse(%{
+          "n" => "Alice|Bruno|Camila",
+          "names" => %{"1" => "Zoe"}
+        })
+
+      assert %ChatUpdate{main_rows: rows} = parsed
+      names = Enum.map(rows, &{&1.index, &1.name})
+
+      assert names == [{0, "Alice"}, {1, "Zoe"}, {2, "Camila"}]
+    end
+  end
+
+  describe "compact aliases — paid bitmap" do
+    test "c=1101 sets paid on the marked slots" do
+      assert %ChatUpdate{main_rows: rows} =
+               ChatUpdate.parse(%{"n" => "A|B|C|D", "c" => "1101"})
+
+      paid = Enum.map(rows, &{&1.index, &1.paid})
+      assert paid == [{0, true}, {1, true}, {2, false}, {3, true}]
+    end
+
+    test "c=1-0 leaves the `-` slot as unspecified (nil)" do
+      assert %ChatUpdate{main_rows: rows} =
+               ChatUpdate.parse(%{"n" => "A|B|C", "c" => "1-0"})
+
+      paid = Enum.map(rows, &{&1.index, &1.paid})
+      # Slot 1 is `-` — nil in the row so the applier leaves the row's
+      # existing paid flag alone.
+      assert paid == [{0, true}, {1, nil}, {2, false}]
+    end
+
+    test "y and n are accepted as synonyms for 1 and 0" do
+      assert %ChatUpdate{main_rows: rows} =
+               ChatUpdate.parse(%{"n" => "A|B|C", "c" => "y-n"})
+
+      paid = Enum.map(rows, &{&1.index, &1.paid})
+      assert paid == [{0, true}, {1, nil}, {2, false}]
+    end
+
+    test "wc populates the wait rows' paid flags" do
+      assert %ChatUpdate{wait_rows: rows} =
+               ChatUpdate.parse(%{"wn" => "X|Y|Z", "wc" => "10-"})
+
+      paid = Enum.map(rows, &{&1.index, &1.paid})
+      assert paid == [{0, true}, {1, false}, {2, nil}]
+    end
+
+    test "long form wins at conflicting indices" do
+      parsed =
+        ChatUpdate.parse(%{
+          "n" => "A|B|C",
+          "c" => "111",
+          # Override slot 1 via long form.
+          "checks" => %{"1" => "0"}
+        })
+
+      paid = parsed.main_rows |> Enum.map(&{&1.index, &1.paid})
+      assert paid == [{0, true}, {1, false}, {2, true}]
+    end
+  end
+
+  describe "compact aliases — scalar and nested" do
+    test "k= is an alias for capacity=" do
+      assert %ChatUpdate{main_capacity: 25} = ChatUpdate.parse(%{"k" => "25"})
+    end
+
+    test "long capacity= wins over short k=" do
+      assert %ChatUpdate{main_capacity: 30} =
+               ChatUpdate.parse(%{"k" => "25", "capacity" => "30"})
+    end
+
+    test "e= is an alias for encoded=" do
+      qs = "n=Alice|Bruno&c=11"
+      encoded = Base.url_encode64(qs)
+
+      assert %ChatUpdate{main_rows: rows} = ChatUpdate.parse(%{"e" => encoded})
+
+      names = Enum.map(rows, & &1.name)
+      assert names == ["Alice", "Bruno"]
+    end
+
+    test "f is an alias for fields (same nested shape)" do
+      via_short = ChatUpdate.parse(%{"f" => %{"0" => %{"tamanho" => "M"}}})
+      via_long = ChatUpdate.parse(%{"fields" => %{"0" => %{"tamanho" => "M"}}})
+      assert via_short == via_long
+    end
+
+    test "long fields[i][k]= overrides short f[i][k]= at that key" do
+      parsed =
+        ChatUpdate.parse(%{
+          "f" => %{"0" => %{"tamanho" => "M", "numero" => "10"}},
+          "fields" => %{"0" => %{"tamanho" => "G"}}
+        })
+
+      # Slot 0's `tamanho` overridden to G, `numero` preserved from `f`.
+      assert %ChatUpdate{main_rows: [row]} = parsed
+      assert row.values == %{"tamanho" => "G", "numero" => "10"}
+    end
+
+    test "fl is an alias for field_labels" do
+      parsed =
+        ChatUpdate.parse(%{
+          "f" => %{"0" => %{"nome-na-camisa" => "Alice"}},
+          "fl" => %{"nome-na-camisa" => "Nome na camisa"}
+        })
+
+      assert parsed.field_labels == %{"nome-na-camisa" => "Nome na camisa"}
+    end
+  end
+
+  describe "compact aliases — stacking" do
+    test "aliases inside a base64-encoded payload also work" do
+      # This is the big-win combo: base64 wraps a compact-alias query.
+      qs = "n=Alice|Bruno|Camila&c=110&k=6"
+      encoded = Base.url_encode64(qs)
+
+      assert %ChatUpdate{
+               main_rows: rows,
+               main_capacity: 6
+             } = ChatUpdate.parse(%{"e" => encoded})
+
+      pairs = Enum.map(rows, &{&1.index, &1.name, &1.paid})
+
+      assert pairs == [
+               {0, "Alice", true},
+               {1, "Bruno", true},
+               {2, "Camila", false}
+             ]
+    end
+
+    test "a 24-attendee compact URL roundtrips end-to-end" do
+      # The load-bearing case for shipping this feature.
+      names = for i <- 1..24, do: "P#{i}"
+      n = Enum.join(names, "|")
+      c = String.duplicate("1", 24)
+
+      parsed = ChatUpdate.parse(%{"n" => n, "c" => c})
+
+      assert length(parsed.main_rows) == 24
+      assert Enum.map(parsed.main_rows, & &1.name) == names
+      assert Enum.all?(parsed.main_rows, & &1.paid)
+    end
+  end
+
+  describe "expand_encoded/1" do
+    test "strips the `encoded` key from the returned params so picker links stay readable" do
+      qs = "names[0]=Alice"
+      encoded = Base.url_encode64(qs)
+
+      expanded = ChatUpdate.expand_encoded(%{"encoded" => encoded, "capacity" => "5"})
+
+      # The blob is gone — the LiveView is meant to use this for the
+      # `raw_params` it embeds into picker hrefs, and shipping the
+      # opaque form there would defeat the purpose.
+      refute Map.has_key?(expanded, "encoded")
+      # Decoded content merged in.
+      assert Map.get(expanded, "names") == %{"0" => "Alice"}
+      # Sibling params preserved.
+      assert Map.get(expanded, "capacity") == "5"
+    end
+
+    test "no `encoded` present — returns params unchanged" do
+      params = %{"names" => %{"0" => "Alice"}}
+      assert ChatUpdate.expand_encoded(params) == params
     end
   end
 

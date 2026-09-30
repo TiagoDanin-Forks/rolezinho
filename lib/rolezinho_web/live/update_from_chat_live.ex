@@ -3,15 +3,19 @@ defmodule RolezinhoWeb.UpdateFromChatLive do
   Bulk-update surface for events, driven by a query string an LLM built
   (see `/atualizar.md`).
 
-  Two states:
+  Two states, one per route:
 
-    * **picker** — no `event` (or unknown `event`) was supplied. Shows
-      the caller's updatable events (`Events.list_updatable_for/2`,
-      admin-widened) so they can pick one. Each picker row is a link
-      that reuses the current query string plus `event=<slug>`.
+    * **picker** — `/atualizar` (live_action `:pick`). Shows the
+      caller's updatable events (`Events.list_updatable_for/2`,
+      admin-widened) so they can pick one. Every picker row is a
+      link to `/atualizar/:slug` that preserves the current query
+      string. The LLM's URL never carries the event slug (the docs
+      don't mention it), so this is always the first surface the
+      human sees.
 
-    * **diff** — `event=<slug>` resolves to something the caller is
-      allowed to update (`Policy.can_edit?/2`). Renders two columns:
+    * **diff** — `/atualizar/:slug` (live_action `:diff`). Loads the
+      slug and, when the caller passes `Policy.can_edit?/2`, renders
+      the two-column diff:
       *Antes* (read-only current state) on the left, *Depois*
       (editable proposal) on the right. Every input on the right side
       starts prefilled from the URL, then merged with the event's
@@ -42,25 +46,38 @@ defmodule RolezinhoWeb.UpdateFromChatLive do
 
   @impl true
   def mount(params, _session, socket) do
+    slug = Map.get(params, "slug")
+
+    # Expand the `encoded=<base64>` shortcut once, at the boundary,
+    # so the LiveView's `raw_params` (and therefore every picker
+    # link) carries the readable query string. Without this,
+    # navigating from picker to diff would ship the same opaque
+    # blob down the chain — works, but any human copying the URL
+    # out of the address bar would see the un-decodable form.
+    llm_params =
+      params
+      |> Map.delete("slug")
+      |> ChatUpdate.expand_encoded()
+
     if socket.assigns.current_user do
-      chat_update = ChatUpdate.parse(params)
+      chat_update = ChatUpdate.parse(llm_params)
 
       socket =
         socket
         |> assign(:page_title, "Atualizar rolezinho")
-        |> assign(:raw_params, params)
+        |> assign(:raw_params, llm_params)
         |> assign(:chat_update, chat_update)
         |> assign(:discarded_field_keys, MapSet.new())
         |> assign(:error_message, nil)
 
-      case load_event(chat_update.event_slug) do
+      case load_event(slug) do
         %Event{} = event ->
           if Policy.can_edit?(event, policy_opts(socket, event)) do
             {:ok, load_diff(socket, event, chat_update)}
           else
-            # Editable listing is filtered server-side; a `?event=`
-            # for something we don't own falls back to the picker so
-            # the caller can pick from what they actually control.
+            # A slug in the path for something the caller can't edit
+            # falls back to the picker so they can pick from what
+            # they actually control.
             {:ok, load_picker(socket)}
           end
 
@@ -69,23 +86,27 @@ defmodule RolezinhoWeb.UpdateFromChatLive do
       end
     else
       # Anonymous visitors get bounced to sign in and brought back
-      # with the whole query string preserved, so a click on the
-      # LLM's link doesn't lose the parsed proposal on the way through
-      # auth.
-      return_to = current_full_path(params)
+      # with the whole URL (path + query) preserved, so a click on
+      # the LLM's link doesn't lose the parsed proposal — or the
+      # picked event, if the user had already reached the diff URL
+      # — on the way through auth.
+      return_to = current_full_path(slug, llm_params)
       {:ok, push_navigate(socket, to: ~p"/entrar?#{[return_to: return_to]}")}
     end
   end
 
-  # `params` on mount is the nested map Plug decoded (`names[0]=X`
-  # becomes `%{"names" => %{"0" => "X"}}`). `Plug.Conn.Query.encode/1`
-  # is the inverse and preserves the `key[subkey]=` shape — plain
-  # `URI.encode_query/1` cannot handle nested maps and would raise
-  # on any LLM-shaped input.
-  defp current_full_path(params) when is_map(params) do
-    query = Plug.Conn.Query.encode(params)
-    "/atualizar" <> if(query == "", do: "", else: "?" <> query)
-  end
+  # `Plug.Conn.Query.encode/1` on the LLM params preserves the
+  # `key[subkey]=` shape; plain `URI.encode_query/1` cannot handle
+  # nested maps and would raise on any real LLM-shaped input.
+  defp current_full_path(nil, llm_params), do: build_path("/atualizar", llm_params)
+
+  defp current_full_path(slug, llm_params) when is_binary(slug),
+    do: build_path("/atualizar/#{slug}", llm_params)
+
+  defp build_path(base, params) when is_map(params) and map_size(params) == 0, do: base
+
+  defp build_path(base, params) when is_map(params),
+    do: base <> "?" <> Plug.Conn.Query.encode(params)
 
   defp load_event(nil), do: nil
   defp load_event(slug) when is_binary(slug), do: Events.find(slug, visibility: :any)
@@ -445,8 +466,18 @@ defmodule RolezinhoWeb.UpdateFromChatLive do
 
     <ul :if={@events != []} class="space-y-2">
       <li :for={event <- @events}>
+        <!--
+          `navigate` rather than `patch` because the transition from
+          picker (`live_action: :pick`) to diff (`live_action: :diff`)
+          crosses live_actions and loads a completely different
+          assign set (event, form fields, proposed rows). A `patch`
+          would fire `handle_params/3`, forcing us to duplicate the
+          mount-time loading logic on the socket lifecycle; a
+          `navigate` cleanly re-mounts with the target URL and the
+          same reasoning path used for direct visits.
+        -->
         <.link
-          patch={picker_url(event, @raw_params)}
+          navigate={picker_url(event, @raw_params)}
           class="flex items-center justify-between gap-3 rounded-card border border-hairline bg-base-100 p-4 shadow-card transition-colors hover:border-accent"
         >
           <div class="min-w-0 flex-1">
@@ -463,11 +494,12 @@ defmodule RolezinhoWeb.UpdateFromChatLive do
   end
 
   # Preserves every LLM-supplied param when the human picks an event.
-  # `Plug.Conn.Query.encode/1` handles the nested `names[0]=` shape;
-  # `URI.encode_query/1` doesn't and would raise here.
+  # The event slug goes in the path (`/atualizar/:slug`) so the LLM's
+  # URL contract stays event-agnostic — they only ever produce
+  # `/atualizar?<proposal>` and the human's picker click is what binds
+  # the proposal to a specific event.
   defp picker_url(%Event{slug: slug}, raw_params) do
-    params = Map.put(raw_params || %{}, "event", slug)
-    "/atualizar?" <> Plug.Conn.Query.encode(params)
+    build_path("/atualizar/#{slug}", raw_params || %{})
   end
 
   defp relative_time(%DateTime{} = dt) do
